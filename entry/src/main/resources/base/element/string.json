@@ -2,15 +2,15 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "及时通知，接收 HTTP 推送消息，实现自定义通知提醒，不错过重要通知"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "及时通知主程序，用于接收、展示第三方推送通知"
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "及时通知"
     }
   ]
 }
