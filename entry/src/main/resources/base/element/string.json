@@ -11,6 +11,14 @@
     {
       "name": "EntryAbility_label",
       "value": "及时通知"
+    },
+    {
+      "name": "index_tab_notify",
+      "value": "通知"
+    },
+    {
+      "name": "index_tab_mine",
+      "value": "我的"
     }
   ]
 }

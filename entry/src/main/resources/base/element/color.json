@@ -3,6 +3,18 @@
     {
       "name": "start_window_background",
       "value": "#FF6F22"
+    },
+    {
+      "name": "index_page_top_background",
+      "value": "#fff"
+    },
+    {
+      "name": "index_page_body_background",
+      "value": "#f3f3f3"
+    },
+    {
+      "name": "index_page_bottom_background",
+      "value": "#fff"
     }
   ]
 }
