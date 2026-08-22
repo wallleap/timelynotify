@@ -57,8 +57,7 @@ struct Index {
       .barMode(BarMode.Fixed)
       .barWidth('100%')
       .barHeight(56)
-      .animationDuration(0)
-      .scrollable(false)
+      .animationDuration(300)
       .onChange((index: number) => {
         this.currentIndex = index
       })
