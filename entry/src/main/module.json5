@@ -10,6 +10,14 @@
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO"
+      }
+    ],
     "abilities": [
       {
         "name": "EntryAbility",
@@ -20,6 +28,12 @@
         "startWindowIcon": "$media:foreground",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        "metadata": [
+          {
+            "name": "ohos.security.NETWORK_SECURITY_CONFIG",
+            "resource": "$profile:network_security_config"
+          }
+        ],
         "skills": [
           {
             "entities": [
