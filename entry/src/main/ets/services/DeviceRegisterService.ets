@@ -77,6 +77,24 @@ export class DeviceRegisterService {
     return this.doRegister(ctx, undefined);
   }
 
+  // 读取已持久化的 device_key（仅读缓存，不触发注册；未注册时返回空串）
+  async getDeviceKey(context: common.Context | null = null): Promise<string> {
+    const ctx: common.Context | null = this.resolveContext(context);
+    if (!ctx) {
+      return '';
+    }
+    return PreferencesUtil.getString(ctx, PreferencesUtil.KEY_DEVICE_KEY, '');
+  }
+
+  // 读取已持久化的 device_token（Push 推送 token；未取到时返回空串）
+  async getDeviceToken(context: common.Context | null = null): Promise<string> {
+    const ctx: common.Context | null = this.resolveContext(context);
+    if (!ctx) {
+      return '';
+    }
+    return PreferencesUtil.getString(ctx, PreferencesUtil.KEY_DEVICE_TOKEN, '');
+  }
+
   // 强制重新注册。deviceKey 为空 = 重置（生成新 key）；有值 = 还原（关联已有 device_key）。context 可传 null
   async register(context: common.Context | null, deviceKey?: string): Promise<string | null> {
     const ctx: common.Context | null = this.resolveContext(context);
