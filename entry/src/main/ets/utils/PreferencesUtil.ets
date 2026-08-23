@@ -46,6 +46,7 @@ export class PreferencesUtil {
 
   static readonly KEY_DEVICE_KEY: string = 'device_key';
   static readonly KEY_DEVICE_TOKEN: string = 'device_token';
+  static readonly KEY_CLIENT_TOKEN: string = 'client_token';
   static readonly KEY_SERVER_LIST_JSON: string = 'server_list_json';
   static readonly KEY_SERVER_CURRENT_ID: string = 'server_current_id';
 
