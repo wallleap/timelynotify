@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ApiConfig } from '../config/ApiConfig';
+import { ServerManager } from './ServerManager';
 import { HttpUtil, HttpResponse } from '../utils/HttpUtil';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 
@@ -79,9 +80,10 @@ export class DeviceRegisterService {
       req.device_token = deviceToken;
       req.platform = ApiConfig.PLATFORM_HARMONY;
 
-      hilog.info(DOMAIN, TAG, '开始注册：POST %{public}s', ApiConfig.REGISTER_PATH);
+      const fullURL: string = ServerManager.getInstance().resolveURL(ApiConfig.REGISTER_PATH);
+      hilog.info(DOMAIN, TAG, '开始注册：POST %{public}s', fullURL);
       const resp: HttpResponse<RegisterEnvelope> = await HttpUtil.post<RegisterEnvelope, RegisterRequest>(
-        ApiConfig.REGISTER_PATH,
+        fullURL,
         req,
       );
 

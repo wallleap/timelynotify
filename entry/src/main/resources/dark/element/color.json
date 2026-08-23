@@ -15,6 +15,10 @@
     {
       "name": "index_page_bottom_background",
       "value": "#181818"
+    },
+    {
+      "name": "text_primary_color",
+      "value": "#fff"
     }
   ]
 }

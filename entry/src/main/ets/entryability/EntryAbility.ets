@@ -1,7 +1,9 @@
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
+import { ServerManager } from '../services/ServerManager';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'EntryAbility';
@@ -13,6 +15,8 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       hilog.error(DOMAIN, TAG, 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
+    // 最早拿到 UIAbilityContext 的时机，注入全局存储，之后组件/dialog/持久化都可以用
+    AppContextStore.getInstance().setContext(this.context);
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
   }
 
@@ -22,6 +26,10 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
+
+    // 先加载服务器配置（必须早于页面渲染和注册，确保 baseURL 就绪）
+    this.bootstrapServerManager();
+
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, TAG, 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
@@ -44,6 +52,15 @@ export default class EntryAbility extends UIAbility {
 
   onBackground(): void {
     hilog.info(DOMAIN, TAG, 'Ability onBackground');
+  }
+
+  private async bootstrapServerManager(): Promise<void> {
+    try {
+      await ServerManager.getInstance().load(this.context);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.error(DOMAIN, TAG, 'ServerManager 加载异常：%{public}s', msg);
+    }
   }
 
   private async silentRegister(): Promise<void> {

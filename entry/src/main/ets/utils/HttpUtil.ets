@@ -1,5 +1,4 @@
 import { http } from '@kit.NetworkKit';
-import { ApiConfig } from '../config/ApiConfig';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const DOMAIN: number = 0x0000;
@@ -46,17 +45,34 @@ function formatError(err: Object): string {
 export class HttpUtil {
   private static readonly TIMEOUT_MS: number = 10000;
 
+  // 第一个参数传入完整 URL（由上层 ServerManager.resolveURL 拼接好 baseURL + path）
   static async post<T extends Object, B extends Object>(
-    path: string,
+    fullURL: string,
     body: B,
     headers?: Record<string, string>
   ): Promise<HttpResponse<T>> {
+    return HttpUtil.request<T>(fullURL, http.RequestMethod.POST, headers, JSON.stringify(body));
+  }
+
+  // GET 请求（无 body）
+  static async get<T extends Object>(
+    fullURL: string,
+    headers?: Record<string, string>
+  ): Promise<HttpResponse<T>> {
+    return HttpUtil.request<T>(fullURL, http.RequestMethod.GET, headers, undefined);
+  }
+
+  private static async request<T extends Object>(
+    fullURL: string,
+    method: http.RequestMethod,
+    headers?: Record<string, string>,
+    body?: string
+  ): Promise<HttpResponse<T>> {
     const httpRequest = http.createHttp();
-    const url = `${ApiConfig.baseURL}${path}`;
+    const url: string = fullURL;
     const result = new HttpResponse<T>();
 
     const mergedHeaders: Record<string, string> = {};
-    mergedHeaders['Content-Type'] = 'application/json';
     mergedHeaders['Accept'] = 'application/json';
     if (headers) {
       const keys: string[] = Object.keys(headers);
@@ -69,14 +85,19 @@ export class HttpUtil {
       }
     }
 
+    const options: http.HttpRequestOptions = {
+      method: method,
+      header: mergedHeaders,
+      connectTimeout: HttpUtil.TIMEOUT_MS,
+      readTimeout: HttpUtil.TIMEOUT_MS,
+    };
+    if (body !== undefined && body !== null) {
+      mergedHeaders['Content-Type'] = 'application/json';
+      options.extraData = body;
+    }
+
     try {
-      const response = await httpRequest.request(url, {
-        method: http.RequestMethod.POST,
-        header: mergedHeaders,
-        extraData: JSON.stringify(body),
-        connectTimeout: HttpUtil.TIMEOUT_MS,
-        readTimeout: HttpUtil.TIMEOUT_MS,
-      });
+      const response = await httpRequest.request(url, options);
 
       if (response.responseCode >= 200 && response.responseCode < 300) {
         result.code = response.responseCode;
