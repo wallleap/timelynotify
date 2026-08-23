@@ -1,8 +1,8 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, router } from '@kit.ArkUI';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
-import { extractHost, ServerSettingsDialog, } from '../components/ServerSettingsDialog';
+import { extractHost } from '../components/ServerSettingsContent';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
@@ -22,13 +22,6 @@ export struct MineView {
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
-  // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
-  private dialogController: CustomDialogController = new CustomDialogController({
-    builder: ServerSettingsDialog(),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    offset: { dx: 0, dy: 0 },
-  });
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
 
   aboutToAppear() {
@@ -131,11 +124,11 @@ export struct MineView {
 
   private handleCardClicked(): void {
     try {
-      this.dialogController.open();
+      router.pushUrl({ url: 'pages/ServerSettingsPage' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, 'dialog open 失败：%{public}s', msg);
-      showToast('弹窗无法打开');
+      hilog.warn(DOMAIN, TAG, 'router push 失败：%{public}s', msg);
+      showToast('页面无法打开');
     }
   }
 }

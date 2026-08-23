@@ -4,6 +4,7 @@ import { ApiConfig } from '../config/ApiConfig';
 import { ServerManager } from './ServerManager';
 import { HttpUtil, HttpResponse } from '../utils/HttpUtil';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
+import { AppContextStore } from '../common/AppContextStore';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'DeviceRegister';
@@ -23,7 +24,7 @@ export class RegisterEnvelope extends Object {
   timestamp: number = 0;
 }
 
-// 注册请求体（首次：仅 device_token + platform）
+// 注册请求体（首次：仅 device_token + platform；还原：带 device_key）
 export class RegisterRequest extends Object {
   device_token: string = '';
   platform: string = '';
@@ -54,13 +55,38 @@ export class DeviceRegisterService {
     this.tokenProvider = provider;
   }
 
-  async ensureRegistered(context: common.Context): Promise<string | null> {
-    const cachedKey = await PreferencesUtil.getString(context, PreferencesUtil.KEY_DEVICE_KEY, '');
+  // 解析 context：优先入参，否则回退全局 AppContextStore（与 ServerManager 一致）
+  private resolveContext(ctx: common.Context | null): common.Context | null {
+    if (ctx) {
+      return ctx;
+    }
+    return AppContextStore.getInstance().getContext();
+  }
+
+  // 已注册则直接返回缓存的 device_key；否则注册。context 可传 null
+  async ensureRegistered(context: common.Context | null = null): Promise<string | null> {
+    const ctx: common.Context | null = this.resolveContext(context);
+    if (!ctx) {
+      return null;
+    }
+    const cachedKey: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_DEVICE_KEY, '');
     if (cachedKey && cachedKey.length > 0) {
       hilog.info(DOMAIN, TAG, '已注册，device_key 命中缓存：%{public}s', cachedKey);
       return cachedKey;
     }
+    return this.doRegister(ctx, undefined);
+  }
 
+  // 强制重新注册。deviceKey 为空 = 重置（生成新 key）；有值 = 还原（关联已有 device_key）。context 可传 null
+  async register(context: common.Context | null, deviceKey?: string): Promise<string | null> {
+    const ctx: common.Context | null = this.resolveContext(context);
+    if (!ctx) {
+      return null;
+    }
+    return this.doRegister(ctx, deviceKey);
+  }
+
+  private async doRegister(ctx: common.Context, deviceKey?: string): Promise<string | null> {
     if (this.isRegistering) {
       hilog.info(DOMAIN, TAG, '注册中，等待其他任务完成…');
       return null;
@@ -68,17 +94,25 @@ export class DeviceRegisterService {
     this.isRegistering = true;
 
     try {
-      const deviceToken = await this.tokenProvider();
+      // device_token：优先用缓存，否则从 provider 获取并落盘
+      let deviceToken: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_DEVICE_TOKEN, '');
+      if (!deviceToken || deviceToken.length === 0) {
+        deviceToken = await this.tokenProvider();
+        if (deviceToken && deviceToken.length > 0) {
+          await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_DEVICE_TOKEN, deviceToken);
+        }
+      }
       if (!deviceToken || deviceToken.length === 0) {
         hilog.error(DOMAIN, TAG, 'device_token 为空，中止注册');
         return null;
       }
 
-      await PreferencesUtil.putString(context, PreferencesUtil.KEY_DEVICE_TOKEN, deviceToken);
-
       const req = new RegisterRequest();
       req.device_token = deviceToken;
       req.platform = ApiConfig.PLATFORM_HARMONY;
+      if (deviceKey && deviceKey.length > 0) {
+        req.device_key = deviceKey;
+      }
 
       const fullURL: string = ServerManager.getInstance().resolveURL(ApiConfig.REGISTER_PATH);
       hilog.info(DOMAIN, TAG, '开始注册：POST %{public}s', fullURL);
@@ -117,18 +151,22 @@ export class DeviceRegisterService {
 
       const payload: RegisterPayload = envelope.data;
       // 服务端同时返回 device_key 与 key（同名同义），优先取 device_key，兼容取 key
-      const deviceKey: string = payload.device_key && payload.device_key.length > 0
+      const newDeviceKey: string = payload.device_key && payload.device_key.length > 0
         ? payload.device_key
         : payload.key;
 
       if (deviceKey && deviceKey.length > 0) {
-        const ok: boolean = await PreferencesUtil.putString(context, PreferencesUtil.KEY_DEVICE_KEY, deviceKey);
+        hilog.info(DOMAIN, TAG, '还原 key 已提交，服务端返回 device_key=%{public}s', newDeviceKey);
+      } else {
+        hilog.info(DOMAIN, TAG, '重置完成，新 device_key=%{public}s', newDeviceKey);
+      }
+
+      if (newDeviceKey && newDeviceKey.length > 0) {
+        const ok: boolean = await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_DEVICE_KEY, newDeviceKey);
         if (!ok) {
-          hilog.warn(DOMAIN, TAG, '注册成功但 device_key 写入 Preferences 失败，device_key=%{public}s', deviceKey);
-        } else {
-          hilog.info(DOMAIN, TAG, '注册成功，device_key=%{public}s', deviceKey);
+          hilog.warn(DOMAIN, TAG, '注册成功但 device_key 写入 Preferences 失败，device_key=%{public}s', newDeviceKey);
         }
-        return deviceKey;
+        return newDeviceKey;
       } else {
         hilog.warn(DOMAIN, TAG, '注册响应业务成功但 data 中 device_key/key 均为空');
         return null;
@@ -145,9 +183,13 @@ export class DeviceRegisterService {
     }
   }
 
-  async clearRegistration(context: common.Context): Promise<void> {
-    await PreferencesUtil.delete(context, PreferencesUtil.KEY_DEVICE_KEY);
-    await PreferencesUtil.delete(context, PreferencesUtil.KEY_DEVICE_TOKEN);
+  async clearRegistration(context: common.Context | null = null): Promise<void> {
+    const ctx: common.Context | null = this.resolveContext(context);
+    if (!ctx) {
+      return;
+    }
+    await PreferencesUtil.delete(ctx, PreferencesUtil.KEY_DEVICE_KEY);
+    await PreferencesUtil.delete(ctx, PreferencesUtil.KEY_DEVICE_TOKEN);
     hilog.info(DOMAIN, TAG, '本地注册信息已清除');
   }
 }

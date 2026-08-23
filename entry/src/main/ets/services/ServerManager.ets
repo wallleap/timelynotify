@@ -428,4 +428,19 @@ export class ServerManager {
     this.emitChange();
     return true;
   }
+
+  // 重命名服务器。context 可传 null
+  async renameServer(context: common.Context | null, id: string, newName: string): Promise<boolean> {
+    const ctx: common.Context | null = resolveContext(context);
+    const target: ServerEntry | null = this.findById(id);
+    if (!target) {
+      return false;
+    }
+    const name: string = newName.trim();
+    target.name = name;
+    await this.persist(ctx);
+    hilog.info(DOMAIN, TAG, '已重命名：id=%{public}s name=%{public}s', id, name);
+    this.emitChange();
+    return true;
+  }
 }
