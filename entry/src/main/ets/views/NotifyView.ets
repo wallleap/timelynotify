@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { promptAction } from '@kit.ArkUI';
+import { UIContext } from '@kit.ArkUI';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
@@ -11,9 +11,9 @@ import {
 const DOMAIN: number = 0x0000;
 const TAG: string = 'NotifyView';
 
-function showToast(message: string, durationMs: number = 1500): void {
+function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
   try {
-    promptAction.showToast({ message: message, duration: durationMs });
+    ctx.getPromptAction().showToast({ message: message, duration: durationMs });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     hilog.warn(DOMAIN, TAG, 'Toast 调用失败：%{public}s', msg);
@@ -40,14 +40,27 @@ export struct NotifyView {
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
-    this.refresh();
-    this.loadMessages();
+    // ServerManager 可能还在异步 load，必须先 await ensureLoaded 再读当前 server，
+    // 否则 currentId='' 会走兜底生产 URL，显示/请求错误的地址。
+    this.initAfterServerManagerReady();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.refresh();
       // 服务器切换后重新拉取消息
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
+  }
+
+  /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
+  private async initAfterServerManagerReady(): Promise<void> {
+    try {
+      await ServerManager.getInstance().ensureLoaded();
+      this.refresh();
+      this.loadMessages();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
+    }
   }
 
   aboutToDisappear() {
@@ -93,7 +106,7 @@ export struct NotifyView {
           .fillColor($r('app.color.text_primary_color'))
           .padding(4)
           .onClick(() => {
-            showToast('删除（待实现）');
+            showToast(this.getUIContext(), '删除（待实现）');
           });
       }
       .width('100%')
@@ -282,8 +295,8 @@ export struct NotifyView {
           this.messages = [];
         }
       }
-      // 是否已配置 client token（用于引导态判断）
-      this.hasClientToken = (await NotifyMessageService.getInstance().getClientToken()).length > 0;
+      // 是否有可用 client token（用户自定义 or 内置默认），用于引导态判断
+      this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'loadMessages 异常：%{public}s', msg);
@@ -313,7 +326,7 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'dialog open 失败：%{public}s', msg);
-      showToast('弹窗无法打开');
+      showToast(this.getUIContext(), '弹窗无法打开');
     }
   }
 }

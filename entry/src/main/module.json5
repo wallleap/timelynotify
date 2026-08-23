@@ -10,6 +10,16 @@
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",
+    "metadata": [
+      {
+        "name": "client_id",
+        "value": "1532776613270319808"
+      },
+      {
+        "name": "app_id",
+        "value": "6917614352726343880"
+      }
+    ],
     "requestPermissions": [
       {
         "name": "ohos.permission.INTERNET"
@@ -32,6 +42,14 @@
           {
             "name": "ohos.security.NETWORK_SECURITY_CONFIG",
             "resource": "$profile:network_security_config"
+          },
+          {
+            "name": "client_id",
+            "value": "1532776613270319808"
+          },
+          {
+            "name": "app_id",
+            "value": "6917614352726343880"
           }
         ],
         "skills": [

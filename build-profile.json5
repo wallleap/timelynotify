@@ -1,6 +1,20 @@
 {
   "app": {
-    "signingConfigs": [],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001AEAA0796DD49A067ADFCB28117859989127763A37384AA9CF0F0B11CEA8C68423365FFCD027FF",
+          "profile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p12",
+          "storePassword": "0000001A9061605AAE77E99244D2FC422BE105365D5A7F268F50D30D2D953C6865E7760D56421D60F8F9"
+        }
+      }
+    ],
     "products": [
       {
         "name": "default",
@@ -18,10 +32,21 @@
     ],
     "buildModeSet": [
       {
-        "name": "debug",
+        "name": "debug"
       },
       {
         "name": "release"
+      }
+    ],
+    "capabilities": [
+      {
+        "bundleName": "cn.oicode.timelynotify",
+        "config": [
+          {
+            "name": "Push Kit",
+            "capability": "com.huawei.service.push.base_service"
+          }
+        ]
       }
     ]
   },

@@ -1,5 +1,4 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { router } from '@kit.ArkUI';
 import { ServerSettingsContent } from '../components/ServerSettingsContent';
 
 const DOMAIN: number = 0x0000;
@@ -67,7 +66,7 @@ struct ServerSettingsPage {
 
   private handleBack(): void {
     try {
-      router.back();
+      this.getUIContext().getRouter().back();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'router back 失败：%{public}s', msg);

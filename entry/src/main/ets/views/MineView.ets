@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { promptAction, router } from '@kit.ArkUI';
+import { UIContext } from '@kit.ArkUI';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { extractHost } from '../components/ServerSettingsContent';
@@ -9,9 +9,9 @@ import { NotifyMessageService } from '../services/NotifyMessageService';
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
 
-function showToast(message: string, durationMs: number = 1500): void {
+function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
   try {
-    promptAction.showToast({ message: message, duration: durationMs });
+    ctx.getPromptAction().showToast({ message: message, duration: durationMs });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     hilog.warn(DOMAIN, TAG, 'Toast 调用失败：%{public}s', msg);
@@ -24,13 +24,16 @@ export struct MineView {
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
-  @State clientTokenDisplay: string = '';
+  // 用户自定义的 token 原文（持久化层内容）；内置默认时空串
+  @State customClientToken: string = '';
+  // 是否正在使用内置默认 token
+  @State isDefaultClientToken: boolean = true;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
 
-  // client token 弹窗（保存后刷新展示）
+  // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
   private tokenDialogController: CustomDialogController = new CustomDialogController({
     builder: ClientTokenDialog({
-      getInitToken: (): string => this.clientTokenDisplay,
+      getInitToken: (): string => this.customClientToken,
       onSaved: (): void => { this.refreshClientToken(); },
     }),
     alignment: DialogAlignment.Center,
@@ -124,9 +127,9 @@ export struct MineView {
               .fontColor('#111111')
               .width('100%');
 
-            Text(this.clientTokenDisplay.length > 0 ? this.clientTokenDisplay : '未配置')
+            Text(this.buildClientTokenDisplay())
               .fontSize(14)
-              .fontColor(this.clientTokenDisplay.length > 0 ? '#666666' : '#999999')
+              .fontColor(this.isDefaultClientToken ? '#FF6F22' : '#666666')
               .width('100%')
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -172,16 +175,29 @@ export struct MineView {
   }
 
   private async refreshClientToken(): Promise<void> {
-    this.clientTokenDisplay = await NotifyMessageService.getInstance().getClientToken();
+    const svc = NotifyMessageService.getInstance();
+    this.customClientToken = await svc.getClientToken();
+    this.isDefaultClientToken = await svc.isClientTokenDefault();
+  }
+
+  /** 卡片展示用：区分内置默认 / 用户自定义两态；token 全程不显示明文 */
+  private buildClientTokenDisplay(): string {
+    if (this.isDefaultClientToken) {
+      return '•••••••• (内置默认 · 可修改)';
+    }
+    const t: string = this.customClientToken;
+    // 用户自定义：只显示占位 + 长度，不暴露原文任何片段
+    const masked: string = '••••••••';
+    return `${masked} (已配置 · ${t.length} 位)`;
   }
 
   private handleCardClicked(): void {
     try {
-      router.pushUrl({ url: 'pages/ServerSettingsPage' });
+      this.getUIContext().getRouter().pushUrl({ url: 'pages/ServerSettingsPage' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'router push 失败：%{public}s', msg);
-      showToast('页面无法打开');
+      showToast(this.getUIContext(), '页面无法打开');
     }
   }
 
@@ -191,7 +207,7 @@ export struct MineView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'token dialog open 失败：%{public}s', msg);
-      showToast('弹窗无法打开');
+      showToast(this.getUIContext(), '弹窗无法打开');
     }
   }
 }

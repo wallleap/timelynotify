@@ -114,6 +114,8 @@ export class DeviceRegisterService {
         req.device_key = deviceKey;
       }
 
+      // 保证 ServerManager 初始化完成再拼 URL，避免读到兜底生产 URL
+      await ServerManager.getInstance().ensureLoaded();
       const fullURL: string = ServerManager.getInstance().resolveURL(ApiConfig.REGISTER_PATH);
       hilog.info(DOMAIN, TAG, '开始注册：POST %{public}s', fullURL);
       const resp: HttpResponse<RegisterEnvelope> = await HttpUtil.post<RegisterEnvelope, RegisterRequest>(

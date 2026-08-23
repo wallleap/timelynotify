@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { promptAction } from '@kit.ArkUI';
+import { UIContext } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
@@ -9,9 +9,9 @@ import { ServerActionMenuDialog, ServerKeyDialog, ServerRenameDialog, } from './
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ServerContent';
 
-function showToast(message: string, durationMs: number = 1500): void {
+function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
   try {
-    promptAction.showToast({ message: message, duration: durationMs });
+    ctx.getPromptAction().showToast({ message: message, duration: durationMs });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     hilog.warn(DOMAIN, TAG, 'Toast 调用失败：%{public}s', msg);
@@ -277,7 +277,7 @@ export struct ServerSettingsContent {
       this.actionMenuController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'action menu open 失败');
-      showToast('操作菜单无法打开');
+      showToast(this.getUIContext(), '操作菜单无法打开');
     }
   }
 
@@ -287,7 +287,7 @@ export struct ServerSettingsContent {
       this.renameController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'rename dialog open 失败');
-      showToast('弹窗无法打开');
+      showToast(this.getUIContext(), '弹窗无法打开');
     }
   }
 
@@ -298,7 +298,7 @@ export struct ServerSettingsContent {
       this.keyController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'key dialog open 失败');
-      showToast('弹窗无法打开');
+      showToast(this.getUIContext(), '弹窗无法打开');
     }
   }
 
@@ -306,20 +306,20 @@ export struct ServerSettingsContent {
   private async handleCopy(): Promise<void> {
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast('服务器信息缺失');
+      showToast(this.getUIContext(), '服务器信息缺失');
       return;
     }
     const key: string | null = await DeviceRegisterService.getInstance().ensureRegistered(null);
     if (!key || key.length === 0) {
-      showToast('未获取到 Key');
+      showToast(this.getUIContext(), '未获取到 Key');
       return;
     }
     const text: string = `${server.baseURL}/${key}`;
     const ok: boolean = await this.copyText(text);
     if (ok) {
-      showToast('已复制地址和 Key', 1200);
+      showToast(this.getUIContext(), '已复制地址和 Key', 1200);
     } else {
-      showToast('复制失败');
+      showToast(this.getUIContext(), '复制失败');
     }
   }
 
@@ -342,7 +342,7 @@ export struct ServerSettingsContent {
     }
     const mgr: ServerManager = ServerManager.getInstance();
     const ok: boolean = await mgr.renameServer(null, this.targetId, newName);
-    showToast(ok ? '已重命名' : '重命名失败');
+    showToast(this.getUIContext(), ok ? '已重命名' : '重命名失败');
   }
 
   // inputKey 为空 = 重置；有值 = 还原
@@ -351,9 +351,9 @@ export struct ServerSettingsContent {
     const key: string | null = await svc.register(null, inputKey.length > 0 ? inputKey : undefined);
     if (key && key.length > 0) {
       this.currentDeviceKey = key;
-      showToast(inputKey.length > 0 ? '已还原 Key' : '已重置 Key');
+      showToast(this.getUIContext(), inputKey.length > 0 ? '已还原 Key' : '已重置 Key');
     } else {
-      showToast('操作失败');
+      showToast(this.getUIContext(), '操作失败');
     }
   }
 
@@ -365,38 +365,38 @@ export struct ServerSettingsContent {
     const mgr: ServerManager = ServerManager.getInstance();
     const ok: boolean = await mgr.switchTo(null, id);
     if (!ok) {
-      showToast('切换失败');
+      showToast(this.getUIContext(), '切换失败');
     } else {
-      showToast('已切换服务器', 1200);
+      showToast(this.getUIContext(), '已切换服务器', 1200);
     }
   }
 
   private async handleAdd(): Promise<void> {
     const url: string = this.inputURL.trim();
     if (!url) {
-      showToast('请输入服务器地址');
+      showToast(this.getUIContext(), '请输入服务器地址');
       return;
     }
     const mgr: ServerManager = ServerManager.getInstance();
     // 先校验格式 + ping 服务器
     const errMsg: string = await mgr.validateAndPing(url);
     if (errMsg.length > 0) {
-      showToast(errMsg);
+      showToast(this.getUIContext(), errMsg);
       return;
     }
     const entry: ServerEntry | null = await mgr.addServer(null, url, this.inputName.trim());
     if (entry) {
-      showToast('已添加并切换', 1200);
+      showToast(this.getUIContext(), '已添加并切换', 1200);
       this.inputURL = '';
       this.inputName = '';
     } else {
-      showToast('添加失败');
+      showToast(this.getUIContext(), '添加失败');
     }
   }
 
   private async confirmDialog(title: string, message: string): Promise<boolean> {
     try {
-      const res = await promptAction.showDialog({
+      const res = await this.getUIContext().getPromptAction().showDialog({
         title: title,
         message: message,
         buttons: [
@@ -415,7 +415,7 @@ export struct ServerSettingsContent {
   private async handleDelete(id: string): Promise<void> {
     const mgr: ServerManager = ServerManager.getInstance();
     if (mgr.getList().length <= 1) {
-      showToast('至少保留一个服务器');
+      showToast(this.getUIContext(), '至少保留一个服务器');
       return;
     }
     const confirmed: boolean = await this.confirmDialog('删除服务器', '确定删除该服务器吗？');
@@ -424,9 +424,9 @@ export struct ServerSettingsContent {
     }
     const ok: boolean = await mgr.deleteServer(null, id);
     if (ok) {
-      showToast('已删除', 1200);
+      showToast(this.getUIContext(), '已删除', 1200);
     } else {
-      showToast('删除失败');
+      showToast(this.getUIContext(), '删除失败');
     }
   }
 

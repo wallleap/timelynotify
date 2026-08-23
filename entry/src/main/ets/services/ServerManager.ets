@@ -112,25 +112,39 @@ export class ServerManager {
 
   private servers: ServerEntry[] = [];
   private currentId: string = '';
-  private readonly builtInServers: ServerEntry[] = [];
+  // 内置项：baseURL 不持久化、不缓存，每次获取都从 ApiConfig 动态取值，
+  // 保证 ApiConfig.DEV_BASE_URL/PROD_BASE_URL 修改后内置项地址立即跟随
   private deletedBuiltInIds: string[] = [];
   private listeners: ServerChangeListener[] = [];
 
+  // 初始化 Promise：所有需要读取当前 server/baseURL 的入口都应先 await ensureLoaded()，
+  // 避免与 load() 竞态导致读到空 currentId 走兜底生产 URL
+  private ready: Promise<void> | null = null;
+  private readyResolver: (() => void) | null = null;
+  private loadingPromise: Promise<void> | null = null;
+  private hasLoaded: boolean = false;
+
   private constructor() {
-    // 预置：生产 + 本地调试（内置项不可删除）
+    this.ready = new Promise<void>((resolve) => {
+      this.readyResolver = resolve;
+    });
+  }
+
+  // 内置项定义与工厂：每次调用都用 ApiConfig 当前值，避免编译期固化
+  private getBuiltInServers(): ServerEntry[] {
     const prod = new ServerEntry(
       'builtin-prod',
       '生产环境',
-      ApiConfig.PROD_BASE_URL,
+      normalizeBaseURL(ApiConfig.PROD_BASE_URL),
       true,
     );
     const local = new ServerEntry(
       'builtin-local',
       '本地调试',
-      ApiConfig.DEV_BASE_URL,
+      normalizeBaseURL(ApiConfig.DEV_BASE_URL),
       true,
     );
-    this.builtInServers.push(prod, local);
+    return [prod, local];
   }
 
   static getInstance(): ServerManager {
@@ -138,6 +152,21 @@ export class ServerManager {
       ServerManager.instance = new ServerManager();
     }
     return ServerManager.instance;
+  }
+
+  /**
+   * 等待 ServerManager 完成首次 load()。
+   * 所有需要读取当前 server/baseURL/hostDisplay 等状态的入口，
+   * 在调用前 await 这个方法，避免与初始化竞态读到兜底值。
+   * 已初始化后立即 resolve，不会阻塞。
+   */
+  async ensureLoaded(): Promise<void> {
+    if (this.hasLoaded) {
+      return;
+    }
+    if (this.ready) {
+      await this.ready;
+    }
   }
 
   addChangeListener(listener: ServerChangeListener): void {
@@ -164,75 +193,112 @@ export class ServerManager {
     }
   }
 
-  // 启动时调用：合并剩余内置 + 持久化自定义，恢复当前选中
+  // 启动时调用：合并剩余内置 + 持久化自定义，恢复当前选中。幂等，重复调用安全。
   async load(context: common.Context | null = null): Promise<void> {
-    const ctx: common.Context | null = resolveContext(context);
+    // 幂等保护：已完成初始化直接返回（或等待进行中的完成）
+    if (this.loadingPromise !== null) {
+      await this.loadingPromise;
+      return;
+    }
+    if (this.hasLoaded) {
+      return;
+    }
+    // 先占坑，避免并发重入
+    let localResolve: (() => void) | null = null;
+    this.loadingPromise = new Promise<void>((res) => {
+      localResolve = res;
+    });
 
-    // 1) 读取已删除的内置 id 列表
-    const deletedRaw: string = await PreferencesUtil.getString(ctx, ServerManager.KEY_DELETED_BUILTIN, '');
-    if (deletedRaw && deletedRaw.length > 0) {
-      try {
-        const arr: Object = JSON.parse(deletedRaw);
-        if (arr instanceof Array) {
+    try {
+      const ctx: common.Context | null = resolveContext(context);
+
+      // 1) 读取已删除的内置 id 列表
+      const deletedRaw: string = await PreferencesUtil.getString(ctx, ServerManager.KEY_DELETED_BUILTIN, '');
+      if (deletedRaw && deletedRaw.length > 0) {
+        try {
+          const arr: Object = JSON.parse(deletedRaw);
+          if (arr instanceof Array) {
+            this.deletedBuiltInIds = [];
+            for (let i = 0; i < arr.length; i++) {
+              if (typeof arr[i] === 'string') {
+                this.deletedBuiltInIds.push(String(arr[i]));
+              }
+            }
+          }
+        } catch (err) {
           this.deletedBuiltInIds = [];
-          for (let i = 0; i < arr.length; i++) {
-            if (typeof arr[i] === 'string') {
-              this.deletedBuiltInIds.push(String(arr[i]));
+        }
+      }
+
+      // 2) 剩余内置 + 自定义（内置每次都用 getBuiltInServers() 动态构造，保证跟随 ApiConfig 变更）
+      const builtIn: ServerEntry[] = this.getBuiltInServers();
+      const list: ServerEntry[] = [];
+      for (let i = 0; i < builtIn.length; i++) {
+        const b: ServerEntry = builtIn[i];
+        if (!this.isDeletedBuiltInId(b.id)) {
+          list.push(b);
+        }
+      }
+      const raw: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_SERVER_LIST_JSON, '');
+      if (raw && raw.length > 0) {
+        try {
+          const arr: Object = JSON.parse(raw);
+          if (arr instanceof Array) {
+            for (let i = 0; i < arr.length; i++) {
+              const obj = arr[i] as Record<string, Object>;
+              if (!obj) {
+                continue;
+              }
+              const id: string = typeof obj['id'] === 'string' ? String(obj['id']) : '';
+              const name: string = typeof obj['name'] === 'string' ? String(obj['name']) : '';
+              const baseURL: string = typeof obj['baseURL'] === 'string' ? String(obj['baseURL']) : '';
+              if (id && baseURL) {
+                list.push(new ServerEntry(id, name, normalizeBaseURL(baseURL), false));
+              }
             }
           }
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, '服务器列表反序列化失败，使用内置列表');
         }
-      } catch (err) {
-        this.deletedBuiltInIds = [];
       }
-    }
 
-    // 2) 剩余内置 + 自定义
-    const list: ServerEntry[] = [];
-    for (let i = 0; i < this.builtInServers.length; i++) {
-      const b: ServerEntry = this.builtInServers[i];
-      if (!this.isDeletedBuiltInId(b.id)) {
-        list.push(b);
+      this.servers = list;
+      const savedId: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_SERVER_CURRENT_ID, '');
+      if (savedId && this.findById(savedId)) {
+        this.currentId = savedId;
+      } else if (this.servers.length > 0) {
+        this.currentId = this.servers[0].id;
+      } else {
+        this.currentId = '';
       }
-    }
-    const raw: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_SERVER_LIST_JSON, '');
-    if (raw && raw.length > 0) {
-      try {
-        const arr: Object = JSON.parse(raw);
-        if (arr instanceof Array) {
-          for (let i = 0; i < arr.length; i++) {
-            const obj = arr[i] as Record<string, Object>;
-            if (!obj) {
-              continue;
-            }
-            const id: string = typeof obj['id'] === 'string' ? String(obj['id']) : '';
-            const name: string = typeof obj['name'] === 'string' ? String(obj['name']) : '';
-            const baseURL: string = typeof obj['baseURL'] === 'string' ? String(obj['baseURL']) : '';
-            if (id && baseURL) {
-              list.push(new ServerEntry(id, name, normalizeBaseURL(baseURL), false));
-            }
-          }
-        }
-      } catch (err) {
-        hilog.warn(DOMAIN, TAG, '服务器列表反序列化失败，使用内置列表');
+      this.hasLoaded = true;
+      hilog.info(
+        DOMAIN,
+        TAG,
+        '服务器列表加载完成：总数=%{public}d 当前=%{public}s baseURL=%{public}s',
+        String(this.servers.length),
+        this.currentId,
+        this.getCurrentBaseURL(),
+      );
+      this.emitChange();
+    } finally {
+      // resolve 两个 Promise：进行中的 load + ensureLoaded 等待者
+      if (this.readyResolver) {
+        this.readyResolver();
+        this.readyResolver = null;
       }
+      this.ready = null;
+      if (localResolve) {
+        localResolve();
+      }
+      this.loadingPromise = null;
     }
-
-    this.servers = list;
-    const savedId: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_SERVER_CURRENT_ID, '');
-    if (savedId && this.findById(savedId)) {
-      this.currentId = savedId;
-    } else if (this.servers.length > 0) {
-      this.currentId = this.servers[0].id;
-    } else {
-      this.currentId = '';
-    }
-    hilog.info(DOMAIN, TAG, '服务器列表加载完成：总数=%{public}d 当前=%{public}s', String(this.servers.length), this.currentId);
-    this.emitChange();
   }
 
   private isBuiltInId(id: string): boolean {
-    for (let i = 0; i < this.builtInServers.length; i++) {
-      if (this.builtInServers[i].id === id) {
+    const builtIn: ServerEntry[] = this.getBuiltInServers();
+    for (let i = 0; i < builtIn.length; i++) {
+      if (builtIn[i].id === id) {
         return true;
       }
     }
@@ -299,10 +365,18 @@ export class ServerManager {
   getCurrentBaseURL(): string {
     const cur = this.findById(this.currentId);
     if (cur) {
+      // 内置项：强制用动态最新值，避免 ApiConfig 变更后持久化了的 old baseURL 被返回
+      if (cur.isBuiltIn) {
+        const fresh = this.getBuiltInServers().find((s) => s.id === cur.id);
+        if (fresh) {
+          return fresh.baseURL;
+        }
+      }
       return cur.baseURL;
     }
-    // 兜底：生产
-    return this.builtInServers[0].baseURL;
+    // 兜底：生产（动态）
+    const builtIn: ServerEntry[] = this.getBuiltInServers();
+    return builtIn.length > 0 ? builtIn[0].baseURL : ApiConfig.PROD_BASE_URL;
   }
 
   // 给页面显示用：host[:port] 短名

@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { util } from '@kit.ArkTS';
 import { ApiConfig } from '../config/ApiConfig';
 import { ServerManager } from './ServerManager';
 import { DeviceRegisterService } from './DeviceRegisterService';
@@ -10,6 +11,27 @@ import { NotifyMessage } from '../model/NotifyMessage';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'NotifyMsgSvc';
+
+// 内置默认客户端 Token（BASE64，运行时 decode 后使用）
+// 用户未自定义时自动使用该 token 拉取消息
+const DEFAULT_CLIENT_TOKEN_BASE64: string = 'OTkwMDgzODA0';
+
+/** 解码默认 client token（失败返回空串） */
+function decodeDefaultClientToken(): string {
+  try {
+    const bytes: Uint8Array = new util.Base64Helper().decodeSync(DEFAULT_CLIENT_TOKEN_BASE64);
+    // 默认 token 为纯 ASCII 数字（'990083804'），逐字节转字符避免调用已弃用的 decodeWithStream
+    let s: string = '';
+    for (let i: number = 0; i < bytes.length; i++) {
+      s += String.fromCharCode(bytes[i]);
+    }
+    return s;
+  } catch (err) {
+    hilog.error(DOMAIN, TAG, '默认 client token 解码失败：%{public}s',
+      err instanceof Error ? err.message : String(err));
+    return '';
+  }
+}
 
 // 服务端响应格式（gotify 兼容）：{ paging, messages: [...] }
 // 注意：message 接口不走服务端统一 envelope，顶层直接是 {paging, messages}
@@ -42,7 +64,7 @@ export class NotifyMessageService {
     return NotifyMessageService.instance;
   }
 
-  // 获取缓存的 client token（用户手动配置）
+  // 获取用户手动配置并持久化的 client token（不含内置默认；返回空 = 用户没填）
   async getClientToken(context: common.Context | null = null): Promise<string> {
     const ctx: common.Context | null = resolveContext(context);
     if (!ctx) {
@@ -51,12 +73,47 @@ export class NotifyMessageService {
     return PreferencesUtil.getString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, '');
   }
 
+  /**
+   * 实际生效的 client token：
+   *   - 用户有自定义（非空 trim 后）→ 返回用户值
+   *   - 用户未自定义 → 返回内置默认 token（BASE64 decode 后）
+   * 接口调用都应该用这个方法取 token，而不是直接读 Preferences。
+   */
+  async getEffectiveClientToken(context: common.Context | null = null): Promise<string> {
+    const saved: string = await this.getClientToken(context);
+    const trimmed: string = saved ? saved.trim() : '';
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+    const fallback: string = decodeDefaultClientToken();
+    hilog.info(DOMAIN, TAG, '用户未配置 client token，使用内置默认值');
+    return fallback;
+  }
+
+  /** 用户是否使用内置默认 token（持久化层为空或只含空白 = 默认） */
+  async isClientTokenDefault(context: common.Context | null = null): Promise<boolean> {
+    const saved: string = await this.getClientToken(context);
+    return !(saved && saved.trim().length > 0);
+  }
+
+  /**
+   * 是否已经有可用的 client token（自定义 or 内置默认）。
+   * 用于 NotifyView 判断要不要展示"未配置"引导。
+   */
+  async hasEffectiveClientToken(context: common.Context | null = null): Promise<boolean> {
+    const eff: string = await this.getEffectiveClientToken(context);
+    // 显式返回布尔，避免 ArkTS 推断出 string | boolean 类型
+    return eff.length > 0;
+  }
+
   async setClientToken(context: common.Context | null, token: string): Promise<boolean> {
     const ctx: common.Context | null = resolveContext(context);
     if (!ctx) {
       return false;
     }
-    return PreferencesUtil.putString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, token.trim());
+    // 空串/纯空白 = 清除自定义，恢复到内置默认
+    const v: string = token ? token.trim() : '';
+    return PreferencesUtil.putString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, v);
   }
 
   // 拉取消息列表。device_key 来自 DeviceRegisterService，client token 来自持久化
@@ -71,14 +128,15 @@ export class NotifyMessageService {
       return result;
     }
 
-    const clientToken: string = ctx ? await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, '') : '';
+    const clientToken: string = await this.getEffectiveClientToken(context);
     if (!clientToken || clientToken.length === 0) {
       result.errorMsg = '未配置客户端 Token';
       return result;
     }
 
-    const base: string = ServerManager.getInstance().getCurrentBaseURL();
-    const fullURL: string = `${base}/${deviceKey}/message`;
+    // 保证 ServerManager 初始化完成再拼 URL，避免读到兜底生产 URL
+    await ServerManager.getInstance().ensureLoaded();
+    const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
     hilog.info(DOMAIN, TAG, '拉取消息：GET %{public}s', fullURL);
 
     const headers: Record<string, string> = {

@@ -1,13 +1,13 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { promptAction } from '@kit.ArkUI';
+import { UIContext } from '@kit.ArkUI';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ClientTokenDlg';
 
-function showToast(message: string, durationMs: number = 1500): void {
+function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
   try {
-    promptAction.showToast({ message: message, duration: durationMs });
+    ctx.getPromptAction().showToast({ message: message, duration: durationMs });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     hilog.warn(DOMAIN, TAG, 'Toast 调用失败：%{public}s', msg);
@@ -51,10 +51,10 @@ export struct ClientTokenDialog {
     const ok: boolean = await NotifyMessageService.getInstance().setClientToken(null, token);
     this.close();
     if (ok) {
-      showToast('已保存', 1200);
+      showToast(this.getUIContext(), '已保存', 1200);
       this.onSaved();
     } else {
-      showToast('保存失败');
+      showToast(this.getUIContext(), '保存失败');
     }
   }
 
@@ -78,7 +78,9 @@ export struct ClientTokenDialog {
       }
       .width('100%');
 
+      // 密码样式输入框：全程掩码显示，无查看明文入口（与密码体验一致）
       TextInput({ placeholder: '粘贴 client token', text: this.inputToken })
+        .type(InputType.Password)
         .width('100%')
         .height(42)
         .backgroundColor('#F5F5F5')

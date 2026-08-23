@@ -1,6 +1,8 @@
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { pushService } from '@kit.PushKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
@@ -18,6 +20,9 @@ export default class EntryAbility extends UIAbility {
     // 最早拿到 UIAbilityContext 的时机，注入全局存储，之后组件/dialog/持久化都可以用
     AppContextStore.getInstance().setContext(this.context);
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
+    // 立刻触发 ServerManager 异步加载（与页面渲染/窗口创建并行），
+    // 但任何消费 currentId/baseURL 的路径都必须先 await ensureLoaded()
+    this.bootstrapServerManager();
   }
 
   onDestroy(): void {
@@ -27,9 +32,6 @@ export default class EntryAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     hilog.info(DOMAIN, TAG, 'Ability onWindowStageCreate');
 
-    // 先加载服务器配置（必须早于页面渲染和注册，确保 baseURL 就绪）
-    this.bootstrapServerManager();
-
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, TAG, 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
@@ -38,7 +40,7 @@ export default class EntryAbility extends UIAbility {
       hilog.info(DOMAIN, TAG, 'Succeeded in loading the content.');
     });
 
-    // 无感注册：后台静默执行，不阻塞页面加载
+    // 无感注册：后台静默执行，不阻塞页面加载。内部会先 await ServerManager.ensureLoaded()
     this.silentRegister();
   }
 
@@ -66,12 +68,19 @@ export default class EntryAbility extends UIAbility {
   private async silentRegister(): Promise<void> {
     try {
       const service = DeviceRegisterService.getInstance();
-      // 接入华为 Push Kit 后，取消注释并替换为真实 token 获取逻辑：
-      // service.setDeviceTokenProvider(async () => {
-      //   // 示例：通过华为 Push Kit 获取 token
-      //   // return await push.getToken();
-      //   return 'your-real-push-token';
-      // });
+      // 注入华为 Push Kit 真实 token 获取逻辑
+      service.setDeviceTokenProvider(async (): Promise<string> => {
+        try {
+          const token: string = await pushService.getToken();
+          hilog.info(DOMAIN, TAG, 'Succeeded in getting push token.');
+          return token;
+        } catch (err) {
+          const e: BusinessError = err as BusinessError;
+          hilog.error(DOMAIN, TAG, 'Failed to get push token: %{public}d %{public}s', e.code, e.message);
+          // 失败返回空，DeviceRegisterService 会因 token 为空中止注册并下次重试
+          return '';
+        }
+      });
       const deviceKey = await service.ensureRegistered(this.context);
       if (deviceKey) {
         hilog.info(DOMAIN, TAG, '无感注册完成，device_key=%{public}s', deviceKey);
