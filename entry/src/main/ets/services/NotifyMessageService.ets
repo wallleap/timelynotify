@@ -118,7 +118,9 @@ export class NotifyMessageService {
 
   // 拉取消息列表。device_key 来自 DeviceRegisterService，client token 来自持久化
   // 返回 MessageListResult：ok=false 时 errorMsg 含原因（未注册/未配置 token/网络失败/认证失败）
-  async getMessages(context: common.Context | null = null): Promise<MessageListResult> {
+  // since > 0 时拼接 ?since=N，用于触底分页加载更老的消息（gotify 协议：返回 ID <= since 的消息）
+  // limit 默认 100，控制单次返回条数；客户端据此判断是否到底（返回 < limit 视为到底）
+  async getMessages(context: common.Context | null = null, since: number = 0, limit: number = 100): Promise<MessageListResult> {
     const result = new MessageListResult();
     const ctx: common.Context | null = resolveContext(context);
 
@@ -136,7 +138,17 @@ export class NotifyMessageService {
 
     // 保证 ServerManager 初始化完成再拼 URL，避免读到兜底生产 URL
     await ServerManager.getInstance().ensureLoaded();
-    const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
+    let fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
+    const params: string[] = [];
+    if (since > 0) {
+      params.push(`since=${since}`);
+    }
+    if (limit > 0) {
+      params.push(`limit=${limit}`);
+    }
+    if (params.length > 0) {
+      fullURL += `?${params.join('&')}`;
+    }
     hilog.info(DOMAIN, TAG, '拉取消息：GET %{public}s', fullURL);
 
     const headers: Record<string, string> = {

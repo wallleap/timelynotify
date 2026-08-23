@@ -29,6 +29,9 @@ export struct NotifyView {
   @State errorMsg: string = '';
   @State refreshing: boolean = false;
   @State hasClientToken: boolean = false;
+  // 触底分页加载更老消息
+  @State loadingMore: boolean = false;
+  @State hasMore: boolean = true;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
   private dialogController: CustomDialogController = new CustomDialogController({
     builder: ServerSettingsDialog(),
@@ -222,11 +225,42 @@ export struct NotifyView {
           this.messageRow(m);
         }
       }, (m: NotifyMessage) => `${m.id}|${m.timestamp}`);
+
+      // 触底加载指示器
+      if (this.loadingMore) {
+        ListItem() {
+          Row({ space: 6 }) {
+            LoadingProgress()
+              .width(18)
+              .height(18)
+              .color('#FF6F22');
+            Text('加载更多…')
+              .fontSize(12)
+              .fontColor('#999999');
+          }
+          .width('100%')
+          .height(44)
+          .justifyContent(FlexAlign.Center);
+        }
+      } else if (!this.hasMore && this.messages.length > 0) {
+        ListItem() {
+          Text('没有更多了')
+            .fontSize(12)
+            .fontColor('#BBBBBB')
+            .width('100%')
+            .height(40)
+            .textAlign(TextAlign.Center);
+        }
+      }
     }
     .width('100%')
     .height('100%')
     .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-    .align(Alignment.Top);
+    .align(Alignment.Top)
+    .onReachEnd(() => {
+      // 列表按时间倒序（新→旧），末尾是最旧消息；取末尾消息 ID 作 since 加载更老的
+      this.loadMore();
+    });
   }
 
   @Builder
@@ -288,6 +322,8 @@ export struct NotifyView {
         // 按时间倒序（新消息在上）
         this.messages = result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
         this.errorMsg = '';
+        // 首次拉取/下拉刷新 → 重置分页状态，允许后续触底加载
+        this.hasMore = this.messages.length > 0;
       } else {
         this.errorMsg = result.errorMsg;
         // 仅首次拉取失败清空列表；刷新失败保留旧数据
@@ -304,6 +340,60 @@ export struct NotifyView {
     } finally {
       this.loading = false;
       this.refreshing = false;
+    }
+  }
+
+  // 触底加载更多：取当前列表末尾（最旧）消息的 ID 作 since，请求更老的消息
+  // limit 默认 100，返回少于 100 条说明已到底，置 hasMore=false
+  private async loadMore(): Promise<void> {
+    if (this.loadingMore || !this.hasMore || this.messages.length === 0) {
+      return;
+    }
+    const oldest: NotifyMessage = this.messages[this.messages.length - 1];
+    if (!oldest || oldest.id <= 0) {
+      this.hasMore = false;
+      return;
+    }
+    this.loadingMore = true;
+    const PAGE_SIZE: number = 100;
+    try {
+      const result = await NotifyMessageService.getInstance().getMessages(null, oldest.id, PAGE_SIZE);
+      if (result.ok) {
+        const newItems: NotifyMessage[] = result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
+        if (newItems.length === 0) {
+          this.hasMore = false;
+        } else {
+          // 去重：过滤掉已经存在的 ID（避免后端返回包含 oldest.id 本身导致重复）
+          const existingIds: Set<number> = new Set<number>();
+          for (let i = 0; i < this.messages.length; i++) {
+            existingIds.add(this.messages[i].id);
+          }
+          const deduped: NotifyMessage[] = [];
+          for (let i = 0; i < newItems.length; i++) {
+            const m: NotifyMessage = newItems[i];
+            if (!existingIds.has(m.id)) {
+              deduped.push(m);
+            }
+          }
+          if (deduped.length === 0) {
+            // 全部重复 → 后端实际没有更老消息
+            this.hasMore = false;
+          } else {
+            // 列表按时间倒序（新→旧），追加到末尾保持顺序
+            this.messages = this.messages.concat(deduped);
+            // 返回不足一页（< limit）→ 已到底；否则保持 hasMore=true 允许继续翻
+            if (newItems.length < PAGE_SIZE) {
+              this.hasMore = false;
+            }
+          }
+        }
+      }
+      // loadMore 失败不弹错误提示，避免打扰用户；日志已由 service 层打印
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'loadMore 异常：%{public}s', msg);
+    } finally {
+      this.loadingMore = false;
     }
   }
 
