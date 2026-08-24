@@ -113,7 +113,7 @@ export class ServerManager {
   private servers: ServerEntry[] = [];
   private currentId: string = '';
   // 内置项：baseURL 不持久化、不缓存，每次获取都从 ApiConfig 动态取值，
-  // 保证 ApiConfig.DEV_BASE_URL/PROD_BASE_URL 修改后内置项地址立即跟随
+  // 保证 ApiConfig.PROD_BASE_URL 修改后内置项地址立即跟随
   private deletedBuiltInIds: string[] = [];
   private listeners: ServerChangeListener[] = [];
 
@@ -134,17 +134,11 @@ export class ServerManager {
   private getBuiltInServers(): ServerEntry[] {
     const prod = new ServerEntry(
       'builtin-prod',
-      '生产环境',
+      '默认服务',
       normalizeBaseURL(ApiConfig.PROD_BASE_URL),
       true,
     );
-    const local = new ServerEntry(
-      'builtin-local',
-      '本地调试',
-      normalizeBaseURL(ApiConfig.DEV_BASE_URL),
-      true,
-    );
-    return [prod, local];
+    return [prod];
   }
 
   static getInstance(): ServerManager {
