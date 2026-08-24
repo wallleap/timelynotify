@@ -42,7 +42,9 @@ export class DeviceRegisterService {
     return 'placeholder-device-token-pending-pushkit';
   };
 
-  private isRegistering: boolean = false;
+  // 当前正在进行的注册任务（null = 无任务在跑）。并发调用 ensureRegistered 共享同一 promise，
+  // 避免重复触发 PushKit getToken 与注册接口；UI 可通过 whenRegistrationSettled() 等待完成。
+  private pendingPromise: Promise<string | null> | null = null;
 
   static getInstance(): DeviceRegisterService {
     if (!DeviceRegisterService.instance) {
@@ -64,6 +66,7 @@ export class DeviceRegisterService {
   }
 
   // 已注册则直接返回缓存的 device_key；否则注册。context 可传 null
+  // 并发调用会共享同一个 pendingPromise，避免重复触发 PushKit getToken 和注册接口
   async ensureRegistered(context: common.Context | null = null): Promise<string | null> {
     const ctx: common.Context | null = this.resolveContext(context);
     if (!ctx) {
@@ -74,7 +77,30 @@ export class DeviceRegisterService {
       hilog.info(DOMAIN, TAG, '已注册，device_key 命中缓存：%{public}s', cachedKey);
       return cachedKey;
     }
-    return this.doRegister(ctx, undefined);
+    if (this.pendingPromise) {
+      hilog.info(DOMAIN, TAG, '注册任务进行中，复用 pending promise');
+      return this.pendingPromise;
+    }
+    this.pendingPromise = this.doRegister(ctx, undefined);
+    try {
+      return await this.pendingPromise;
+    } finally {
+      this.pendingPromise = null;
+    }
+  }
+
+  // 等待当前注册任务完成（如有）。无任务在跑时立即返回；不会主动触发注册。
+  // 用于 UI（如 MineView）在首次显示前等待 PushKit token 写盘完成。
+  async whenRegistrationSettled(): Promise<void> {
+    if (!this.pendingPromise) {
+      return;
+    }
+    try {
+      await this.pendingPromise;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'whenRegistrationSettled 等待异常：%{public}s', msg);
+    }
   }
 
   // 读取已持久化的 device_key（仅读缓存，不触发注册；未注册时返回空串）
@@ -105,12 +131,6 @@ export class DeviceRegisterService {
   }
 
   private async doRegister(ctx: common.Context, deviceKey?: string): Promise<string | null> {
-    if (this.isRegistering) {
-      hilog.info(DOMAIN, TAG, '注册中，等待其他任务完成…');
-      return null;
-    }
-    this.isRegistering = true;
-
     try {
       // device_token：优先用缓存，否则从 provider 获取并落盘
       let deviceToken: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_DEVICE_TOKEN, '');
@@ -198,8 +218,6 @@ export class DeviceRegisterService {
         hilog.error(DOMAIN, TAG, '注册异常：%{public}s', String(err));
       }
       return null;
-    } finally {
-      this.isRegistering = false;
     }
   }
 

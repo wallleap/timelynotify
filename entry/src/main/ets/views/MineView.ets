@@ -1,12 +1,15 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { UIContext } from '@kit.ArkUI';
-import { pasteboard } from '@kit.BasicServicesKit';
+import { UIContext, promptAction } from '@kit.ArkUI';
+import { pasteboard, BusinessError } from '@kit.BasicServicesKit';
+import { common } from '@kit.AbilityKit';
+import { notificationManager } from '@kit.NotificationKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { extractHost } from '../components/ServerSettingsContent';
 import { ClientTokenDialog } from '../components/ClientTokenDialog';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
+import { PreferencesUtil } from '../utils/PreferencesUtil';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
@@ -32,6 +35,8 @@ export struct MineView {
   @State isDefaultClientToken: boolean = true;
   // 推送 Token（Push 下发的 device_token；卡片展示用，点击复制完整明文）
   @State deviceTokenDisplay: string = '';
+  // 通知授权开关状态（系统级，应用无法直接关闭，只能引导用户去系统设置）
+  @State notifyEnabled: boolean = false;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
 
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
@@ -49,6 +54,7 @@ export struct MineView {
     this.refreshSummary();
     this.refreshClientToken();
     this.refreshDeviceToken();
+    this.refreshNotifyEnabled();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.refreshSummary();
     };
@@ -76,6 +82,57 @@ export struct MineView {
       .backgroundColor($r('app.color.index_page_top_background'));
 
       Column({ space: 12 }) {
+        // 通知设置卡片
+        Column({ space: 0 }) {
+          // 开启应用订阅通知（开关）
+          Row() {
+            Column({ space: 2 }) {
+              Text('开启应用订阅通知')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#111111');
+              Text(this.notifyEnabled ? '已开启' : '已关闭')
+                .fontSize(12)
+                .fontColor(this.notifyEnabled ? '#FF6F22' : '#999999');
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1);
+
+            Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
+              .selectedColor('#FF6F22')
+              .onChange((isOn: boolean) => {
+                this.onNotifyToggle(isOn);
+              });
+          }
+          .width('100%')
+          .padding(16);
+
+          Divider().color('#F0F0F0').strokeWidth(1).margin({ left: 16, right: 16 });
+
+          // 通知权限设置（点击拉起系统通知管理）
+          Row() {
+            Text('通知权限设置')
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+              .fontColor('#111111')
+              .layoutWeight(1);
+
+            Image($r('app.media.arrow_right'))
+              .width(24)
+              .height(24)
+              .objectFit(ImageFit.Contain)
+              .fillColor('#999999');
+          }
+          .width('100%')
+          .padding(16)
+          .onClick(() => {
+            this.openNotifySettings();
+          });
+        }
+        .width('100%')
+        .backgroundColor('#FFFFFF')
+        .borderRadius(12);
+
         // 服务器入口卡片
         Row({ space: 14 }) {
           Column({ space: 4 }) {
@@ -229,8 +286,10 @@ export struct MineView {
     return `${masked} (已配置 · ${t.length} 位)`;
   }
 
-  // 刷新 Device Token（Push 下发）；失败/空时 UI 显示为"未获取"
+  // 刷新 Device Token（Push 下发）。先等当前注册任务完成（如 PushKit 还在 getToken），
+  // 再读盘；保证启动早期进入 MineView 时也能拿到 Push 写入后的值。
   private async refreshDeviceToken(): Promise<void> {
+    await DeviceRegisterService.getInstance().whenRegistrationSettled();
     this.deviceTokenDisplay = await DeviceRegisterService.getInstance().getDeviceToken();
   }
 
@@ -285,6 +344,74 @@ export struct MineView {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'token dialog open 失败：%{public}s', msg);
       showToast(this.getUIContext(), '弹窗无法打开');
+    }
+  }
+
+  // 读取持久化的订阅通知开关状态（纯本地存储，不调系统 API）
+  private async refreshNotifyEnabled(): Promise<void> {
+    const v: string = await PreferencesUtil.getString(null, PreferencesUtil.KEY_NOTIFY_ENABLED, '');
+    this.notifyEnabled = v === 'true';
+  }
+
+  // 获取 UIAbilityContext（notificationManager 需要）
+  private getAbilityContext(): common.UIAbilityContext | null {
+    try {
+      const ctx = this.getUIContext().getHostContext();
+      return ctx as common.UIAbilityContext;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'getHostContext 失败：%{public}s', msg);
+      return null;
+    }
+  }
+
+  // 开关切换：弹应用内确认对话框（仅为合规提示，不调系统 API）
+  // 真正的通知开关由【通知权限设置】入口控制系统层
+  //
+  // 判断逻辑：Toggle.onChange 可能在两种场景被触发——
+  //   1. 用户点击：传入的 isOn 与当前 this.notifyEnabled 相反（Toggle 翻转）
+  //   2. 程序化赋值：传入的 isOn 与当前 this.notifyEnabled 相同（Toggle 同步到已有值）
+  // 只有场景 1 才需要弹窗，场景 2 直接跳过
+  private onNotifyToggle(isOn: boolean): void {
+    if (isOn === this.notifyEnabled) {
+      return;
+    }
+    const uiCtx: UIContext = this.getUIContext();
+    const buttons: promptAction.Button[] = [
+      { text: '取消', color: '#666666' },
+      { text: '确认', color: '#FF6F22' },
+    ];
+    uiCtx.getPromptAction().showDialog({
+      title: isOn ? '开启订阅' : '关闭订阅',
+      message: isOn ? '是否开启应用订阅通知？' : '是否关闭应用订阅通知？',
+      buttons: buttons,
+    }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
+      if (err) {
+        hilog.warn(DOMAIN, TAG, 'showDialog 失败：%{public}s', err.message);
+        return;
+      }
+      if (result.index === 1) {
+        // 确认：写盘 + 翻转本地状态（纯 UI 层；系统通知权限由【通知权限设置】入口控制）
+        this.notifyEnabled = isOn;
+        PreferencesUtil.putString(null, PreferencesUtil.KEY_NOTIFY_ENABLED, isOn ? 'true' : 'false');
+      }
+      // 取消：不动状态，Toggle 跟随 notifyEnabled 回滚
+    });
+  }
+
+  // 拉起系统应用通知设置页（用户可在其中真正开启/关闭通知）
+  private async openNotifySettings(): Promise<void> {
+    const ctx: common.UIAbilityContext | null = this.getAbilityContext();
+    if (!ctx) {
+      showToast(this.getUIContext(), '上下文获取失败');
+      return;
+    }
+    try {
+      await notificationManager.openNotificationSettings(ctx);
+    } catch (err) {
+      const e: BusinessError = err as BusinessError;
+      hilog.warn(DOMAIN, TAG, 'openNotificationSettings 失败：code=%{public}d msg=%{public}s', e.code, e.message);
+      showToast(this.getUIContext(), '无法打开通知设置');
     }
   }
 }

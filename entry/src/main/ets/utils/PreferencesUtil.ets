@@ -49,6 +49,7 @@ export class PreferencesUtil {
   static readonly KEY_CLIENT_TOKEN: string = 'client_token';
   static readonly KEY_SERVER_LIST_JSON: string = 'server_list_json';
   static readonly KEY_SERVER_CURRENT_ID: string = 'server_current_id';
+  static readonly KEY_NOTIFY_ENABLED: string = 'notify_enabled';
 
   private static async getStore(context: common.Context | null): Promise<preferences.Preferences | null> {
     const ctx: common.Context | null = resolveContext(context);

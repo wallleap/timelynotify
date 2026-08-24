@@ -2,6 +2,7 @@ import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.Ab
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { pushService } from '@kit.PushKit';
+import { notificationManager } from '@kit.NotificationKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
@@ -23,6 +24,9 @@ export default class EntryAbility extends UIAbility {
     // 立刻触发 ServerManager 异步加载（与页面渲染/窗口创建并行），
     // 但任何消费 currentId/baseURL 的路径都必须先 await ensureLoaded()
     this.bootstrapServerManager();
+    // 在 onCreate 中触发无感注册（Push Kit 文档推荐时机），内部会 await ServerManager.ensureLoaded()
+    // 然后调用 pushService.getToken() 拿 token 并写入服务端
+    this.silentRegister();
   }
 
   onDestroy(): void {
@@ -38,10 +42,9 @@ export default class EntryAbility extends UIAbility {
         return;
       }
       hilog.info(DOMAIN, TAG, 'Succeeded in loading the content.');
+      // 启动时请求通知权限（首次会弹系统授权窗；已授权/拒绝过则不弹）
+      this.requestNotificationPermission();
     });
-
-    // 无感注册：后台静默执行，不阻塞页面加载。内部会先 await ServerManager.ensureLoaded()
-    this.silentRegister();
   }
 
   onWindowStageDestroy(): void {
@@ -91,5 +94,14 @@ export default class EntryAbility extends UIAbility {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.error(DOMAIN, TAG, '无感注册异常：%{public}s', msg);
     }
+  }
+
+  // 启动时请求通知权限：首次安装会弹系统授权窗，之后不再弹
+  private requestNotificationPermission(): void {
+    notificationManager.requestEnableNotification(this.context).then(() => {
+      hilog.info(DOMAIN, TAG, '通知权限已授权');
+    }).catch((err: BusinessError) => {
+      hilog.warn(DOMAIN, TAG, '通知权限未授权：code=%{public}d msg=%{public}s', err.code, err.message);
+    });
   }
 }
