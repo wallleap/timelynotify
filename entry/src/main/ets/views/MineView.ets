@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { UIContext, promptAction } from '@kit.ArkUI';
-import { pasteboard, BusinessError } from '@kit.BasicServicesKit';
+import { promptAction, UIContext } from '@kit.ArkUI';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { ServerEntry } from '../model/ServerEntry';
@@ -38,12 +38,13 @@ export struct MineView {
   // 通知授权开关状态（系统级，应用无法直接关闭，只能引导用户去系统设置）
   @State notifyEnabled: boolean = false;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
-
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
   private tokenDialogController: CustomDialogController = new CustomDialogController({
     builder: ClientTokenDialog({
       getInitToken: (): string => this.customClientToken,
-      onSaved: (): void => { this.refreshClientToken(); },
+      onSaved: (): void => {
+        this.refreshClientToken();
+      },
     }),
     alignment: DialogAlignment.Center,
     autoCancel: true,
@@ -377,25 +378,36 @@ export struct MineView {
       return;
     }
     const uiCtx: UIContext = this.getUIContext();
-    const buttons: promptAction.Button[] = [
-      { text: '取消', color: '#666666' },
-      { text: '确认', color: '#FF6F22' },
+    const onButtons: promptAction.Button[] = [
+      { text: '残忍拒绝', color: '#666666' },
+      { text: '接受推送', color: '#FF6F22' },
+    ];
+    const offButtons: promptAction.Button[] = [
+      { text: '保持推送', color: '#666666' },
+      { text: '取消推送', color: '#FF6F22' },
     ];
     uiCtx.getPromptAction().showDialog({
       title: isOn ? '开启订阅' : '关闭订阅',
-      message: isOn ? '是否开启应用订阅通知？' : '是否关闭应用订阅通知？',
-      buttons: buttons,
+      message: isOn ? '是否要接收此订阅的通知栏推送？' : '是否要取消此订阅的通知栏推送？',
+      buttons: isOn ? onButtons : offButtons,
     }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err) {
         hilog.warn(DOMAIN, TAG, 'showDialog 失败：%{public}s', err.message);
+        // 弹窗异常关闭，Toggle 需回滚到实际状态
+        this.notifyEnabled = isOn;
+        this.notifyEnabled = !isOn;
         return;
       }
       if (result.index === 1) {
         // 确认：写盘 + 翻转本地状态（纯 UI 层；系统通知权限由【通知权限设置】入口控制）
         this.notifyEnabled = isOn;
         PreferencesUtil.putString(null, PreferencesUtil.KEY_NOTIFY_ENABLED, isOn ? 'true' : 'false');
+        return;
       }
-      // 取消：不动状态，Toggle 跟随 notifyEnabled 回滚
+      // 取消/拒绝：notifyEnabled 未变化，Toggle 不会自动回滚，需强制同步
+      // 先设为点击值（匹配 Toggle 当前视觉），再还原实际值触发重渲染
+      this.notifyEnabled = isOn;
+      this.notifyEnabled = !isOn;
     });
   }
 
