@@ -1,7 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
-import { ApiConfig } from '../config/ApiConfig';
 import { ServerManager } from './ServerManager';
 import { DeviceRegisterService } from './DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
@@ -122,7 +121,7 @@ export class NotifyMessageService {
   // limit 默认 100，控制单次返回条数；客户端据此判断是否到底（返回 < limit 视为到底）
   async getMessages(context: common.Context | null = null, since: number = 0, limit: number = 100): Promise<MessageListResult> {
     const result = new MessageListResult();
-    const ctx: common.Context | null = resolveContext(context);
+    // const ctx: common.Context | null = resolveContext(context);
 
     const deviceKey: string | null = await DeviceRegisterService.getInstance().ensureRegistered(context);
     if (!deviceKey || deviceKey.length === 0) {

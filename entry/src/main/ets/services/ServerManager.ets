@@ -289,7 +289,7 @@ export class ServerManager {
     }
   }
 
-  private isBuiltInId(id: string): boolean {
+  /** private isBuiltInId(id: string): boolean {
     const builtIn: ServerEntry[] = this.getBuiltInServers();
     for (let i = 0; i < builtIn.length; i++) {
       if (builtIn[i].id === id) {
@@ -297,7 +297,7 @@ export class ServerManager {
       }
     }
     return false;
-  }
+  } */
 
   private isDeletedBuiltInId(id: string): boolean {
     for (let i = 0; i < this.deletedBuiltInIds.length; i++) {

@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext, window, display } from '@kit.ArkUI';
-import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
@@ -158,7 +158,7 @@ export struct NotifyView {
       .backgroundColor($r('app.color.index_page_top_background'));
 
       // 内容区域
-      Refresh({ refreshing: $$this.refreshing }) {
+      Refresh({ refreshing: this.refreshing }) {
         if (this.needGuideToConfig()) {
           this.guideView();
         } else if (this.loading && this.messages.length === 0) {
@@ -174,6 +174,7 @@ export struct NotifyView {
       .layoutWeight(1)
       .width('100%')
       .onRefreshing(() => {
+        this.refreshing = true;
         this.loadMessages();
       });
 

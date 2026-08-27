@@ -423,9 +423,9 @@ export struct MineView {
     }
   }
 
-  private handleCardClicked(): void {
+  private async handleCardClicked(): Promise<void> {
     try {
-      this.getUIContext().getRouter().pushUrl({ url: 'pages/ServerSettingsPage' });
+      await this.getUIContext().getRouter().pushUrl({ url: 'pages/ServerSettingsPage' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'router push 失败：%{public}s', msg);
@@ -559,9 +559,9 @@ export struct MineView {
   }
 
   // 点击开源代码行：进入内嵌 WebView 页面
-  private openSourceLink(): void {
+  private async openSourceLink(): Promise<void> {
     try {
-      this.getUIContext().getRouter().pushUrl({ url: 'pages/SharePage' });
+      await this.getUIContext().getRouter().pushUrl({ url: 'pages/SharePage' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '跳转 SharePage 失败：%{public}s', msg);
