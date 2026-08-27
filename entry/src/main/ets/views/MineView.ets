@@ -103,7 +103,8 @@ export struct MineView {
                   .fontColor($r('app.color.text_primary_color'));
                 Text(this.notifyEnabled ? '已开启' : '已关闭')
                   .fontSize(12)
-                  .fontColor(this.notifyEnabled ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
+                  .fontColor(
+                    this.notifyEnabled ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
               }
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1);
@@ -217,7 +218,8 @@ export struct MineView {
 
                   Text(this.buildClientTokenDisplay())
                     .fontSize(14)
-                    .fontColor(this.isDefaultClientToken ? $r('app.color.text_accent_color') : $r('app.color.text_tertiary_color'))
+                    .fontColor(this.isDefaultClientToken ? $r('app.color.text_accent_color') :
+                      $r('app.color.text_tertiary_color'))
                     .width('100%')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -262,7 +264,8 @@ export struct MineView {
 
                   Text(this.buildDeviceTokenDisplay())
                     .fontSize(14)
-                    .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.text_tertiary_color') : $r('app.color.text_quinary_color'))
+                    .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.text_tertiary_color') :
+                      $r('app.color.text_quinary_color'))
                     .width('100%')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -321,6 +324,7 @@ export struct MineView {
       .align(Alignment.TopStart)
       .layoutWeight(1)
       .scrollBar(BarState.Off)
+      .edgeEffect(EdgeEffect.Spring)
       .width('100%');
     }
     .width('100%')
