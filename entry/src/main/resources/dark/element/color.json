@@ -17,8 +17,40 @@
       "value": "#181818"
     },
     {
+      "name": "card_background",
+      "value": "#181818"
+    },
+    {
+      "name": "divider_color",
+      "value": "#333333"
+    },
+    {
+      "name": "input_background_color",
+      "value": "#2c2c2c"
+    },
+    {
+      "name": "selected_row_background",
+      "value": "#3D2818"
+    },
+    {
       "name": "text_primary_color",
       "value": "#fff"
+    },
+    {
+      "name": "text_secondary_color",
+      "value": "#C9CDD4"
+    },
+    {
+      "name": "text_tertiary_color",
+      "value": "#A9AEB8"
+    },
+    {
+      "name": "text_quaternary_color",
+      "value": "#fff"
+    },
+    {
+      "name": "text_error_color",
+      "value": "#FF6B6B"
     }
   ]
 }

@@ -100,16 +100,16 @@ export struct MineView {
                 Text('开启应用订阅通知')
                   .fontSize(16)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#111111');
+                  .fontColor($r('app.color.text_primary_color'));
                 Text(this.notifyEnabled ? '已开启' : '已关闭')
                   .fontSize(12)
-                  .fontColor(this.notifyEnabled ? '#FF6F22' : '#999999');
+                  .fontColor(this.notifyEnabled ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
               }
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1);
 
               Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
-                .selectedColor('#FF6F22')
+                .selectedColor($r('app.color.text_accent_color'))
                 .onChange((isOn: boolean) => {
                   this.onNotifyToggle(isOn);
                 });
@@ -117,21 +117,21 @@ export struct MineView {
             .width('100%')
             .padding(16);
 
-            Divider().color('#F0F0F0').strokeWidth(1).margin({ left: 16, right: 16 });
+            Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
 
             // 通知权限设置（点击拉起系统通知管理）
             Row() {
               Text('通知权限设置')
                 .fontSize(16)
                 .fontWeight(FontWeight.Medium)
-                .fontColor('#111111')
+                .fontColor($r('app.color.text_primary_color'))
                 .layoutWeight(1);
 
               Image($r('app.media.arrow_right'))
                 .width(24)
                 .height(24)
                 .objectFit(ImageFit.Contain)
-                .fillColor('#999999');
+                .fillColor($r('app.color.text_quinary_color'));
             }
             .width('100%')
             .padding(16)
@@ -140,13 +140,13 @@ export struct MineView {
             });
           }
           .width('100%')
-          .backgroundColor('#FFFFFF')
+          .backgroundColor($r('app.color.card_background'))
           .borderRadius(12);
 
           Column({ space: 8 }) {
             Text('配置')
               .fontSize(12)
-              .fontColor('#999999')
+              .fontColor($r('app.color.text_quinary_color'))
               .width('100%')
               .padding({ left: 12 });
 
@@ -158,28 +158,28 @@ export struct MineView {
                     Text('服务器')
                       .fontSize(17)
                       .fontWeight(FontWeight.Medium)
-                      .fontColor('#111111');
+                      .fontColor($r('app.color.text_primary_color'));
                   }
                   .width('100%');
 
                   Row() {
                     Text(this.serverName)
                       .fontSize(14)
-                      .fontColor('#666666')
+                      .fontColor($r('app.color.text_tertiary_color'))
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis });
                     Text(' (')
                       .fontSize(14)
-                      .fontColor('#666666')
+                      .fontColor($r('app.color.text_tertiary_color'))
                       .maxLines(1)
                     Text(this.hostDisplay)
                       .fontSize(12)
-                      .fontColor('#FF6F22')
+                      .fontColor($r('app.color.text_accent_color'))
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis });
                     Text(')')
                       .fontSize(14)
-                      .fontColor('#666666')
+                      .fontColor($r('app.color.text_tertiary_color'))
                       .maxLines(1)
                   }.width('100%')
                 }
@@ -189,7 +189,7 @@ export struct MineView {
                 Row() {
                   Text(`共 ${this.serverCount} 个`)
                     .fontSize(12)
-                    .fontColor('#999999');
+                    .fontColor($r('app.color.text_quinary_color'));
                   Image($r('app.media.arrow_right'))
                     .width(32)
                     .height(32)
@@ -200,7 +200,7 @@ export struct MineView {
               }
               .width('100%')
               .padding(16)
-              .backgroundColor('#FFFFFF')
+              .backgroundColor($r('app.color.card_background'))
               .borderRadius(12)
               .onClick(() => {
                 this.handleCardClicked();
@@ -212,12 +212,12 @@ export struct MineView {
                   Text('客户端 Token')
                     .fontSize(17)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor('#111111')
+                    .fontColor($r('app.color.text_primary_color'))
                     .width('100%');
 
                   Text(this.buildClientTokenDisplay())
                     .fontSize(14)
-                    .fontColor(this.isDefaultClientToken ? '#FF6F22' : '#666666')
+                    .fontColor(this.isDefaultClientToken ? $r('app.color.text_accent_color') : $r('app.color.text_tertiary_color'))
                     .width('100%')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -234,7 +234,7 @@ export struct MineView {
               }
               .width('100%')
               .padding(16)
-              .backgroundColor('#FFFFFF')
+              .backgroundColor($r('app.color.card_background'))
               .borderRadius(12)
               .onClick(() => {
                 this.openTokenDialog();
@@ -247,22 +247,22 @@ export struct MineView {
                     Text('推送 Token')
                       .fontSize(17)
                       .fontWeight(FontWeight.Medium)
-                      .fontColor('#111111');
+                      .fontColor($r('app.color.text_primary_color'));
                     Text(' (自动生成)')
                       .fontSize(14)
-                      .fontColor('#666666')
+                      .fontColor($r('app.color.text_tertiary_color'))
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis });
                     Blank();
                     Text('点击复制')
                       .fontSize(12)
-                      .fontColor('#FF6F22');
+                      .fontColor($r('app.color.text_accent_color'));
                   }
                   .width('100%');
 
                   Text(this.buildDeviceTokenDisplay())
                     .fontSize(14)
-                    .fontColor(this.deviceTokenDisplay.length > 0 ? '#666666' : '#999999')
+                    .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.text_tertiary_color') : $r('app.color.text_quinary_color'))
                     .width('100%')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -272,7 +272,7 @@ export struct MineView {
               }
               .width('100%')
               .padding(16)
-              .backgroundColor('#FFFFFF')
+              .backgroundColor($r('app.color.card_background'))
               .borderRadius(12)
               .onClick(() => {
                 this.copyDeviceToken();
@@ -285,7 +285,7 @@ export struct MineView {
           Column({ space: 8 }) {
             Text('关于')
               .fontSize(12)
-              .fontColor('#999999')
+              .fontColor($r('app.color.text_quinary_color'))
               .width('100%')
               .padding({ left: 12 });
 
@@ -295,11 +295,11 @@ export struct MineView {
                 Text('当前版本')
                   .fontSize(16)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor('#111111')
+                  .fontColor($r('app.color.text_primary_color'))
                   .layoutWeight(1);
                 Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
                   .fontSize(14)
-                  .fontColor('#666666');
+                  .fontColor($r('app.color.text_tertiary_color'));
               }
               .width('100%')
               .padding(16)
@@ -310,7 +310,7 @@ export struct MineView {
               // 后续关于类条目（如隐私政策、用户协议、检查更新等）在此追加，中间用 Divider 分隔
             }
             .width('100%')
-            .backgroundColor('#FFFFFF')
+            .backgroundColor($r('app.color.card_background'))
             .borderRadius(12);
           }
           .width('100%');
@@ -450,12 +450,12 @@ export struct MineView {
     }
     const uiCtx: UIContext = this.getUIContext();
     const onButtons: promptAction.Button[] = [
-      { text: '残忍拒绝', color: '#666666' },
-      { text: '接受推送', color: '#FF6F22' },
+      { text: '残忍拒绝', color: $r('app.color.text_tertiary_color') },
+      { text: '接受推送', color: $r('app.color.text_accent_color') },
     ];
     const offButtons: promptAction.Button[] = [
-      { text: '保持推送', color: '#666666' },
-      { text: '取消推送', color: '#FF6F22' },
+      { text: '保持推送', color: $r('app.color.text_tertiary_color') },
+      { text: '取消推送', color: $r('app.color.text_accent_color') },
     ];
     uiCtx.getPromptAction().showDialog({
       title: isOn ? '开启订阅' : '关闭订阅',

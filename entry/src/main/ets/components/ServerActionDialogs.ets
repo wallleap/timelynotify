@@ -47,7 +47,7 @@ export struct ServerActionMenuDialog {
           .width(22)
           .height(22)
           .objectFit(ImageFit.Contain)
-          .fillColor('#999999')
+          .fillColor($r('app.color.text_quinary_color'))
           .padding(4)
           .onClick(() => {
             this.close();
@@ -55,11 +55,11 @@ export struct ServerActionMenuDialog {
       }
       .width('100%');
 
-      Divider().color('#EEEEEE');
+      Divider().color($r('app.color.divider_color'));
 
       Text('复制地址和 Key')
         .fontSize(16)
-        .fontColor('#111111')
+        .fontColor($r('app.color.text_primary_color'))
         .width('100%')
         .height(48)
         .textAlign(TextAlign.Center)
@@ -68,11 +68,11 @@ export struct ServerActionMenuDialog {
           this.onCopy();
         });
 
-      Divider().color('#EEEEEE');
+      Divider().color($r('app.color.divider_color'));
 
       Text('重置或还原 Key')
         .fontSize(16)
-        .fontColor('#111111')
+        .fontColor($r('app.color.text_primary_color'))
         .width('100%')
         .height(48)
         .textAlign(TextAlign.Center)
@@ -81,11 +81,11 @@ export struct ServerActionMenuDialog {
           this.onResetKey();
         });
 
-      Divider().color('#EEEEEE');
+      Divider().color($r('app.color.divider_color'));
 
       Text('设置服务器名称')
         .fontSize(16)
-        .fontColor('#111111')
+        .fontColor($r('app.color.text_primary_color'))
         .width('100%')
         .height(48)
         .textAlign(TextAlign.Center)
@@ -94,11 +94,11 @@ export struct ServerActionMenuDialog {
           this.onRename();
         });
 
-      Divider().color('#EEEEEE');
+      Divider().color($r('app.color.divider_color'));
 
       Text('删除服务器')
         .fontSize(16)
-        .fontColor('#FF3B30')
+        .fontColor($r('app.color.text_error_color'))
         .width('100%')
         .height(48)
         .textAlign(TextAlign.Center)
@@ -109,7 +109,7 @@ export struct ServerActionMenuDialog {
     }
     .width('78%')
     .padding({ top: 12, bottom: 8, left: 4, right: 4 })
-    .backgroundColor('#FFFFFF')
+    .backgroundColor($r('app.color.card_background'))
     .borderRadius(14);
   }
 }
@@ -158,7 +158,7 @@ export struct ServerRenameDialog {
       TextInput({ placeholder: '输入新名称（留空则清除名称）', text: this.inputName })
         .width('100%')
         .height(42)
-        .backgroundColor('#F5F5F5')
+        .backgroundColor($r('app.color.input_background_color'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -170,8 +170,8 @@ export struct ServerRenameDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor('#EEEEEE')
-          .fontColor('#333333')
+          .backgroundColor($r('app.color.divider_color'))
+          .fontColor($r('app.color.text_secondary_color'))
           .borderRadius(8)
           .onClick(() => {
             this.close();
@@ -181,7 +181,7 @@ export struct ServerRenameDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor('#FF6F22')
+          .backgroundColor($r('app.color.text_accent_color'))
           .borderRadius(8)
           .onClick(() => {
             this.confirm();
@@ -191,7 +191,7 @@ export struct ServerRenameDialog {
     }
     .width('80%')
     .padding(18)
-    .backgroundColor('#FFFFFF')
+    .backgroundColor($r('app.color.card_background'))
     .borderRadius(14);
   }
 }
@@ -245,13 +245,13 @@ export struct ServerKeyDialog {
       Column({ space: 4 }) {
         Text(`当前 Key：${this.currentKey && this.currentKey.length > 0 ? this.currentKey : '（未注册）'}`)
           .fontSize(12)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_quinary_color'))
           .width('100%')
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text('输入框留空 = 重置（生成新 Key）；填入 Key = 还原')
           .fontSize(12)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_quinary_color'))
           .width('100%');
       }
       .width('100%');
@@ -259,7 +259,7 @@ export struct ServerKeyDialog {
       TextInput({ placeholder: '可选：输入要还原的 device_key', text: this.inputKey })
         .width('100%')
         .height(42)
-        .backgroundColor('#F5F5F5')
+        .backgroundColor($r('app.color.input_background_color'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -271,8 +271,8 @@ export struct ServerKeyDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor('#EEEEEE')
-          .fontColor('#333333')
+          .backgroundColor($r('app.color.divider_color'))
+          .fontColor($r('app.color.text_secondary_color'))
           .borderRadius(8)
           .onClick(() => {
             this.close();
@@ -282,7 +282,7 @@ export struct ServerKeyDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor('#FF6F22')
+          .backgroundColor($r('app.color.text_accent_color'))
           .borderRadius(8)
           .onClick(() => {
             this.confirm();
@@ -292,7 +292,7 @@ export struct ServerKeyDialog {
     }
     .width('82%')
     .padding(18)
-    .backgroundColor('#FFFFFF')
+    .backgroundColor($r('app.color.card_background'))
     .borderRadius(14);
   }
 }

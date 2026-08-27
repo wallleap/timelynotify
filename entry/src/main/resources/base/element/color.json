@@ -17,8 +17,60 @@
       "value": "#fff"
     },
     {
+      "name": "card_background",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "divider_color",
+      "value": "#F0F0F0"
+    },
+    {
+      "name": "input_background_color",
+      "value": "#F5F5F5"
+    },
+    {
+      "name": "selected_row_background",
+      "value": "#FFF3E8"
+    },
+    {
+      "name": "text_accent_color",
+      "value": "#FF6F22"
+    },
+    {
+      "name": "text_success_color",
+      "value": "#00B42A"
+    },
+    {
+      "name": "text_warning_color",
+      "value": "#FF9800"
+    },
+    {
+      "name": "text_error_color",
+      "value": "#F53F3F"
+    },
+    {
+      "name": "text_info_color",
+      "value": "#1677FF"
+    },
+    {
       "name": "text_primary_color",
       "value": "#0a0c10"
+    },
+    {
+      "name": "text_secondary_color",
+      "value": "#272e3b"
+    },
+    {
+      "name": "text_tertiary_color",
+      "value": "#6b7785"
+    },
+    {
+      "name": "text_quaternary_color",
+      "value": "#0a0c10"
+    },
+    {
+      "name": "text_quinary_color",
+      "value": "#86909c"
     }
   ]
 }

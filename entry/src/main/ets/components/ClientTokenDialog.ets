@@ -69,11 +69,11 @@ export struct ClientTokenDialog {
       Column({ space: 4 }) {
         Text('用于查询历史消息（X-Gotify-Key 认证）')
           .fontSize(12)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_quinary_color'))
           .width('100%');
         Text('在服务端为该设备创建 Client 后获取')
           .fontSize(12)
-          .fontColor('#999999')
+          .fontColor($r('app.color.text_quinary_color'))
           .width('100%');
       }
       .width('100%');
@@ -83,7 +83,7 @@ export struct ClientTokenDialog {
         .type(InputType.Password)
         .width('100%')
         .height(42)
-        .backgroundColor('#F5F5F5')
+        .backgroundColor($r('app.color.input_background_color'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -95,8 +95,8 @@ export struct ClientTokenDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor('#EEEEEE')
-          .fontColor('#333333')
+          .backgroundColor($r('app.color.divider_color'))
+          .fontColor($r('app.color.text_secondary_color'))
           .borderRadius(8)
           .onClick(() => {
             this.close();
@@ -106,7 +106,7 @@ export struct ClientTokenDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor('#FF6F22')
+          .backgroundColor($r('app.color.text_accent_color'))
           .borderRadius(8)
           .onClick(() => {
             this.save();
@@ -116,7 +116,7 @@ export struct ClientTokenDialog {
     }
     .width('80%')
     .padding(18)
-    .backgroundColor('#FFFFFF')
+    .backgroundColor($r('app.color.card_background'))
     .borderRadius(14);
   }
 }

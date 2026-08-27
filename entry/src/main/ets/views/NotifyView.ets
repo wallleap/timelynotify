@@ -152,10 +152,10 @@ export struct NotifyView {
     Column({ space: 12 }) {
       Text('未配置客户端 Token')
         .fontSize(16)
-        .fontColor('#666666');
+        .fontColor($r('app.color.text_tertiary_color'));
       Text('查询历史消息需要客户端 Token 认证，请到「我的」页面配置')
         .fontSize(13)
-        .fontColor('#999999')
+        .fontColor($r('app.color.text_quinary_color'))
         .textAlign(TextAlign.Center)
         .width('70%');
     }
@@ -171,10 +171,10 @@ export struct NotifyView {
       LoadingProgress()
         .width(40)
         .height(40)
-        .color('#FF6F22');
+        .color($r('app.color.text_accent_color'));
       Text('加载中…')
         .fontSize(13)
-        .fontColor('#999999');
+        .fontColor($r('app.color.text_quinary_color'));
     }
     .width('100%')
     .height('100%')
@@ -187,12 +187,12 @@ export struct NotifyView {
     Column({ space: 12 }) {
       Text(this.errorMsg)
         .fontSize(14)
-        .fontColor('#FF3B30')
+        .fontColor($r('app.color.text_error_color'))
         .textAlign(TextAlign.Center)
         .width('80%');
       Text('下拉重试')
         .fontSize(13)
-        .fontColor('#FF6F22')
+        .fontColor($r('app.color.text_accent_color'))
         .padding(8)
         .onClick(() => {
           this.loadMessages();
@@ -209,7 +209,7 @@ export struct NotifyView {
     Column({ space: 8 }) {
       Text('暂无消息')
         .fontSize(15)
-        .fontColor('#999999');
+        .fontColor($r('app.color.text_quinary_color'));
     }
     .width('100%')
     .height('100%')
@@ -233,10 +233,10 @@ export struct NotifyView {
             LoadingProgress()
               .width(18)
               .height(18)
-              .color('#FF6F22');
+              .color($r('app.color.text_accent_color'));
             Text('加载更多…')
               .fontSize(12)
-              .fontColor('#999999');
+              .fontColor($r('app.color.text_quinary_color'));
           }
           .width('100%')
           .height(44)
@@ -246,7 +246,7 @@ export struct NotifyView {
         ListItem() {
           Text('没有更多了')
             .fontSize(12)
-            .fontColor('#BBBBBB')
+            .fontColor($r('app.color.text_quinary_color'))
             .width('100%')
             .height(40)
             .textAlign(TextAlign.Center);
@@ -270,7 +270,7 @@ export struct NotifyView {
         Text(m.title)
           .fontSize(15)
           .fontWeight(FontWeight.Bold)
-          .fontColor('#111111')
+          .fontColor($r('app.color.text_primary_color'))
           .width('100%')
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -278,7 +278,7 @@ export struct NotifyView {
       if (m.subtitle && m.subtitle.length > 0) {
         Text(m.subtitle)
           .fontSize(13)
-          .fontColor('#FF6F22')
+          .fontColor($r('app.color.text_accent_color'))
           .width('100%')
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -286,20 +286,20 @@ export struct NotifyView {
       if (m.body && m.body.length > 0) {
         Text(m.body)
           .fontSize(14)
-          .fontColor('#333333')
+          .fontColor($r('app.color.text_secondary_color'))
           .width('100%')
           .maxLines(4)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
       }
       Text(this.formatTime(m.timestamp))
         .fontSize(11)
-        .fontColor('#999999')
+        .fontColor($r('app.color.text_quinary_color'))
         .width('100%')
         .textAlign(TextAlign.End);
     }
     .width('100%')
     .padding(12)
-    .backgroundColor('#FFFFFF')
+    .backgroundColor($r('app.color.card_background'))
     .borderRadius(10)
     .alignItems(HorizontalAlign.Start);
   }

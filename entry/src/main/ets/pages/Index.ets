@@ -31,10 +31,10 @@ struct Index {
       Image(this.currentIndex === index ? item.iconActive : item.icon)
         .width(24)
         .height(24)
-        .fillColor(this.currentIndex === index ? '#FF6F22' : '#999999');
+        .fillColor(this.currentIndex === index ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
       Text(item.title)
         .fontSize(12)
-        .fontColor(this.currentIndex === index ? '#FF6F22' : '#999999');
+        .fontColor(this.currentIndex === index ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
     }
     .width('100%')
     .height('100%')
