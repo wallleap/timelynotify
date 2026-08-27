@@ -1,6 +1,7 @@
 {
   "src": [
     "pages/Index",
-    "pages/ServerSettingsPage"
+    "pages/ServerSettingsPage",
+    "pages/SharePage"
   ]
 }

@@ -17,6 +17,7 @@ const FALLBACK_VERSION_CODE: number = 1000000;
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
+export const SOURCE_CODE_URL: string = 'https://github.com/wallleap/timelynotify';
 
 function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
   try {
@@ -310,7 +311,26 @@ export struct MineView {
                 this.copyVersionInfo();
               });
 
-              // 后续关于类条目（如隐私政策、用户协议、检查更新等）在此追加，中间用 Divider 分隔
+              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+              // 开源代码行（点击跳转 GitHub）
+              Row() {
+                Text('开源代码')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary_color'))
+                  .layoutWeight(1);
+                Image($r('app.media.arrow_right'))
+                  .width(24)
+                  .height(24)
+                  .objectFit(ImageFit.Contain)
+                  .fillColor($r('app.color.text_quinary_color'));
+              }
+              .width('100%')
+              .padding(16)
+              .onClick(() => {
+                this.openSourceLink();
+              });
             }
             .width('100%')
             .backgroundColor($r('app.color.card_background'))
@@ -535,6 +555,17 @@ export struct MineView {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '版本信息复制失败：%{public}s', msg);
       showToast(this.getUIContext(), text, 1500);
+    }
+  }
+
+  // 点击开源代码行：进入内嵌 WebView 页面
+  private openSourceLink(): void {
+    try {
+      this.getUIContext().getRouter().pushUrl({ url: 'pages/SharePage' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '跳转 SharePage 失败：%{public}s', msg);
+      showToast(this.getUIContext(), '无法打开页面');
     }
   }
 }
