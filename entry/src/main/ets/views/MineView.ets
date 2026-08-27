@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit';
-import { bundleManager, common, Want } from '@kit.AbilityKit';
+import { bundleManager, common } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
@@ -25,7 +25,7 @@ export const USE_DOCS_URL: string = 'https://docs.timelynotify.oicode.cn';
 export const PRIVACY_URL: string =
   'https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2026233837759005504';
 
-export const FEEDBACK_EMAIL: string = 'vonnelu163.com';
+export const FEEDBACK_EMAIL: string = 'vonnelu@163.com';
 
 function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
   try {
@@ -671,7 +671,7 @@ export struct MineView {
     }
   }
 
-  // 点击反馈问题行：通过隐式 Want 拉起邮件应用，自动附带设备信息
+  // 点击反馈问题行：通过 startAbilityByType 拉起系统邮件应用，自动附带设备信息
   private sendFeedback(): void {
     try {
       const appVersion: string = `TimelyNotify ${this.versionNameDisplay} (${this.versionCodeDisplay})`;
@@ -691,20 +691,30 @@ export struct MineView {
           `系统版本：${osVer}\n` +
           `反馈时间：${new Date().toLocaleString()}\n`;
       const subject: string = `TimelyNotify 反馈 - ${model}`;
-      const uri: string =
-        `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      const want: Want = {
-        action: 'ohos.want.action.sendData',
-        entities: ['entity.system.email'],
-        uri: uri
-      };
       const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      ctx.startAbility(want).then(() => {
-        hilog.info(DOMAIN, TAG, '邮件应用拉起成功');
-      }).catch((err: BusinessError) => {
-        hilog.warn(DOMAIN, TAG, '邮件应用拉起失败：code=%{public}d msg=%{public}s，回退为复制邮箱', err.code,
-          err.message);
-        this.copyFeedbackEmail();
+      const wantParam: Record<string, Object> = {
+        'sceneType': 1,
+        'email': [encodeURI(FEEDBACK_EMAIL)],
+        'subject': encodeURI(subject),
+        'body': encodeURI(body)
+      };
+      const abilityStartCallback: common.AbilityStartCallback = {
+        onError: (code: number, name: string, message: string) => {
+          hilog.warn(DOMAIN, TAG, '邮件应用拉起失败：code=%{public}d name=%{public}s msg=%{public}s，回退为复制邮箱',
+            code, name, message);
+          this.copyFeedbackEmail();
+        },
+        onResult: (_result) => {
+          hilog.info(DOMAIN, TAG, '邮件应用返回');
+        }
+      };
+      ctx.startAbilityByType('mail', wantParam, abilityStartCallback, (err) => {
+        if (err) {
+          hilog.warn(DOMAIN, TAG, 'startAbilityByType 异常：%{public}s，回退为复制邮箱', err.message);
+          this.copyFeedbackEmail();
+        } else {
+          hilog.info(DOMAIN, TAG, '邮件应用拉起成功');
+        }
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
