@@ -10,8 +10,30 @@ const TAG: string = 'ServerSettingsPage';
 @Component
 struct ServerSettingsPage {
   build() {
-    Column() {
-      // 顶部栏：返回 + 标题
+    // Stack 层叠：内容层在下、顶栏在上，滚动内容从顶栏下方穿过，毛玻璃才有内容可糊
+    Stack({ alignContent: Alignment.Top }) {
+      // 内容层（先声明，位于下层）：铺满安全区，滚动时内容滑入顶栏下方
+      Scroll() {
+        Column() {
+          // 顶部占位：随内容一起滚动，内容才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
+          Row()
+            .width('100%')
+            .height(72);
+
+          ServerSettingsContent();
+        }
+        .width('100%')
+        .padding({
+          left: 16,
+          right: 16,
+          bottom: 16
+        });
+      }
+      .width('100%')
+      .height('100%')
+      .align(Alignment.Top);
+
+      // 顶栏（后声明，覆盖在上层）：毛玻璃 + 半透明底色，绘制延伸到状态栏
       Row() {
         Image($r('app.media.arrow_left'))
           .width(32)
@@ -41,28 +63,13 @@ struct ServerSettingsPage {
         top: 12,
         bottom: 12
       })
-      .backgroundColor($r('app.color.index_page_top_background'))
       .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
+      .backgroundColor($r('app.color.index_page_top_background'))
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
-
-      // 内容区
-      Scroll() {
-        Column() {
-          ServerSettingsContent();
-        }
-        .width('100%')
-        .padding(16);
-      }
-      .layoutWeight(1)
-      .width('100%')
-      .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
-      .backgroundColor($r('app.color.index_page_body_background'))
-      .align(Alignment.Top);
     }
     .width('100%')
     .height('100%')
-    .justifyContent(FlexAlign.Start)
-    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
+    // 根容器铺不透明底色（含状态栏/导航条区域），body 模糊无内容可糊已移除
     .backgroundColor($r('app.color.index_page_body_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM]);

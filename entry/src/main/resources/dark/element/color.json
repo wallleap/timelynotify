@@ -6,6 +6,10 @@
     },
     {
       "name": "index_page_top_background",
+      "value": "#EA181818"
+    },
+    {
+      "name": "index_page_top_solid",
       "value": "#181818"
     },
     {
@@ -14,11 +18,15 @@
     },
     {
       "name": "index_page_bottom_background",
-      "value": "#181818"
+      "value": "#EA181818"
     },
     {
       "name": "card_background",
       "value": "#181818"
+    },
+    {
+      "name": "card_glass_background",
+      "value": "#F0181818"
     },
     {
       "name": "divider_color",

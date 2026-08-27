@@ -97,7 +97,8 @@ struct SharePage {
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Start)
-    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
+    // 保持 Column 布局：WebView 网页头部不能被顶栏遮挡，顶栏玻璃糊的是底色（网页内容不穿过）
+    // 根容器铺不透明底色，body 模糊无内容可糊已移除
     .backgroundColor($r('app.color.index_page_body_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
   }

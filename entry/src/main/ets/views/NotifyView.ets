@@ -44,6 +44,8 @@ export struct NotifyView {
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   // 状态栏高度（vp），详情模态标题栏顶部避让用
   @State statusBarHeight: number = 36;
+  // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
+  @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
   private dialogController: CustomDialogController = new CustomDialogController({
     builder: ServerSettingsDialog(),
@@ -104,81 +106,93 @@ export struct NotifyView {
 
   build() {
     Column() {
-      // 顶部栏：内层 Row（title + select_more，长域名省略）+ delete 图标
-      Row({ space: 8 }) {
-        Row({ space: 2 }) {
-          Text(this.title)
-            .fontSize(24)
-            .fontColor($r('app.color.text_primary_color'))
-            .fontWeight(FontWeight.Bold)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-
-          Image($r('app.media.select_more'))
-            .width(24)
-            .height(24)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_primary_color'))
-            .flexShrink(0)
-            .onClick(() => {
-              this.handleMoreClicked();
-            });
+      // Stack 层叠：列表在下、顶栏在上，滚动内容从顶栏下方穿过，毛玻璃才有内容可糊
+      Stack({ alignContent: Alignment.Top }) {
+        // 内容区域（先声明，位于下层）：铺满 Stack，滚动时消息滑入顶栏下方
+        // 刷新指示器用自定义 builder，避免默认刷新圈被顶栏毛玻璃遮挡
+        Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
+          if (this.needGuideToConfig()) {
+            this.guideView();
+          } else if (this.loading && this.messages.length === 0) {
+            this.loadingView();
+          } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
+            this.errorView();
+          } else if (this.messages.length === 0) {
+            this.emptyView();
+          } else {
+            this.listView();
+          }
         }
-        .layoutWeight(1)
-        .width(0)
-        .padding({ right: 48 })
-        .alignItems(VerticalAlign.Center)
-        .onClick(() => {
-          this.handleMoreClicked();
+        .width('100%')
+        .height('100%')
+        .onStateChange((state: RefreshStatus) => {
+          // 同步刷新状态给自定义指示器，控制其显隐
+          // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
+          this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
+        })
+        .onRefreshing(() => {
+          this.refreshing = true;
+          this.loadMessages();
         });
 
-        Image($r('app.media.delete'))
-          .width(32)
-          .height(32)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_primary_color'))
-          .padding(4)
-          .onClick(() => {
-            if (this.isEditing) {
-              // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
-              if (this.selectedIds.length === this.messages.length) {
-                this.selectedIds = [];
-              } else if (this.selectedIds.length > 0) {
-                this.selectedIds = [];
-              } else {
-                this.exitEditMode();
-              }
-            } else {
-              this.enterEditMode();
-            }
-          });
-      }
-      .width('100%')
-      .padding(16)
-      .alignItems(VerticalAlign.Center)
-      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-      .backgroundColor($r('app.color.index_page_top_background'));
+        // 顶部栏（后声明，覆盖在上层）：毛玻璃 + 半透明底色，绘制延伸到状态栏
+        Row({ space: 8 }) {
+          Row({ space: 2 }) {
+            Text(this.title)
+              .fontSize(24)
+              .fontColor($r('app.color.text_primary_color'))
+              .fontWeight(FontWeight.Bold)
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis });
 
-      // 内容区域
-      Refresh({ refreshing: this.refreshing }) {
-        if (this.needGuideToConfig()) {
-          this.guideView();
-        } else if (this.loading && this.messages.length === 0) {
-          this.loadingView();
-        } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
-          this.errorView();
-        } else if (this.messages.length === 0) {
-          this.emptyView();
-        } else {
-          this.listView();
+            Image($r('app.media.select_more'))
+              .width(24)
+              .height(24)
+              .objectFit(ImageFit.Contain)
+              .fillColor($r('app.color.text_primary_color'))
+              .flexShrink(0)
+              .onClick(() => {
+                this.handleMoreClicked();
+              });
+          }
+          .layoutWeight(1)
+          .width(0)
+          .padding({ right: 48 })
+          .alignItems(VerticalAlign.Center)
+          .onClick(() => {
+            this.handleMoreClicked();
+          });
+
+          Image($r('app.media.delete'))
+            .width(32)
+            .height(32)
+            .objectFit(ImageFit.Contain)
+            .fillColor($r('app.color.text_primary_color'))
+            .padding(4)
+            .onClick(() => {
+              if (this.isEditing) {
+                // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
+                if (this.selectedIds.length === this.messages.length) {
+                  this.selectedIds = [];
+                } else if (this.selectedIds.length > 0) {
+                  this.selectedIds = [];
+                } else {
+                  this.exitEditMode();
+                }
+              } else {
+                this.enterEditMode();
+              }
+            });
         }
+        .width('100%')
+        .padding(16)
+        .alignItems(VerticalAlign.Center)
+        .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
+        .backgroundColor($r('app.color.index_page_top_background'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
       }
-      .layoutWeight(1)
       .width('100%')
-      .onRefreshing(() => {
-        this.refreshing = true;
-        this.loadMessages();
-      });
+      .layoutWeight(1);
 
       // 多选模式底部操作栏
       if (this.isEditing && this.messages.length > 0) {
@@ -193,7 +207,7 @@ export struct NotifyView {
         this.showDetail = false;
       }
     })
-    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
+    // 根容器铺不透明底色，body 模糊无内容可糊已移除
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 
@@ -272,9 +286,35 @@ export struct NotifyView {
     .alignItems(HorizontalAlign.Center);
   }
 
+  // 自定义下拉刷新指示器：顶部留出毛玻璃顶栏高度（64），刷新圈显示在顶栏下方而不是被玻璃盖住
+  // 仅在下拉/刷新过程中显示，静止（Inactive）时隐藏
+  @Builder
+  refreshHeaderBuilder() {
+    Column() {
+      Row().height(64);
+
+      if (this.refreshState !== RefreshStatus.Inactive) {
+        LoadingProgress()
+          .width(28)
+          .height(28)
+          .color($r('app.color.text_accent_color'));
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Center);
+  }
+
   @Builder
   listView() {
     List({ space: 8, scroller: this.scroller }) {
+      // 顶部占位：随内容一起滚动，消息卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
+      // 顶栏高 64 + List 子项间距 8 = 首项初始位置 72，与原 top padding 一致
+      ListItem() {
+        Row()
+          .width('100%')
+          .height(64);
+      }
+
       ForEach(this.messages, (m: NotifyMessage) => {
         ListItem() {
           this.messageRow(m);
@@ -314,10 +354,18 @@ export struct NotifyView {
             .textAlign(TextAlign.Center);
         }
       }
+
+      // 底部占位：随内容一起滚动，末尾消息才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
+      ListItem() {
+        Row()
+          .width('100%')
+          .height(64);
+      }
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+    // 顶/底避让均由首尾占位实现（可滚动穿透顶栏/TabBar）；左右仅保留边距
+    .padding({ left: 12, right: 12 })
     .align(Alignment.Top)
     .onReachEnd(() => {
       // 列表按时间倒序（新→旧），末尾是最旧消息；取末尾消息 ID 作 since 加载更老的
@@ -371,8 +419,9 @@ export struct NotifyView {
     }
     .width('100%')
     .padding(12)
+    // 页面内卡片用半透明玻璃色（弹窗仍用不透明 card_background）
     .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor($r('app.color.card_glass_background'))
     .borderRadius(10)
     .alignItems(VerticalAlign.Top)
     .onClick(() => {
@@ -446,75 +495,87 @@ export struct NotifyView {
   @Builder
   detailBuilder() {
     Column() {
-      // 顶部标题栏：白色背景延伸到状态栏下，标题内容用计算好的状态栏高度避让
-      Column() {
-        Row() {
-          Text('消息详情')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary_color'))
-            .layoutWeight(1);
-          Image($r('app.media.close'))
-            .width(28)
-            .height(28)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_tertiary_color'))
-            .padding(2)
-            .onClick(() => {
-              this.showDetail = false;
-            });
+      // Stack 层叠：详情内容在下、标题栏在上，滚动时内容从标题栏下方穿过
+      Stack({ alignContent: Alignment.Top }) {
+        // 内容区（可滚动，先声明位于下层）
+        Scroll() {
+          Column({ space: 12 }) {
+            // 顶部占位：随内容一起滚动，详情才能滑入标题栏毛玻璃下方（padding 是硬边界做不到）
+            // 模态全屏布局从屏幕顶 y=0 开始，占位 = 状态栏高度 + 标题栏高度 + 余量
+            Row()
+              .width('100%')
+              .height(this.statusBarHeight + 72);
+
+            if (this.selectedMessage) {
+              if (this.selectedMessage.title && this.selectedMessage.title.length > 0) {
+                Text(this.selectedMessage.title)
+                  .fontSize(18)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor($r('app.color.text_primary_color'))
+                  .width('100%');
+              }
+              if (this.selectedMessage.subtitle && this.selectedMessage.subtitle.length > 0) {
+                Text(this.selectedMessage.subtitle)
+                  .fontSize(14)
+                  .fontColor($r('app.color.text_accent_color'))
+                  .width('100%');
+              }
+              if (this.selectedMessage.body && this.selectedMessage.body.length > 0) {
+                Text(this.selectedMessage.body)
+                  .fontSize(15)
+                  .fontColor($r('app.color.text_secondary_color'))
+                  .width('100%');
+              }
+              Text(this.formatTime(this.selectedMessage.timestamp))
+                .fontSize(12)
+                .fontColor($r('app.color.text_quinary_color'))
+                .width('100%')
+                .textAlign(TextAlign.End);
+            }
+          }
+          .width('100%')
+          // 顶部避让由首项占位实现（可滚动穿透标题栏）；左右边距与底部留白
+          .padding({ left: 16, right: 16, bottom: 24 });
+        }
+        .align(Alignment.TopStart)
+        .width('100%')
+        .height('100%')
+        .scrollBar(BarState.Off);
+
+        // 标题栏（后声明覆盖在上层）：毛玻璃 + 半透明底色，状态栏高度手动避让
+        Column() {
+          Row() {
+            Text('消息详情')
+              .fontSize(18)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_primary_color'))
+              .layoutWeight(1);
+            Image($r('app.media.close'))
+              .width(28)
+              .height(28)
+              .objectFit(ImageFit.Contain)
+              .fillColor($r('app.color.text_tertiary_color'))
+              .padding(2)
+              .onClick(() => {
+                this.showDetail = false;
+              });
+          }
+          .width('100%')
+          .padding(16)
+          .alignItems(VerticalAlign.Center);
         }
         .width('100%')
-        .padding(16)
-        .alignItems(VerticalAlign.Center);
+        .padding({ top: this.statusBarHeight })
+        .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
+        .backgroundColor($r('app.color.index_page_top_background'));
       }
       .width('100%')
-      .padding({ top: this.statusBarHeight })
-      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-      .backgroundColor($r('app.color.index_page_top_background'));
-
-      // 内容区（可滚动）
-      Scroll() {
-        Column({ space: 12 }) {
-          if (this.selectedMessage) {
-            if (this.selectedMessage.title && this.selectedMessage.title.length > 0) {
-              Text(this.selectedMessage.title)
-                .fontSize(18)
-                .fontWeight(FontWeight.Bold)
-                .fontColor($r('app.color.text_primary_color'))
-                .width('100%');
-            }
-            if (this.selectedMessage.subtitle && this.selectedMessage.subtitle.length > 0) {
-              Text(this.selectedMessage.subtitle)
-                .fontSize(14)
-                .fontColor($r('app.color.text_accent_color'))
-                .width('100%');
-            }
-            if (this.selectedMessage.body && this.selectedMessage.body.length > 0) {
-              Text(this.selectedMessage.body)
-                .fontSize(15)
-                .fontColor($r('app.color.text_secondary_color'))
-                .width('100%');
-            }
-            Text(this.formatTime(this.selectedMessage.timestamp))
-              .fontSize(12)
-              .fontColor($r('app.color.text_quinary_color'))
-              .width('100%')
-              .textAlign(TextAlign.End);
-          }
-        }
-        .width('100%')
-        .padding(16);
-      }
-      .align(Alignment.TopStart)
-      .layoutWeight(1)
-      .scrollBar(BarState.Off);
+      .height('100%');
     }
     .width('100%')
     .height('100%')
-    // 灰色背景延伸到导航栏下，实现底部沉浸
+    // 灰色背景延伸到导航栏下，实现底部沉浸；body 模糊无内容可糊已移除
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 

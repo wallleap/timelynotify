@@ -59,19 +59,22 @@ struct Index {
       .barWidth('100%')
       .barHeight(56)
       .animationDuration(300)
+      // 内容延伸到 TabBar 下方，TabBar 毛玻璃才能糊到滚动内容
+      .barOverlap(true)
+      // TabBar 毛玻璃材质（API 11+）+ 半透明底色，与顶栏玻璃色保持一致
+      .barBackgroundBlurStyle(resolveBlurStyle('bar'))
+      .barBackgroundColor($r('app.color.index_page_bottom_background'))
       .onChange((index: number) => {
         this.currentIndex = index
       })
-      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-      .backgroundColor($r('app.color.index_page_bottom_background'))
       // 底部 Tab 栏背景延伸到导航条区域
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
-    .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-    .backgroundColor($r('app.color.index_page_top_background'))
-    // 顶部背景延伸到状态栏区域（沉浸式），内容布局仍在安全区内自动避让
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
+    // 顶/底安全区外（状态栏+导航条）用实色兜底：TabContent 裁剪顶栏玻璃延伸、
+    // barBackgroundColor 与 barBackgroundBlurStyle 组合时 bar 延伸行为不可控，这里保证导航条区域始终有背景（沉浸）
+    .backgroundColor($r('app.color.index_page_top_solid'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }
