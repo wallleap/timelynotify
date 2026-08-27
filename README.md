@@ -1,0 +1,91 @@
+# 及时通知
+
+TimelyNotify 是使用 arkTS 开发的鸿蒙端消息通知 App。
+
+服务器端 [timelynotify-server](https://github.com/wallleap/timelynotify-server) 修改自 Bark-server，因此可以只部署这个服务，实现一个
+push 链接同时发送到 iOS 和 HarmonyOS。
+
+## 功能说明
+
+- 兼容 bark 的所有接口（`/register`、`/push` 等）
+- ⚠ 由于鸿蒙 PushKit 只有推送后台消息可以不用保活应用存储消息，但是约束有点多，就只能在服务器端存储消息了
+
+## 应用流程
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                        应用冷启动                                 │
+└─────────────────────────────────────────────────────────────────┘
+  EntryAbility.onCreate
+    ├─ bootstrapServerManager()          ← ServerManager 异步 load（并行）
+    └─ silentRegister()
+         ├─ 注入 tokenProvider (pushService.getToken)
+         ├─ ① refreshTokenIfNeeded()
+         │     ├─ getToken() 与缓存 KEY_DEVICE_TOKEN 比对
+         │     ├─ 相同 → 跳过
+         │     └─ 变更 → 更新缓存
+         │            └─ 遍历所有有 deviceKey 的 server
+         │                 └─ 逐个"还原"注册（新 token + 旧 key 重绑）
+         ├─ ② ensureRegistered()
+         │     ├─ 全局 KEY_DEVICE_KEY 有缓存 → 直接用
+         │     └─ 无缓存 → doRegister()（无 key 注册）
+         │            └─ 写全局 KEY_DEVICE_KEY + 同步当前 server per-server
+         └─ ③ syncCurrentServerKey()
+               └─ await ensureLoaded → 取当前 server
+                     └─ syncKeyForServer()（见下）
+
+┌─────────────────────────────────────────────────────────────────┐
+│              syncKeyForServer（核心 key 同步）                    │
+└─────────────────────────────────────────────────────────────────┘
+  输入：serverId + baseURL + savedDeviceKey
+         │
+         ├─ savedKey 非空？
+         │     ├─ 是 → GET /register/:key 验证
+         │     │     ├─ 有效 → 直接用（0 次写接口）
+         │     │     └─ 无效 → POST 还原（token+platform+key）
+         │     │           ├─ 成功 → 用还原的 key
+         │     │           └─ 失败 → 保留原 key（不重置）
+         │     └─ 否 → POST 重置（token+platform）→ 服务端生成新 key
+         │
+         └─ 拿到 key 后：
+               ├─ updateServerDeviceKey → per-server 持久化
+               │     ├─ 自定义 server → server_list_json
+               │     └─ 内置 server → server_builtin_device_keys（id→key 映射）
+               └─ 写全局 KEY_DEVICE_KEY（向后兼容）
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    切换 Server                                    │
+└─────────────────────────────────────────────────────────────────┘
+  ServerSettingsContent → switchTo(id)
+    ├─ currentId = id → persist → emitChange（UI 刷新标题）
+    └─ 异步 syncKeyForServer（新 server 的 key 验证/还原/重置）
+
+┌─────────────────────────────────────────────────────────────────┐
+│               拉取/删除消息（NotifyMessageService）               │
+└─────────────────────────────────────────────────────────────────┘
+  getMessages / deleteMessage / deleteAllMessages
+    └─ ServerManager.getCurrentDeviceKey()
+          ├─ 当前 server 的 per-server deviceKey 非空 → 直接用
+          └─ 为空（刚切换/首次）→ 内联 syncKeyForServer → 拿到 key
+    └─ resolveURL(`/{key}/message...`) → 请求当前 server
+
+┌─────────────────────────────────────────────────────────────────┐
+│                         存储结构                                 │
+└─────────────────────────────────────────────────────────────────┘
+  Preferences (timelynotify_prefs)
+    ├─ device_key                    全局 key（旧链路兼容，ensureRegistered 缓存）
+    ├─ device_token                  Push token（refreshTokenIfNeeded 比对基准）
+    ├─ server_list_json              [{id,name,baseURL,isBuiltIn,deviceKey}]（仅自定义）
+    ├─ server_builtin_device_keys    {builtinId: deviceKey}（内置 key 专用）
+    ├─ server_current_id             当前选中 server
+    ├─ server_deleted_builtin        已删除内置 id 列表
+    ├─ client_token                  客户端 token
+    └─ notify_enabled                通知开关
+```
+
+## 参考文档
+
+- [Push Kit Guide](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/push-kit-guide)
+- [Notification Kit](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/notification-kit)
+- [基于 Service Account 开放鉴权](https://developer.huawei.com/consumer/cn/doc/HMSCore-Guides/open-platform-service-account-0000001053509221)
+- [拉起指定类型的应用](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/specified-type-app-redirection)
