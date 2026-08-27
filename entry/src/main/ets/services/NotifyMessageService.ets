@@ -222,4 +222,75 @@ export class NotifyMessageService {
     }
     return list;
   }
+
+  // 删除单条消息（服务端 API）：DELETE /{device_key}/message/{id}
+  // 返回 '' 表示成功；非空是错误描述
+  async deleteMessage(messageId: number, context: common.Context | null = null): Promise<string> {
+    if (messageId <= 0) {
+      return '消息 ID 无效';
+    }
+    const ctx: common.Context | null = resolveContext(context);
+    const deviceKey: string | null = await DeviceRegisterService.getInstance().ensureRegistered(ctx);
+    if (!deviceKey || deviceKey.length === 0) {
+      return '设备未注册';
+    }
+    const clientToken: string = await this.getEffectiveClientToken(ctx);
+    if (!clientToken || clientToken.length === 0) {
+      return '未配置客户端 Token';
+    }
+    await ServerManager.getInstance().ensureLoaded();
+    const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message/${messageId}`);
+    const headers: Record<string, string> = { 'X-Gotify-Key': clientToken };
+    hilog.info(DOMAIN, TAG, '删除消息：DELETE %{public}s', fullURL);
+    try {
+      const resp = await HttpUtil.delete<Object>(fullURL, headers);
+      if (resp.code === 401) {
+        return '客户端 Token 无效';
+      }
+      if (resp.code === 404) {
+        return '消息不存在';
+      }
+      if (resp.code < 200 || resp.code >= 300) {
+        return `删除失败（HTTP ${resp.code}）`;
+      }
+      hilog.info(DOMAIN, TAG, '消息 %{public}d 删除成功', messageId);
+      return '';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '删除消息异常：%{public}s', msg);
+      return `删除失败：${msg}`;
+    }
+  }
+
+  // 删除全部消息（服务端 API）：DELETE /{device_key}/message
+  async deleteAllMessages(context: common.Context | null = null): Promise<string> {
+    const ctx: common.Context | null = resolveContext(context);
+    const deviceKey: string | null = await DeviceRegisterService.getInstance().ensureRegistered(ctx);
+    if (!deviceKey || deviceKey.length === 0) {
+      return '设备未注册';
+    }
+    const clientToken: string = await this.getEffectiveClientToken(ctx);
+    if (!clientToken || clientToken.length === 0) {
+      return '未配置客户端 Token';
+    }
+    await ServerManager.getInstance().ensureLoaded();
+    const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
+    const headers: Record<string, string> = { 'X-Gotify-Key': clientToken };
+    hilog.info(DOMAIN, TAG, '删除全部消息：DELETE %{public}s', fullURL);
+    try {
+      const resp = await HttpUtil.delete<Object>(fullURL, headers);
+      if (resp.code === 401) {
+        return '客户端 Token 无效';
+      }
+      if (resp.code < 200 || resp.code >= 300) {
+        return `清空失败（HTTP ${resp.code}）`;
+      }
+      hilog.info(DOMAIN, TAG, '全部消息清空成功');
+      return '';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '清空消息异常：%{public}s', msg);
+      return `清空失败：${msg}`;
+    }
+  }
 }

@@ -62,6 +62,14 @@ export class HttpUtil {
     return HttpUtil.request<T>(fullURL, http.RequestMethod.GET, headers, undefined);
   }
 
+  // DELETE 请求（无 body）
+  static async delete<T extends Object>(
+    fullURL: string,
+    headers?: Record<string, string>
+  ): Promise<HttpResponse<T>> {
+    return HttpUtil.request<T>(fullURL, http.RequestMethod.DELETE, headers, undefined);
+  }
+
   private static async request<T extends Object>(
     fullURL: string,
     method: http.RequestMethod,

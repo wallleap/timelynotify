@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { UIContext, window } from '@kit.ArkUI';
+import { promptAction, UIContext, window, display } from '@kit.ArkUI';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
-import { display } from '@kit.ArkUI';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
@@ -37,6 +37,10 @@ export struct NotifyView {
   // 点击查看的消息详情（bindContentCover 全屏模态）
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
+  // 多选模式状态
+  @State isEditing: boolean = false;
+  @State selectedIds: number[] = [];
+  // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   // 状态栏高度（vp），详情模态标题栏顶部避让用
   @State statusBarHeight: number = 36;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
@@ -134,7 +138,18 @@ export struct NotifyView {
           .fillColor($r('app.color.text_primary_color'))
           .padding(4)
           .onClick(() => {
-            showToast(this.getUIContext(), '删除（待实现）');
+            if (this.isEditing) {
+              // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
+              if (this.selectedIds.length === this.messages.length) {
+                this.selectedIds = [];
+              } else if (this.selectedIds.length > 0) {
+                this.selectedIds = [];
+              } else {
+                this.exitEditMode();
+              }
+            } else {
+              this.enterEditMode();
+            }
           });
       }
       .width('100%')
@@ -161,6 +176,11 @@ export struct NotifyView {
       .onRefreshing(() => {
         this.loadMessages();
       });
+
+      // 多选模式底部操作栏
+      if (this.isEditing && this.messages.length > 0) {
+        this.editActionBar();
+      }
     }
     .width('100%')
     .height('100%')
@@ -255,6 +275,13 @@ export struct NotifyView {
         ListItem() {
           this.messageRow(m);
         }
+        .swipeAction({
+          end: {
+            builder: () => {
+              this.swipeDeleteBuilder(m);
+            }
+          }
+        });
       }, (m: NotifyMessage) => `${m.id}|${m.timestamp}`);
 
       // 触底加载指示器
@@ -296,47 +323,117 @@ export struct NotifyView {
 
   @Builder
   messageRow(m: NotifyMessage) {
-    Column({ space: 6 }) {
-      if (m.title && m.title.length > 0) {
-        Text(m.title)
-          .fontSize(15)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary_color'))
-          .width('100%')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+    Row({ space: 12 }) {
+      if (this.isEditing) {
+        Checkbox()
+          .select(this.isSelected(m.id))
+          .selectedColor($r('app.color.text_accent_color'))
+          .shape(CheckBoxShape.CIRCLE);
       }
-      if (m.subtitle && m.subtitle.length > 0) {
-        Text(m.subtitle)
-          .fontSize(13)
-          .fontColor($r('app.color.text_accent_color'))
+      Column({ space: 6 }) {
+        if (m.title && m.title.length > 0) {
+          Text(m.title)
+            .fontSize(15)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary_color'))
+            .width('100%')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis });
+        }
+        if (m.subtitle && m.subtitle.length > 0) {
+          Text(m.subtitle)
+            .fontSize(13)
+            .fontColor($r('app.color.text_accent_color'))
+            .width('100%')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis });
+        }
+        if (m.body && m.body.length > 0) {
+          Text(m.body)
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary_color'))
+            .width('100%')
+            .maxLines(4)
+            .textOverflow({ overflow: TextOverflow.Ellipsis });
+        }
+        Text(this.formatTime(m.timestamp))
+          .fontSize(11)
+          .fontColor($r('app.color.text_quinary_color'))
           .width('100%')
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+          .textAlign(TextAlign.End);
       }
-      if (m.body && m.body.length > 0) {
-        Text(m.body)
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary_color'))
-          .width('100%')
-          .maxLines(4)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
-      }
-      Text(this.formatTime(m.timestamp))
-        .fontSize(11)
-        .fontColor($r('app.color.text_quinary_color'))
-        .width('100%')
-        .textAlign(TextAlign.End);
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start);
     }
     .width('100%')
     .padding(12)
     .backgroundColor($r('app.color.card_background'))
     .borderRadius(10)
-    .alignItems(HorizontalAlign.Start)
+    .alignItems(VerticalAlign.Top)
     .onClick(() => {
-      this.selectedMessage = m;
-      this.showDetail = true;
+      if (this.isEditing) {
+        this.toggleSelect(m.id);
+      } else {
+        this.selectedMessage = m;
+        this.showDetail = true;
+      }
     });
+  }
+
+  // 左滑露出的删除按钮
+  @Builder
+  swipeDeleteBuilder(m: NotifyMessage) {
+    Row() {
+      Text('删除')
+        .fontSize(15)
+        .fontColor('#FFFFFF')
+        .padding({ left: 20, right: 20 })
+        .onClick(() => {
+          this.confirmDeleteOne(m);
+        });
+    }
+    .height('100%')
+    .backgroundColor($r('app.color.text_error_color'));
+  }
+
+  // 多选模式底部操作栏（需要加在 Refresh 外面）
+  @Builder
+  editActionBar() {
+    Row() {
+      Text('取消')
+        .fontSize(15)
+        .fontColor($r('app.color.text_tertiary_color'))
+        .onClick(() => {
+          this.exitEditMode();
+        });
+      Blank();
+      Text(this.selectedIds.length === this.messages.length ? '取消全选' : '全选')
+        .fontSize(15)
+        .fontColor($r('app.color.text_tertiary_color'))
+        .padding({ right: 16 })
+        .onClick(() => {
+          if (this.selectedIds.length === this.messages.length) {
+            this.selectedIds = [];
+          } else {
+            const all: number[] = [];
+            for (let i = 0; i < this.messages.length; i++) {
+              all.push(this.messages[i].id);
+            }
+            this.selectedIds = all;
+          }
+        });
+      Text(`删除(${this.selectedIds.length})`)
+        .fontSize(15)
+        .fontColor(this.selectedIds.length > 0 ? $r('app.color.text_error_color') : $r('app.color.text_quinary_color'))
+        .onClick(() => {
+          if (this.selectedIds.length > 0) {
+            this.confirmDeleteSelected();
+          }
+        });
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    .backgroundColor($r('app.color.index_page_top_background'));
   }
 
   // 消息详情全屏模态视图：完整展示标题/副标题/正文/时间，不截断
@@ -411,6 +508,109 @@ export struct NotifyView {
     // 灰色背景延伸到导航栏下，实现底部沉浸
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     .backgroundColor($r('app.color.index_page_body_background'));
+  }
+
+  // ====== 多选模式控制 ======
+  private enterEditMode(): void {
+    this.isEditing = true;
+    this.selectedIds = [];
+  }
+
+  private exitEditMode(): void {
+    this.isEditing = false;
+    this.selectedIds = [];
+  }
+
+  private isSelected(id: number): boolean {
+    return this.selectedIds.indexOf(id) >= 0;
+  }
+
+  private toggleSelect(id: number): void {
+    const idx: number = this.selectedIds.indexOf(id);
+    if (idx >= 0) {
+      const arr: number[] = [...this.selectedIds];
+      arr.splice(idx, 1);
+      this.selectedIds = arr;
+    } else {
+      this.selectedIds = [...this.selectedIds, id];
+    }
+  }
+
+  // 从本地列表移除（UI 即时更新，不刷新整个列表）
+  private removeFromList(ids: number[]): void {
+    const idSet: Set<number> = new Set<number>(ids);
+    const newList: NotifyMessage[] = [];
+    for (let i = 0; i < this.messages.length; i++) {
+      if (!idSet.has(this.messages[i].id)) {
+        newList.push(this.messages[i]);
+      }
+    }
+    this.messages = newList;
+    // 如果删光了，退出编辑模式
+    if (this.messages.length === 0) {
+      this.exitEditMode();
+    }
+  }
+
+  // ====== 删除确认与执行 ======
+  private confirmDeleteOne(m: NotifyMessage): void {
+    const uiCtx: UIContext = this.getUIContext();
+    uiCtx.getPromptAction().showDialog({
+      title: '确认删除',
+      message: `确定要删除这条消息吗？${m.title && m.title.length > 0 ? '\n「' + m.title + '」' : ''}`,
+      buttons: [
+        { text: '取消', color: '#666666' },
+        { text: '删除', color: '#F53F3F' },
+      ],
+    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
+      if (err || result.index !== 1) {
+        return;
+      }
+      const svc = NotifyMessageService.getInstance();
+      const errMsg: string = await svc.deleteMessage(m.id);
+      if (errMsg.length > 0) {
+        showToast(uiCtx, errMsg);
+        return;
+      }
+      this.removeFromList([m.id]);
+      this.exitEditMode();
+      showToast(uiCtx, '已删除');
+    });
+  }
+
+  private confirmDeleteSelected(): void {
+    const uiCtx: UIContext = this.getUIContext();
+    const count: number = this.selectedIds.length;
+    uiCtx.getPromptAction().showDialog({
+      title: '确认删除',
+      message: `确定要删除选中的 ${count} 条消息吗？此操作不可恢复。`,
+      buttons: [
+        { text: '取消', color: '#666666' },
+        { text: '全部删除', color: '#F53F3F' },
+      ],
+    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
+      if (err || result.index !== 1) {
+        return;
+      }
+      const ids: number[] = [...this.selectedIds];
+      // 多条逐个删（服务端无批量删除 API）；失败的 id 收集后跳过
+      const svc = NotifyMessageService.getInstance();
+      let failCount = 0;
+      for (let i = 0; i < ids.length; i++) {
+        const errMsg: string = await svc.deleteMessage(ids[i]);
+        if (errMsg.length > 0) {
+          failCount++;
+          hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', ids[i], errMsg);
+        }
+      }
+      this.removeFromList(ids);
+      this.exitEditMode();
+      if (failCount > 0) {
+        showToast(uiCtx, `删除完成，${failCount} 条失败`);
+      } else {
+        showToast(uiCtx, `已删除 ${ids.length} 条`);
+      }
+    });
   }
 
   private refresh(): void {
