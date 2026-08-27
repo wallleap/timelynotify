@@ -4,17 +4,34 @@ import { systemShare } from '@kit.ShareKit';
 import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { SOURCE_CODE_URL } from '../views/MineView';
+import { SOURCE_CODE_URL, USE_DOCS_URL } from '../views/MineView';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'SharePage';
 
-// 开源代码内嵌 WebView 页（MineView 关于板块点击进入）
+// 内嵌 WebView 页（开源代码 / 使用文档）
 @Entry
 @Component
 struct SharePage {
   private controller: webview.WebviewController = new webview.WebviewController();
   @State loadingProgress: number = 0;
+  @State pageTitle: string = '开源代码';
+  @State targetUrl: string = SOURCE_CODE_URL;
+
+  aboutToAppear() {
+    try {
+      const params = this.getUIContext().getRouter().getParams() as Record<string, string> | undefined;
+      if (params && params['url']) {
+        this.targetUrl = params['url'];
+      }
+      if (params && params['title']) {
+        this.pageTitle = params['title'];
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '读取路由参数失败：%{public}s', msg);
+    }
+  }
 
   build() {
     Column() {
@@ -30,7 +47,7 @@ struct SharePage {
             this.handleBack();
           });
 
-        Text('开源代码')
+        Text(this.pageTitle)
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary_color'))
@@ -61,7 +78,7 @@ struct SharePage {
         .opacity(this.loadingProgress < 100 ? 1 : 0);
 
       // WebView 内容区
-      Web({ src: SOURCE_CODE_URL, controller: this.controller })
+      Web({ src: this.targetUrl, controller: this.controller })
         .width('100%')
         .layoutWeight(1)
         .javaScriptAccess(true)
@@ -99,9 +116,9 @@ struct SharePage {
     try {
       const shareData: systemShare.SharedData = new systemShare.SharedData({
         utd: utd.UniformDataType.HYPERLINK,
-        content: SOURCE_CODE_URL,
-        title: 'TimelyNotify 开源代码',
-        description: 'https://github.com/wallleap/timelynotify'
+        content: this.targetUrl,
+        title: this.pageTitle,
+        description: this.targetUrl
       });
       const controller: systemShare.ShareController = new systemShare.ShareController(shareData);
       const context: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;

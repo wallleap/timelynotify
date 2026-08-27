@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
-import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
-import { bundleManager, common } from '@kit.AbilityKit';
+import { BusinessError, pasteboard, deviceInfo } from '@kit.BasicServicesKit';
+import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
@@ -18,6 +18,9 @@ const FALLBACK_VERSION_CODE: number = 1000000;
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
 export const SOURCE_CODE_URL: string = 'https://github.com/wallleap/timelynotify';
+export const USE_DOCS_URL: string = 'https://docs.timelynotify.oicode.cn';
+export const PRIVACY_URL: string = 'https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2026233837759005504';
+export const FEEDBACK_EMAIL: string = 'vonnelu163.com';
 
 function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
   try {
@@ -331,6 +334,69 @@ export struct MineView {
               .onClick(() => {
                 this.openSourceLink();
               });
+
+              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+              // 使用文档行（进入内嵌 WebView）
+              Row() {
+                Text('使用文档')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary_color'))
+                  .layoutWeight(1);
+                Image($r('app.media.arrow_right'))
+                  .width(24)
+                  .height(24)
+                  .objectFit(ImageFit.Contain)
+                  .fillColor($r('app.color.text_quinary_color'));
+              }
+              .width('100%')
+              .padding(16)
+              .onClick(() => {
+                this.openDocs();
+              });
+
+              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+              // 隐私协议行
+              Row() {
+                Text('隐私协议')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary_color'))
+                  .layoutWeight(1);
+                Image($r('app.media.arrow_right'))
+                  .width(24)
+                  .height(24)
+                  .objectFit(ImageFit.Contain)
+                  .fillColor($r('app.color.text_quinary_color'));
+              }
+              .width('100%')
+              .padding(16)
+              .onClick(() => {
+                this.openPrivacy();
+              });
+
+              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+              // 反馈问题行（发送邮件）
+              Row() {
+                Text('反馈问题')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary_color'))
+                  .layoutWeight(1);
+                Image($r('app.media.arrow_right'))
+                  .width(24)
+                  .height(24)
+                  .objectFit(ImageFit.Contain)
+                  .fillColor($r('app.color.text_quinary_color'));
+              }
+              .width('100%')
+              .padding(16)
+              .onClick(() => {
+                this.sendFeedback();
+              });
             }
             .width('100%')
             .backgroundColor($r('app.color.card_background'))
@@ -561,11 +627,96 @@ export struct MineView {
   // 点击开源代码行：进入内嵌 WebView 页面
   private async openSourceLink(): Promise<void> {
     try {
-      await this.getUIContext().getRouter().pushUrl({ url: 'pages/SharePage' });
+      await this.getUIContext().getRouter().pushUrl({
+        url: 'pages/SharePage',
+        params: { url: SOURCE_CODE_URL, title: '开源代码' }
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '跳转 SharePage 失败：%{public}s', msg);
       showToast(this.getUIContext(), '无法打开页面');
+    }
+  }
+
+  // 点击使用文档行：进入内嵌 WebView 页面
+  private async openDocs(): Promise<void> {
+    try {
+      await this.getUIContext().getRouter().pushUrl({
+        url: 'pages/SharePage',
+        params: { url: USE_DOCS_URL, title: '使用文档' }
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '跳转 SharePage 失败：%{public}s', msg);
+      showToast(this.getUIContext(), '无法打开页面');
+    }
+  }
+
+  // 点击隐私协议行：进入内嵌 WebView 页面
+  private async openPrivacy(): Promise<void> {
+    try {
+      await this.getUIContext().getRouter().pushUrl({
+        url: 'pages/SharePage',
+        params: { url: PRIVACY_URL, title: '隐私协议' }
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '跳转 SharePage 失败：%{public}s', msg);
+      showToast(this.getUIContext(), '无法打开页面');
+    }
+  }
+
+  // 点击反馈问题行：通过隐式 Want 拉起邮件应用，自动附带设备信息
+  private sendFeedback(): void {
+    try {
+      const appVersion: string = `TimelyNotify ${this.versionNameDisplay} (${this.versionCodeDisplay})`;
+      let model: string = '';
+      let osVer: string = '';
+      try {
+        model = deviceInfo.productModel;
+        osVer = deviceInfo.osFullName;
+      } catch (_e) {
+        // 设备信息读取失败时留空，不阻断发邮件
+      }
+      const body: string =
+        '请在此描述你遇到的问题或建议：\n\n' +
+        '---------------- 设备信息 ----------------\n' +
+        `应用版本：${appVersion}\n` +
+        `设备型号：${model}\n` +
+        `系统版本：${osVer}\n` +
+        `反馈时间：${new Date().toLocaleString()}\n`;
+      const subject: string = `TimelyNotify 反馈 - ${model}`;
+      const uri: string = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      const want: Want = {
+        action: 'ohos.want.action.sendData',
+        entities: ['entity.system.email'],
+        uri: uri
+      };
+      const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      ctx.startAbility(want).then(() => {
+        hilog.info(DOMAIN, TAG, '邮件应用拉起成功');
+      }).catch((err: BusinessError) => {
+        hilog.warn(DOMAIN, TAG, '邮件应用拉起失败：code=%{public}d msg=%{public}s，回退为复制邮箱', err.code, err.message);
+        this.copyFeedbackEmail();
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'sendFeedback 异常：%{public}s，回退为复制邮箱', msg);
+      this.copyFeedbackEmail();
+    }
+  }
+
+  // 无可用邮件应用时，复制邮箱地址到剪贴板作为兜底
+  private copyFeedbackEmail(): void {
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, FEEDBACK_EMAIL);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      sys.setData(data);
+      showToast(this.getUIContext(), `已复制邮箱：${FEEDBACK_EMAIL}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '邮箱复制失败：%{public}s', msg);
+      showToast(this.getUIContext(), `请发送邮件至：${FEEDBACK_EMAIL}`);
     }
   }
 }
