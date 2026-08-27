@@ -9,7 +9,7 @@
 | **项目名称**   | TimelyNotify（及时通知）                   |
 | **包名**     | `cn.oicode.timelynotify`             |
 | **技术栈**    | ArkTS + ArkUI（Stage 模型）              |
-| **SDK 版本** | `targetSdkVersion 6.0.2(22)`（API 22） |
+| **SDK 版本** | `targetSdkVersion 6.1.0(23)`（API 23） |
 | **构建系统**   | Hvigor                               |
 | **推送服务**   | 华为 AGC Push Kit v3                   |
 | **外部依赖**   | 无（零第三方 OHPM 依赖）                      |
@@ -268,6 +268,8 @@ hvigorw assembleHap
 7. **零外部依赖**：项目当前无外部 OHPM 依赖，引入新依赖前需确认必要性
 8. **网络安全**：局域网 HTTP 请求需确认 `network_security_config.json` 中已允许目标域名/IP
 9. **写代码前先询问**：有不清楚的地方不要先写代码，先引导询问，获得明确答复再开始
+10. **代码注释**：所有新增代码必须包含必要的注释，包括函数、类、变量等
+11. **先查找文档并输出链接，用户确认后再写代码**：在写代码前，先查找相关文档/案例，确认无误后再开始写代码
 
 ---
 
