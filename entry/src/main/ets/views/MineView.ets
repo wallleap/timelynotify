@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
-import { common } from '@kit.AbilityKit';
+import { bundleManager, common } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
@@ -10,6 +10,10 @@ import { ClientTokenDialog } from '../components/ClientTokenDialog';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
+
+// 版本号兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常
+const FALLBACK_VERSION_NAME: string = '1.0.0';
+const FALLBACK_VERSION_CODE: number = 1000000;
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
@@ -37,6 +41,9 @@ export struct MineView {
   @State deviceTokenDisplay: string = '';
   // 通知授权开关状态（系统级，应用无法直接关闭，只能引导用户去系统设置）
   @State notifyEnabled: boolean = false;
+  // 版本号展示（读取自 BundleInfo；异常时使用兜底常量）
+  @State versionNameDisplay: string = FALLBACK_VERSION_NAME;
+  @State versionCodeDisplay: number = FALLBACK_VERSION_CODE;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
   private tokenDialogController: CustomDialogController = new CustomDialogController({
@@ -56,6 +63,7 @@ export struct MineView {
     this.refreshClientToken();
     this.refreshDeviceToken();
     this.refreshNotifyEnabled();
+    this.refreshAppVersion();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.refreshSummary();
     };
@@ -82,175 +90,238 @@ export struct MineView {
       .padding(16)
       .backgroundColor($r('app.color.index_page_top_background'));
 
-      Column({ space: 12 }) {
-        // 通知设置卡片
-        Column({ space: 0 }) {
-          // 开启应用订阅通知（开关）
-          Row() {
-            Column({ space: 2 }) {
-              Text('开启应用订阅通知')
-                .fontSize(16)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#111111');
-              Text(this.notifyEnabled ? '已开启' : '已关闭')
-                .fontSize(12)
-                .fontColor(this.notifyEnabled ? '#FF6F22' : '#999999');
-            }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1);
-
-            Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
-              .selectedColor('#FF6F22')
-              .onChange((isOn: boolean) => {
-                this.onNotifyToggle(isOn);
-              });
-          }
-          .width('100%')
-          .padding(16);
-
-          Divider().color('#F0F0F0').strokeWidth(1).margin({ left: 16, right: 16 });
-
-          // 通知权限设置（点击拉起系统通知管理）
-          Row() {
-            Text('通知权限设置')
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#111111')
+      Scroll() {
+        Column({ space: 16 }) {
+          // 通知设置卡片
+          Column({ space: 0 }) {
+            // 开启应用订阅通知（开关）
+            Row() {
+              Column({ space: 2 }) {
+                Text('开启应用订阅通知')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor('#111111');
+                Text(this.notifyEnabled ? '已开启' : '已关闭')
+                  .fontSize(12)
+                  .fontColor(this.notifyEnabled ? '#FF6F22' : '#999999');
+              }
+              .alignItems(HorizontalAlign.Start)
               .layoutWeight(1);
 
-            Image($r('app.media.arrow_right'))
-              .width(24)
-              .height(24)
-              .objectFit(ImageFit.Contain)
-              .fillColor('#999999');
+              Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
+                .selectedColor('#FF6F22')
+                .onChange((isOn: boolean) => {
+                  this.onNotifyToggle(isOn);
+                });
+            }
+            .width('100%')
+            .padding(16);
+
+            Divider().color('#F0F0F0').strokeWidth(1).margin({ left: 16, right: 16 });
+
+            // 通知权限设置（点击拉起系统通知管理）
+            Row() {
+              Text('通知权限设置')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#111111')
+                .layoutWeight(1);
+
+              Image($r('app.media.arrow_right'))
+                .width(24)
+                .height(24)
+                .objectFit(ImageFit.Contain)
+                .fillColor('#999999');
+            }
+            .width('100%')
+            .padding(16)
+            .onClick(() => {
+              this.openNotifySettings();
+            });
           }
           .width('100%')
-          .padding(16)
-          .onClick(() => {
-            this.openNotifySettings();
-          });
-        }
-        .width('100%')
-        .backgroundColor('#FFFFFF')
-        .borderRadius(12);
+          .backgroundColor('#FFFFFF')
+          .borderRadius(12);
 
-        // 服务器入口卡片
-        Row({ space: 14 }) {
-          Column({ space: 4 }) {
-            Row() {
-              Text('服务器')
-                .fontSize(17)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#111111');
-              Blank();
-              Text(`共 ${this.serverCount} 个`)
-                .fontSize(12)
-                .fontColor('#999999');
-            }
-            .width('100%');
-
-            Text(this.serverName)
-              .fontSize(14)
-              .fontColor('#666666')
-              .width('100%')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-
-            Text(this.hostDisplay)
+          Column({ space: 8 }) {
+            Text('配置')
               .fontSize(12)
-              .fontColor('#FF6F22')
+              .fontColor('#999999')
               .width('100%')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-          }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1);
+              .padding({ left: 12 });
 
-          Image($r('app.media.arrow_right'))
-            .width(32)
-            .height(32)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_primary_color'))
-            .padding(4)
-        }
-        .width('100%')
-        .padding(16)
-        .backgroundColor('#FFFFFF')
-        .borderRadius(12)
-        .onClick(() => {
-          this.handleCardClicked();
-        });
+            Column({ space: 12 }) {
+              // 服务器入口卡片
+              Row({ space: 14 }) {
+                Column({ space: 4 }) {
+                  Row() {
+                    Text('服务器')
+                      .fontSize(17)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor('#111111');
+                  }
+                  .width('100%');
 
-        // 客户端 Token 卡片
-        Row({ space: 14 }) {
-          Column({ space: 4 }) {
-            Text('客户端 Token')
-              .fontSize(17)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#111111')
-              .width('100%');
+                  Row() {
+                    Text(this.serverName)
+                      .fontSize(14)
+                      .fontColor('#666666')
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis });
+                    Text(' (')
+                      .fontSize(14)
+                      .fontColor('#666666')
+                      .maxLines(1)
+                    Text(this.hostDisplay)
+                      .fontSize(12)
+                      .fontColor('#FF6F22')
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis });
+                    Text(')')
+                      .fontSize(14)
+                      .fontColor('#666666')
+                      .maxLines(1)
+                  }.width('100%')
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1);
 
-            Text(this.buildClientTokenDisplay())
-              .fontSize(14)
-              .fontColor(this.isDefaultClientToken ? '#FF6F22' : '#666666')
+                Row() {
+                  Text(`共 ${this.serverCount} 个`)
+                    .fontSize(12)
+                    .fontColor('#999999');
+                  Image($r('app.media.arrow_right'))
+                    .width(32)
+                    .height(32)
+                    .objectFit(ImageFit.Contain)
+                    .fillColor($r('app.color.text_primary_color'))
+                    .padding(4)
+                }
+              }
               .width('100%')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
+              .padding(16)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(12)
+              .onClick(() => {
+                this.handleCardClicked();
+              });
+
+              // 客户端 Token 卡片
+              Row({ space: 14 }) {
+                Column({ space: 4 }) {
+                  Text('客户端 Token')
+                    .fontSize(17)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor('#111111')
+                    .width('100%');
+
+                  Text(this.buildClientTokenDisplay())
+                    .fontSize(14)
+                    .fontColor(this.isDefaultClientToken ? '#FF6F22' : '#666666')
+                    .width('100%')
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis });
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1);
+
+                Image($r('app.media.arrow_right'))
+                  .width(32)
+                  .height(32)
+                  .objectFit(ImageFit.Contain)
+                  .fillColor($r('app.color.text_primary_color'))
+                  .padding(4)
+              }
+              .width('100%')
+              .padding(16)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(12)
+              .onClick(() => {
+                this.openTokenDialog();
+              });
+
+              // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
+              Row({ space: 14 }) {
+                Column({ space: 4 }) {
+                  Row() {
+                    Text('推送 Token')
+                      .fontSize(17)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor('#111111');
+                    Text(' (自动生成)')
+                      .fontSize(14)
+                      .fontColor('#666666')
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis });
+                    Blank();
+                    Text('点击复制')
+                      .fontSize(12)
+                      .fontColor('#FF6F22');
+                  }
+                  .width('100%');
+
+                  Text(this.buildDeviceTokenDisplay())
+                    .fontSize(14)
+                    .fontColor(this.deviceTokenDisplay.length > 0 ? '#666666' : '#999999')
+                    .width('100%')
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis });
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1);
+              }
+              .width('100%')
+              .padding(16)
+              .backgroundColor('#FFFFFF')
+              .borderRadius(12)
+              .onClick(() => {
+                this.copyDeviceToken();
+              });
+            }.width('100%')
           }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1);
+          .width('100%');
 
-          Image($r('app.media.arrow_right'))
-            .width(32)
-            .height(32)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_primary_color'))
-            .padding(4)
-        }
-        .width('100%')
-        .padding(16)
-        .backgroundColor('#FFFFFF')
-        .borderRadius(12)
-        .onClick(() => {
-          this.openTokenDialog();
-        });
+          // 关于板块（卡片内承载后续扩展项）
+          Column({ space: 8 }) {
+            Text('关于')
+              .fontSize(12)
+              .fontColor('#999999')
+              .width('100%')
+              .padding({ left: 12 });
 
-        // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
-        Row({ space: 14 }) {
-          Column({ space: 4 }) {
-            Row() {
-              Text('推送 Token')
-                .fontSize(17)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#111111');
-              Blank();
-              Text('点击复制')
-                .fontSize(12)
-                .fontColor('#FF6F22');
+            Column({ space: 0 }) {
+              // 版本号行（整行点击复制版本信息）
+              Row() {
+                Text('当前版本')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor('#111111')
+                  .layoutWeight(1);
+                Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
+                  .fontSize(14)
+                  .fontColor('#666666');
+              }
+              .width('100%')
+              .padding(16)
+              .onClick(() => {
+                this.copyVersionInfo();
+              });
+
+              // 后续关于类条目（如隐私政策、用户协议、检查更新等）在此追加，中间用 Divider 分隔
             }
-            .width('100%');
-
-            Text(this.buildDeviceTokenDisplay())
-              .fontSize(14)
-              .fontColor(this.deviceTokenDisplay.length > 0 ? '#666666' : '#999999')
-              .width('100%')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
+            .width('100%')
+            .backgroundColor('#FFFFFF')
+            .borderRadius(12);
           }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1);
+          .width('100%');
         }
         .width('100%')
-        .padding(16)
-        .backgroundColor('#FFFFFF')
-        .borderRadius(12)
-        .onClick(() => {
-          this.copyDeviceToken();
-        });
+        .padding(16);
       }
+      .align(Alignment.TopStart)
       .layoutWeight(1)
-      .width('100%')
-      .padding(16);
+      .scrollBar(BarState.Off)
+      .width('100%');
     }
     .width('100%')
     .height('100%')
@@ -424,6 +495,42 @@ export struct MineView {
       const e: BusinessError = err as BusinessError;
       hilog.warn(DOMAIN, TAG, 'openNotificationSettings 失败：code=%{public}d msg=%{public}s', e.code, e.message);
       showToast(this.getUIContext(), '无法打开通知设置');
+    }
+  }
+
+  // 读取自身应用版本号（Stage 模式官方接口，无需权限）
+  private async refreshAppVersion(): Promise<void> {
+    try {
+      const flags: number = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION;
+      const info: bundleManager.BundleInfo = await bundleManager.getBundleInfoForSelf(flags);
+      // versionName 可能因 module.json5 未声明 version.name 而空串，非空才覆盖兜底
+      if (info.versionName && info.versionName.length > 0) {
+        this.versionNameDisplay = info.versionName;
+      }
+      if (info.versionCode > 0) {
+        this.versionCodeDisplay = info.versionCode;
+      }
+      hilog.info(DOMAIN, TAG, '版本号读取：name=%{public}s code=%{public}d',
+        this.versionNameDisplay, this.versionCodeDisplay);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'getBundleInfoForSelf 失败：%{public}s，使用兜底版本', msg);
+      // 失败时保留构造时设置的兜底常量，不做 UI 提示
+    }
+  }
+
+  // 点击关于板块：复制完整版本信息到剪贴板
+  private async copyVersionInfo(): Promise<void> {
+    const text: string = `TimelyNotify ${this.versionNameDisplay} (${this.versionCodeDisplay})`;
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      await sys.setData(data);
+      showToast(this.getUIContext(), `已复制版本：${this.versionNameDisplay}`, 1200);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '版本信息复制失败：%{public}s', msg);
+      showToast(this.getUIContext(), text, 1500);
     }
   }
 }
