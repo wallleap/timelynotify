@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
-import { BusinessError, pasteboard, deviceInfo } from '@kit.BasicServicesKit';
+import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit';
 import { bundleManager, common, Want } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { ServerEntry } from '../model/ServerEntry';
@@ -17,9 +17,14 @@ const FALLBACK_VERSION_CODE: number = 1000000;
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
+
 export const SOURCE_CODE_URL: string = 'https://github.com/wallleap/timelynotify';
+
 export const USE_DOCS_URL: string = 'https://docs.timelynotify.oicode.cn';
-export const PRIVACY_URL: string = 'https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2026233837759005504';
+
+export const PRIVACY_URL: string =
+  'https://agreement-drcn.hispace.dbankcloud.cn/index.html?lang=zh&agreementId=2026233837759005504';
+
 export const FEEDBACK_EMAIL: string = 'vonnelu163.com';
 
 function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
@@ -680,13 +685,14 @@ export struct MineView {
       }
       const body: string =
         '请在此描述你遇到的问题或建议：\n\n' +
-        '---------------- 设备信息 ----------------\n' +
-        `应用版本：${appVersion}\n` +
-        `设备型号：${model}\n` +
-        `系统版本：${osVer}\n` +
-        `反馈时间：${new Date().toLocaleString()}\n`;
+          '---------------- 设备信息 ----------------\n' +
+          `应用版本：${appVersion}\n` +
+          `设备型号：${model}\n` +
+          `系统版本：${osVer}\n` +
+          `反馈时间：${new Date().toLocaleString()}\n`;
       const subject: string = `TimelyNotify 反馈 - ${model}`;
-      const uri: string = `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      const uri: string =
+        `mailto:${FEEDBACK_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
       const want: Want = {
         action: 'ohos.want.action.sendData',
         entities: ['entity.system.email'],
@@ -696,7 +702,8 @@ export struct MineView {
       ctx.startAbility(want).then(() => {
         hilog.info(DOMAIN, TAG, '邮件应用拉起成功');
       }).catch((err: BusinessError) => {
-        hilog.warn(DOMAIN, TAG, '邮件应用拉起失败：code=%{public}d msg=%{public}s，回退为复制邮箱', err.code, err.message);
+        hilog.warn(DOMAIN, TAG, '邮件应用拉起失败：code=%{public}d msg=%{public}s，回退为复制邮箱', err.code,
+          err.message);
         this.copyFeedbackEmail();
       });
     } catch (err) {
@@ -707,11 +714,11 @@ export struct MineView {
   }
 
   // 无可用邮件应用时，复制邮箱地址到剪贴板作为兜底
-  private copyFeedbackEmail(): void {
+  private async copyFeedbackEmail(): Promise<void> {
     try {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, FEEDBACK_EMAIL);
       const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
-      sys.setData(data);
+      await sys.setData(data);
       showToast(this.getUIContext(), `已复制邮箱：${FEEDBACK_EMAIL}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -122,10 +122,7 @@ struct SharePage {
       });
       const controller: systemShare.ShareController = new systemShare.ShareController(shareData);
       const context: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      controller.show(context, {
-        previewMode: systemShare.SharePreviewMode.DEFAULT,
-        selectionMode: systemShare.SelectionMode.SINGLE
-      }).then(() => {
+      controller.show(context, {} as systemShare.ShareControllerOptions).then(() => {
         hilog.info(DOMAIN, TAG, '分享面板展示成功');
       }).catch((err: BusinessError) => {
         hilog.warn(DOMAIN, TAG, '分享面板展示失败：code=%{public}d msg=%{public}s', err.code, err.message);
