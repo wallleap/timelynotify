@@ -13,6 +13,14 @@
       "value": "及时通知"
     },
     {
+      "name": "permission_internet_reason",
+      "value": "用于与服务器建立网络连接，获取到 Push Token 之后需要发送服务器请求"
+    },
+    {
+      "name": "permission_network_reason",
+      "value": "用于检测当前网络连接状态，确保在有效网络环境下发送请求"
+    },
+    {
       "name": "index_tab_notify",
       "value": "通知"
     },

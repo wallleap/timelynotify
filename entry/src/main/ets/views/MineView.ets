@@ -204,7 +204,7 @@ export struct MineView {
                     .width(32)
                     .height(32)
                     .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.text_primary_color'))
+                    .fillColor($r('app.color.text_quinary_color'))
                     .padding(4)
                 }
               }
@@ -240,7 +240,7 @@ export struct MineView {
                   .width(32)
                   .height(32)
                   .objectFit(ImageFit.Contain)
-                  .fillColor($r('app.color.text_primary_color'))
+                  .fillColor($r('app.color.text_quinary_color'))
                   .padding(4)
               }
               .width('100%')

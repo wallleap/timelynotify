@@ -22,16 +22,18 @@
     ],
     "requestPermissions": [
       {
-        "name": "ohos.permission.INTERNET"
+        "name": "ohos.permission.INTERNET",
+        "reason": "$string:permission_internet_reason"
       },
       {
-        "name": "ohos.permission.GET_NETWORK_INFO"
+        "name": "ohos.permission.GET_NETWORK_INFO",
+        "reason": "$string:permission_network_reason"
       }
     ],
     "abilities": [
       {
         "name": "EntryAbility",
-        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "srcEntry": "./ets/abilities/EntryAbility.ets",
         "description": "$string:EntryAbility_desc",
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
@@ -67,7 +69,7 @@
     "extensionAbilities": [
       {
         "name": "EntryBackupAbility",
-        "srcEntry": "./ets/entrybackupability/EntryBackupAbility.ets",
+        "srcEntry": "./ets/abilities/EntryBackupAbility.ets",
         "type": "backup",
         "exported": false,
         "metadata": [
@@ -75,7 +77,7 @@
             "name": "ohos.extension.backup",
             "resource": "$profile:backup_config"
           }
-        ],
+        ]
       }
     ]
   }
