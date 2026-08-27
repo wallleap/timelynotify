@@ -2,7 +2,6 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
 import { ServerManager } from './ServerManager';
-import { DeviceRegisterService } from './DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { HttpUtil, HttpResponse } from '../utils/HttpUtil';
 import { AppContextStore } from '../common/AppContextStore';
@@ -123,7 +122,8 @@ export class NotifyMessageService {
     const result = new MessageListResult();
     // const ctx: common.Context | null = resolveContext(context);
 
-    const deviceKey: string | null = await DeviceRegisterService.getInstance().ensureRegistered(context);
+    await ServerManager.getInstance().ensureLoaded();
+    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(context);
     if (!deviceKey || deviceKey.length === 0) {
       result.errorMsg = '设备未注册';
       return result;
@@ -135,8 +135,6 @@ export class NotifyMessageService {
       return result;
     }
 
-    // 保证 ServerManager 初始化完成再拼 URL，避免读到兜底生产 URL
-    await ServerManager.getInstance().ensureLoaded();
     let fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
     const params: string[] = [];
     if (since > 0) {
@@ -229,7 +227,8 @@ export class NotifyMessageService {
       return '消息 ID 无效';
     }
     const ctx: common.Context | null = resolveContext(context);
-    const deviceKey: string | null = await DeviceRegisterService.getInstance().ensureRegistered(ctx);
+    await ServerManager.getInstance().ensureLoaded();
+    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
     if (!deviceKey || deviceKey.length === 0) {
       return '设备未注册';
     }
@@ -237,7 +236,6 @@ export class NotifyMessageService {
     if (!clientToken || clientToken.length === 0) {
       return '未配置客户端 Token';
     }
-    await ServerManager.getInstance().ensureLoaded();
     const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message/${messageId}`);
     const headers: Record<string, string> = { 'X-Gotify-Key': clientToken };
     hilog.info(DOMAIN, TAG, '删除消息：DELETE %{public}s', fullURL);
@@ -264,7 +262,8 @@ export class NotifyMessageService {
   // 删除全部消息（服务端 API）：DELETE /{device_key}/message
   async deleteAllMessages(context: common.Context | null = null): Promise<string> {
     const ctx: common.Context | null = resolveContext(context);
-    const deviceKey: string | null = await DeviceRegisterService.getInstance().ensureRegistered(ctx);
+    await ServerManager.getInstance().ensureLoaded();
+    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
     if (!deviceKey || deviceKey.length === 0) {
       return '设备未注册';
     }
@@ -272,7 +271,6 @@ export class NotifyMessageService {
     if (!clientToken || clientToken.length === 0) {
       return '未配置客户端 Token';
     }
-    await ServerManager.getInstance().ensureLoaded();
     const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
     const headers: Record<string, string> = { 'X-Gotify-Key': clientToken };
     hilog.info(DOMAIN, TAG, '删除全部消息：DELETE %{public}s', fullURL);

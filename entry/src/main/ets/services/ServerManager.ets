@@ -5,6 +5,7 @@ import { ApiConfig } from '../config/ApiConfig';
 import { AppContextStore } from '../common/AppContextStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { HttpUtil, HttpResponse } from '../utils/HttpUtil';
+import { DeviceRegisterService } from './DeviceRegisterService';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ServerMgr';
@@ -23,6 +24,7 @@ class ServerEntryJson extends Object {
   name: string = '';
   baseURL: string = '';
   isBuiltIn: boolean = false;
+  deviceKey: string = '';
 }
 
 type ServerChangeListener = (list: ServerEntry[], currentId: string) => void;
@@ -109,6 +111,9 @@ export class ServerManager {
   private static instance: ServerManager | null = null;
 
   private static readonly KEY_DELETED_BUILTIN: string = 'server_deleted_builtin';
+  // 内置 server 的 deviceKey 映射（id → key）。内置条目本身不持久化（跟随 ApiConfig 动态构造），
+  // 但 deviceKey 必须跨启动保留，否则每次冷启动都会因 per-server key 为空而重置
+  private static readonly KEY_BUILTIN_DEVICE_KEYS: string = 'server_builtin_device_keys';
 
   private servers: ServerEntry[] = [];
   private currentId: string = '';
@@ -226,6 +231,22 @@ export class ServerManager {
 
       // 2) 剩余内置 + 自定义（内置每次都用 getBuiltInServers() 动态构造，保证跟随 ApiConfig 变更）
       const builtIn: ServerEntry[] = this.getBuiltInServers();
+      // 读取内置 server 的 deviceKey 映射并回填（内置条目本身不持久化，key 单独存）
+      const builtinKeysRaw: string = await PreferencesUtil.getString(ctx, ServerManager.KEY_BUILTIN_DEVICE_KEYS, '');
+      if (builtinKeysRaw && builtinKeysRaw.length > 0) {
+        try {
+          const keyMap = JSON.parse(builtinKeysRaw) as Record<string, Object>;
+          for (let i = 0; i < builtIn.length; i++) {
+            const b: ServerEntry = builtIn[i];
+            const k: Object | undefined = keyMap[b.id];
+            if (k && typeof k === 'string' && String(k).length > 0) {
+              b.deviceKey = String(k);
+            }
+          }
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, '内置 server deviceKey 映射解析失败，忽略');
+        }
+      }
       const list: ServerEntry[] = [];
       for (let i = 0; i < builtIn.length; i++) {
         const b: ServerEntry = builtIn[i];
@@ -246,8 +267,9 @@ export class ServerManager {
               const id: string = typeof obj['id'] === 'string' ? String(obj['id']) : '';
               const name: string = typeof obj['name'] === 'string' ? String(obj['name']) : '';
               const baseURL: string = typeof obj['baseURL'] === 'string' ? String(obj['baseURL']) : '';
+              const savedDeviceKey: string = typeof obj['deviceKey'] === 'string' ? String(obj['deviceKey']) : '';
               if (id && baseURL) {
-                list.push(new ServerEntry(id, name, normalizeBaseURL(baseURL), false));
+                list.push(new ServerEntry(id, name, normalizeBaseURL(baseURL), false, savedDeviceKey));
               }
             }
           }
@@ -320,11 +342,21 @@ export class ServerManager {
         j.name = s.name;
         j.baseURL = s.baseURL;
         j.isBuiltIn = false;
+        j.deviceKey = s.deviceKey;
         customs.push(j);
       }
     }
     await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_SERVER_LIST_JSON, JSON.stringify(customs));
     await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_SERVER_CURRENT_ID, this.currentId);
+    // 持久化内置 server 的 deviceKey 映射（仅非空项）
+    const builtinKeys: Record<string, string> = {};
+    for (let i = 0; i < this.servers.length; i++) {
+      const s: ServerEntry = this.servers[i];
+      if (s.isBuiltIn && s.deviceKey && s.deviceKey.length > 0) {
+        builtinKeys[s.id] = s.deviceKey;
+      }
+    }
+    await PreferencesUtil.putString(ctx, ServerManager.KEY_BUILTIN_DEVICE_KEYS, JSON.stringify(builtinKeys));
     // 持久化已删除的内置 id 列表
     await PreferencesUtil.putString(ctx, ServerManager.KEY_DELETED_BUILTIN, JSON.stringify(this.deletedBuiltInIds));
   }
@@ -373,6 +405,40 @@ export class ServerManager {
     return builtIn.length > 0 ? builtIn[0].baseURL : ApiConfig.PROD_BASE_URL;
   }
 
+  // 获取当前 server 应使用的 device_key：只认 per-server 保存的 deviceKey。
+  // 若 per-server 为空，说明 syncKeyForServer 还没跑（如刚切 server 或首次使用），
+  // 则内联触发一次 syncKeyForServer 拿到 key 再返回。
+  async getCurrentDeviceKey(context: common.Context | null = null): Promise<string> {
+    await this.ensureLoaded();
+    const cur: ServerEntry | null = this.getCurrentServer();
+    if (!cur) {
+      hilog.warn(DOMAIN, TAG, 'getCurrentDeviceKey：无当前 server');
+      return '';
+    }
+    if (cur.deviceKey && cur.deviceKey.length > 0) {
+      hilog.info(DOMAIN, TAG, 'getCurrentDeviceKey：使用 per-server key');
+      return cur.deviceKey;
+    }
+    // per-server 为空：内联触发 syncKeyForServer（验证/还原/重置）
+    hilog.info(DOMAIN, TAG, 'getCurrentDeviceKey：per-server key 为空，内联 syncKeyForServer');
+    const baseURL: string = this.getCurrentBaseURL();
+    const key: string | null = await DeviceRegisterService.getInstance().syncKeyForServer(
+      context, cur.id, baseURL, cur.deviceKey
+    );
+    return key ?? '';
+  }
+
+  // 更新指定 server 的 device_key 并持久化。context 可传 null
+  async updateServerDeviceKey(context: common.Context | null, serverId: string, deviceKey: string): Promise<void> {
+    const ctx: common.Context | null = resolveContext(context);
+    const entry: ServerEntry | null = this.findById(serverId);
+    if (entry) {
+      entry.deviceKey = deviceKey;
+      await this.persist(ctx);
+      hilog.info(DOMAIN, TAG, '已更新 device_key：serverId=%{public}s key=%{public}s', serverId, deviceKey);
+    }
+  }
+
   // 给页面显示用：host[:port] 短名
   getCurrentHostDisplay(): string {
     const url: string = this.getCurrentBaseURL();
@@ -416,7 +482,23 @@ export class ServerManager {
     await this.persist(ctx);
     hilog.info(DOMAIN, TAG, '已切换服务器：id=%{public}s url=%{public}s', server.id, server.baseURL);
     this.emitChange();
+    // 切换后异步验证/还原 device_key，不阻塞返回
+    this.syncKeyForServerAsync(ctx, id);
     return true;
+  }
+
+  private syncKeyForServerAsync(ctx: common.Context | null, serverId: string): void {
+    const server: ServerEntry | null = this.findById(serverId);
+    if (!server) {
+      return;
+    }
+    DeviceRegisterService.getInstance().syncKeyForServer(
+      ctx, serverId, this.getCurrentBaseURL(), server.deviceKey
+    ).then((key: string | null) => {
+      hilog.info(DOMAIN, TAG, 'switchTo syncKeyForServer 完成：key=%{public}s', key ?? 'null');
+    }).catch((err: Error) => {
+      hilog.warn(DOMAIN, TAG, 'switchTo syncKeyForServer 异常：%{public}s', err.message);
+    });
   }
 
   // 验证 URL 并 ping 服务器。返回空字符串 = OK；返回非空 = 错误信息

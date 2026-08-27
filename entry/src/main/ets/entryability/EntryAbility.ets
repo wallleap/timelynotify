@@ -84,16 +84,41 @@ export default class EntryAbility extends UIAbility {
           return '';
         }
       });
+      // 启动时检测 Push token 是否变更；变更则重绑所有已注册 server
+      const tokenChanged: boolean = await service.refreshTokenIfNeeded(this.context);
+      if (tokenChanged) {
+        hilog.info(DOMAIN, TAG, 'device_token 已更新并触发各 server 重绑');
+      }
       const deviceKey = await service.ensureRegistered(this.context);
       if (deviceKey) {
         hilog.info(DOMAIN, TAG, '无感注册完成，device_key=%{public}s', deviceKey);
       } else {
         hilog.warn(DOMAIN, TAG, '无感注册未返回 device_key，后续启动会重试');
       }
+      // 启动后异步验证/还原当前 server 的 per-server device_key
+      this.syncCurrentServerKey();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.error(DOMAIN, TAG, '无感注册异常：%{public}s', msg);
     }
+  }
+
+  private async syncCurrentServerKey(): Promise<void> {
+    const mgr: ServerManager = ServerManager.getInstance();
+    // 必须先等加载完成，否则冷启动时 servers 为空，getCurrentServer 返回 null 会跳过 sync
+    await mgr.ensureLoaded();
+    const cur = mgr.getCurrentServer();
+    if (!cur) {
+      return;
+    }
+    const baseURL: string = mgr.getCurrentBaseURL();
+    DeviceRegisterService.getInstance().syncKeyForServer(
+      this.context, cur.id, baseURL, cur.deviceKey
+    ).then((key: string | null) => {
+      hilog.info(DOMAIN, TAG, '启动 syncKeyForServer 完成：key=%{public}s', key ?? 'null');
+    }).catch((err: Error) => {
+      hilog.warn(DOMAIN, TAG, '启动 syncKeyForServer 异常：%{public}s', err.message);
+    });
   }
 
   // 启动时请求通知权限：首次安装会弹系统授权窗，之后不再弹

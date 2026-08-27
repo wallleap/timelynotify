@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ApiConfig } from '../config/ApiConfig';
 import { ServerManager } from './ServerManager';
+import { ServerEntry } from '../model/ServerEntry';
 import { HttpUtil, HttpResponse } from '../utils/HttpUtil';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { AppContextStore } from '../common/AppContextStore';
@@ -202,9 +203,19 @@ export class DeviceRegisterService {
       }
 
       if (newDeviceKey && newDeviceKey.length > 0) {
-        const ok: boolean = await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_DEVICE_KEY, newDeviceKey);
-        if (!ok) {
-          hilog.warn(DOMAIN, TAG, '注册成功但 device_key 写入 Preferences 失败，device_key=%{public}s', newDeviceKey);
+        // 1) 写全局缓存（ensureRegistered 的 cache-hit 仍需，且 getCurrentDeviceKey 会兜底回退）
+        await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_DEVICE_KEY, newDeviceKey);
+        // 2) 同步写 per-server（当前 server），这才是真正的权威数据源
+        try {
+          const mgr = ServerManager.getInstance();
+          await mgr.ensureLoaded();
+          const cur = mgr.getCurrentServer();
+          if (cur) {
+            await mgr.updateServerDeviceKey(ctx, cur.id, newDeviceKey);
+            hilog.info(DOMAIN, TAG, 'doRegister：已同步 per-server deviceKey');
+          }
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, 'doRegister：同步 per-server deviceKey 异常：%{public}s', String(err));
         }
         return newDeviceKey;
       } else {
@@ -217,6 +228,180 @@ export class DeviceRegisterService {
       } else {
         hilog.error(DOMAIN, TAG, '注册异常：%{public}s', String(err));
       }
+      return null;
+    }
+  }
+
+  // 验证指定 device_key 在给定 baseURL 的服务器上是否有效
+  private async verifyKey(baseURL: string, deviceKey: string): Promise<boolean> {
+    if (!deviceKey || deviceKey.length === 0) {
+      return false;
+    }
+    const verifyURL: string = `${baseURL}/register/${deviceKey}`;
+    try {
+      const resp: HttpResponse<RegisterEnvelope> = await HttpUtil.get<RegisterEnvelope>(verifyURL);
+      // HTTP 200 且业务 code 200 → key 存在
+      if (resp.code === 200 && resp.result && resp.result.code === 200) {
+        hilog.info(DOMAIN, TAG, 'device_key 验证通过：%{public}s', deviceKey);
+        return true;
+      }
+      hilog.warn(
+        DOMAIN, TAG,
+        'device_key 验证失败：httpCode=%{public}d bizCode=%{public}d',
+        resp.code, resp.result ? resp.result.code : -1
+      );
+      return false;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'device_key 验证异常：%{public}s', String(err));
+      return false;
+    }
+  }
+
+  // 启动时检测 Push token 是否变更：
+  // 每次启动都调用 tokenProvider 获取最新 token，与缓存比对。
+  // 若变更：更新缓存，并对所有已保存 deviceKey 的 server 逐个"还原"注册，
+  // 把新 token 与已有 device_key 重新绑定（否则推送会静默失效）。
+  // 返回 true 表示 token 发生过变更并已触发重绑。
+  async refreshTokenIfNeeded(context: common.Context | null = null): Promise<boolean> {
+    const ctx: common.Context | null = this.resolveContext(context);
+    if (!ctx) {
+      return false;
+    }
+    let freshToken: string = '';
+    try {
+      freshToken = await this.tokenProvider();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'refreshTokenIfNeeded：获取最新 token 异常：%{public}s', String(err));
+      return false;
+    }
+    if (!freshToken || freshToken.length === 0) {
+      hilog.warn(DOMAIN, TAG, 'refreshTokenIfNeeded：最新 token 为空，跳过检测');
+      return false;
+    }
+    const cached: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_DEVICE_TOKEN, '');
+    if (freshToken === cached) {
+      return false;
+    }
+    hilog.info(DOMAIN, TAG, 'refreshTokenIfNeeded：检测到 device_token 变更，更新缓存并重绑各 server');
+    await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_DEVICE_TOKEN, freshToken);
+
+    // 对所有已保存 deviceKey 的 server 逐个还原（新 token + 旧 device_key）
+    try {
+      await ServerManager.getInstance().ensureLoaded();
+      const servers: ServerEntry[] = ServerManager.getInstance().getList();
+      for (let i = 0; i < servers.length; i++) {
+        const s: ServerEntry = servers[i];
+        if (!s.deviceKey || s.deviceKey.length === 0) {
+          continue;
+        }
+        try {
+          const k: string | null = await this.doRegisterWithBaseURL(s.baseURL, s.deviceKey);
+          hilog.info(
+            DOMAIN, TAG,
+            'refreshTokenIfNeeded：重绑 server=%{public}s 结果=%{public}s',
+            s.baseURL, k ? '成功' : '失败'
+          );
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, 'refreshTokenIfNeeded：重绑 server=%{public}s 异常：%{public}s', s.baseURL, String(err));
+        }
+      }
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'refreshTokenIfNeeded：重绑流程异常：%{public}s', String(err));
+    }
+    return true;
+  }
+
+  // 同步指定 server 的 device_key：
+  // 1) 有 per-server 保存的 deviceKey → 先验证，有效则用；无效则还原（三参数）
+  // 2) 没有保存的 deviceKey → 重新注册（不传 device_key）
+  // 最终将获得的 deviceKey 回写到 ServerManager 持久化
+  async syncKeyForServer(context: common.Context | null, serverId: string, baseURL: string, savedDeviceKey: string): Promise<string | null> {
+    const ctx: common.Context | null = this.resolveContext(context);
+    let finalKey: string | null = null;
+
+    if (savedDeviceKey && savedDeviceKey.length > 0) {
+      // 1) 先验证保存的 key 是否有效
+      const valid: boolean = await this.verifyKey(baseURL, savedDeviceKey);
+      if (valid) {
+        finalKey = savedDeviceKey;
+        hilog.info(DOMAIN, TAG, 'syncKeyForServer：保存的 key 有效，直接使用，无需调接口');
+      } else {
+        // 2) 无效 → 还原（三参数：device_token + platform + device_key）
+        hilog.info(DOMAIN, TAG, 'syncKeyForServer：保存的 key 无效，尝试还原');
+        finalKey = await this.doRegisterWithBaseURL(baseURL, savedDeviceKey);
+        if (!finalKey) {
+          hilog.warn(DOMAIN, TAG, 'syncKeyForServer：还原失败，保留原 key 不再重置');
+        }
+      }
+    } else {
+      // 3) 没有保存的 key → 重置（不传 device_key，让服务端生成新的）
+      hilog.info(DOMAIN, TAG, 'syncKeyForServer：该 server 无保存 key，重置生成新的');
+      finalKey = await this.doRegisterWithBaseURL(baseURL, undefined);
+    }
+
+    // 无论哪个分支拿到 key，都回写到 ServerManager 持久化
+    if (finalKey && finalKey.length > 0) {
+      try {
+        await ServerManager.getInstance().updateServerDeviceKey(ctx, serverId, finalKey);
+      } catch (err) {
+        hilog.warn(DOMAIN, TAG, 'syncKeyForServer：回写 per-server deviceKey 失败：%{public}s', String(err));
+      }
+      // 同步写全局缓存（向后兼容 getCurrentDeviceKey 的全局兜底）
+      if (ctx) {
+        await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_DEVICE_KEY, finalKey);
+      }
+    }
+    return finalKey;
+  }
+
+  // 带指定 baseURL 的注册（原 doRegister 硬编码用 ServerManager 全局 URL，这里直接用入参）
+  private async doRegisterWithBaseURL(baseURL: string, deviceKey?: string): Promise<string | null> {
+    try {
+      let deviceToken: string = await PreferencesUtil.getString(
+        this.resolveContext(null) as common.Context, PreferencesUtil.KEY_DEVICE_TOKEN, ''
+      );
+      if (!deviceToken || deviceToken.length === 0) {
+        deviceToken = await this.tokenProvider();
+        if (deviceToken && deviceToken.length > 0) {
+          await PreferencesUtil.putString(
+            this.resolveContext(null) as common.Context, PreferencesUtil.KEY_DEVICE_TOKEN, deviceToken
+          );
+        }
+      }
+      if (!deviceToken || deviceToken.length === 0) {
+        hilog.error(DOMAIN, TAG, 'doRegisterWithBaseURL：device_token 为空，中止注册');
+        return null;
+      }
+
+      const req = new RegisterRequest();
+      req.device_token = deviceToken;
+      req.platform = ApiConfig.PLATFORM_HARMONY;
+      if (deviceKey && deviceKey.length > 0) {
+        req.device_key = deviceKey;
+      }
+
+      const fullURL: string = `${baseURL}${ApiConfig.REGISTER_PATH}`;
+      hilog.info(DOMAIN, TAG, 'doRegisterWithBaseURL：POST %{public}s', fullURL);
+      const resp: HttpResponse<RegisterEnvelope> = await HttpUtil.post<RegisterEnvelope, RegisterRequest>(
+        fullURL, req
+      );
+
+      if (!(resp.code >= 200 && resp.code < 300) || !resp.result || resp.result.code !== 200 || !resp.result.data) {
+        hilog.error(DOMAIN, TAG, 'doRegisterWithBaseURL 注册失败：%{public}s', JSON.stringify(resp));
+        return null;
+      }
+
+      const payload: RegisterPayload = resp.result.data;
+      const newDeviceKey: string = payload.device_key && payload.device_key.length > 0
+        ? payload.device_key : payload.key;
+      if (newDeviceKey && newDeviceKey.length > 0) {
+        // 不再写全局 KEY_DEVICE_KEY，由调用方 syncKeyForServer 回写 per-server
+        hilog.info(DOMAIN, TAG, 'doRegisterWithBaseURL：完成，device_key=%{public}s', newDeviceKey);
+        return newDeviceKey;
+      }
+      return null;
+    } catch (err) {
+      hilog.error(DOMAIN, TAG, 'doRegisterWithBaseURL 异常：%{public}s', String(err));
       return null;
     }
   }

@@ -4,12 +4,15 @@ export class ServerEntry extends Object {
   name: string = '';
   baseURL: string = '';
   isBuiltIn: boolean = false;
+  // per-server 保存的 device_key；切换 server 时用此 key 还原/验证
+  deviceKey: string = '';
 
-  constructor(id?: string, name?: string, baseURL?: string, isBuiltIn?: boolean) {
+  constructor(id?: string, name?: string, baseURL?: string, isBuiltIn?: boolean, deviceKey?: string) {
     super();
     this.id = id || '';
     this.name = name || '';
     this.baseURL = baseURL || '';
     this.isBuiltIn = isBuiltIn || false;
+    this.deviceKey = deviceKey || '';
   }
 }
