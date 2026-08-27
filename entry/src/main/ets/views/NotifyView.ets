@@ -615,7 +615,12 @@ export struct NotifyView {
   }
 
   private refresh(): void {
-    this.title = ServerManager.getInstance().getCurrentHostDisplay();
+    const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+    if (cur && cur.name && cur.name.length > 0) {
+      this.title = cur.name;
+    } else {
+      this.title = ServerManager.getInstance().getCurrentHostDisplay();
+    }
   }
 
   private async loadMessages(): Promise<void> {
