@@ -77,7 +77,7 @@ struct SharePage {
         .backgroundColor($r('app.color.divider_color'))
         .opacity(this.loadingProgress < 100 ? 1 : 0);
 
-      // WebView 内容区
+      // WebView 内容区（单独扩展到导航栏后面）
       Web({ src: this.targetUrl, controller: this.controller })
         .width('100%')
         .layoutWeight(1)
@@ -87,6 +87,7 @@ struct SharePage {
         .cacheMode(CacheMode.None)
         .zoomAccess(true)
         .darkMode(WebDarkMode.Auto)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
         .onProgressChange((data) => {
           this.loadingProgress = data.newProgress;
         });
@@ -95,8 +96,7 @@ struct SharePage {
     .height('100%')
     .justifyContent(FlexAlign.Start)
     .backgroundColor($r('app.color.index_page_body_background'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM]);
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
   }
 
   private handleBack(): void {
