@@ -1,5 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { UIContext } from '@kit.ArkUI';
+import { UIContext, window } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
+import { display } from '@kit.ArkUI';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
@@ -32,6 +34,11 @@ export struct NotifyView {
   // 触底分页加载更老消息
   @State loadingMore: boolean = false;
   @State hasMore: boolean = true;
+  // 点击查看的消息详情（bindContentCover 全屏模态）
+  @State showDetail: boolean = false;
+  @State selectedMessage: NotifyMessage | null = null;
+  // 状态栏高度（vp），详情模态标题栏顶部避让用
+  @State statusBarHeight: number = 36;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
   private dialogController: CustomDialogController = new CustomDialogController({
     builder: ServerSettingsDialog(),
@@ -43,6 +50,8 @@ export struct NotifyView {
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    // 状态栏高度用于详情模态顶部避让（expandSafeArea 在 bindContentCover 里不可靠，手动算）
+    this.fetchStatusBarHeight();
     // ServerManager 可能还在异步 load，必须先 await ensureLoaded 再读当前 server，
     // 否则 currentId='' 会走兜底生产 URL，显示/请求错误的地址。
     this.initAfterServerManagerReady();
@@ -69,6 +78,22 @@ export struct NotifyView {
   aboutToDisappear() {
     if (this.onChange) {
       ServerManager.getInstance().removeChangeListener(this.onChange);
+    }
+  }
+
+  // 手动计算状态栏高度（px → vp），用于详情模态标题栏顶部避让
+  // expandSafeArea 在 bindContentCover 独立模态窗口里不生效，必须手动算
+  private async fetchStatusBarHeight(): Promise<void> {
+    try {
+      const win: window.Window = await window.getLastWindow(this.getUIContext().getHostContext() as common.Context);
+      const avoidArea: window.AvoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      const d: display.Display = display.getDefaultDisplaySync();
+      this.statusBarHeight = avoidArea.topRect.height / d.densityPixels;
+      hilog.info(DOMAIN, TAG, '状态栏高度：%{public}f vp', this.statusBarHeight);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '获取状态栏高度失败：%{public}s，使用兜底 36vp', msg);
+      this.statusBarHeight = 36;
     }
   }
 
@@ -139,6 +164,12 @@ export struct NotifyView {
     }
     .width('100%')
     .height('100%')
+    // 点击消息卡片弹出全屏详情模态（内部已做状态栏避让 + 顶部圆角）
+    .bindContentCover(this.showDetail, this.detailBuilder(), {
+      onDisappear: () => {
+        this.showDetail = false;
+      }
+    })
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 
@@ -301,7 +332,85 @@ export struct NotifyView {
     .padding(12)
     .backgroundColor($r('app.color.card_background'))
     .borderRadius(10)
-    .alignItems(HorizontalAlign.Start);
+    .alignItems(HorizontalAlign.Start)
+    .onClick(() => {
+      this.selectedMessage = m;
+      this.showDetail = true;
+    });
+  }
+
+  // 消息详情全屏模态视图：完整展示标题/副标题/正文/时间，不截断
+  @Builder
+  detailBuilder() {
+    Column() {
+      // 顶部标题栏：白色背景延伸到状态栏下，标题内容用计算好的状态栏高度避让
+      Column() {
+        Row() {
+          Text('消息详情')
+            .fontSize(18)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary_color'))
+            .layoutWeight(1);
+          Image($r('app.media.close'))
+            .width(28)
+            .height(28)
+            .objectFit(ImageFit.Contain)
+            .fillColor($r('app.color.text_tertiary_color'))
+            .padding(2)
+            .onClick(() => {
+              this.showDetail = false;
+            });
+        }
+        .width('100%')
+        .padding(16)
+        .alignItems(VerticalAlign.Center);
+      }
+      .width('100%')
+      .padding({ top: this.statusBarHeight })
+      .backgroundColor($r('app.color.index_page_top_background'));
+
+      // 内容区（可滚动）
+      Scroll() {
+        Column({ space: 12 }) {
+          if (this.selectedMessage) {
+            if (this.selectedMessage.title && this.selectedMessage.title.length > 0) {
+              Text(this.selectedMessage.title)
+                .fontSize(18)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_primary_color'))
+                .width('100%');
+            }
+            if (this.selectedMessage.subtitle && this.selectedMessage.subtitle.length > 0) {
+              Text(this.selectedMessage.subtitle)
+                .fontSize(14)
+                .fontColor($r('app.color.text_accent_color'))
+                .width('100%');
+            }
+            if (this.selectedMessage.body && this.selectedMessage.body.length > 0) {
+              Text(this.selectedMessage.body)
+                .fontSize(15)
+                .fontColor($r('app.color.text_secondary_color'))
+                .width('100%');
+            }
+            Text(this.formatTime(this.selectedMessage.timestamp))
+              .fontSize(12)
+              .fontColor($r('app.color.text_quinary_color'))
+              .width('100%')
+              .textAlign(TextAlign.End);
+          }
+        }
+        .width('100%')
+        .padding(16);
+      }
+      .align(Alignment.TopStart)
+      .layoutWeight(1)
+      .scrollBar(BarState.Off);
+    }
+    .width('100%')
+    .height('100%')
+    // 灰色背景延伸到导航栏下，实现底部沉浸
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    .backgroundColor($r('app.color.index_page_body_background'));
   }
 
   private refresh(): void {
