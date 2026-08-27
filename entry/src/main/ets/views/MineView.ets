@@ -10,6 +10,7 @@ import { ClientTokenDialog } from '../components/ClientTokenDialog';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 // 版本号兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常
 const FALLBACK_VERSION_NAME: string = '1.0.0';
@@ -97,6 +98,7 @@ export struct MineView {
       }
       .width('100%')
       .padding(16)
+      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
       .backgroundColor($r('app.color.index_page_top_background'));
 
       Scroll() {
@@ -150,6 +152,7 @@ export struct MineView {
             });
           }
           .width('100%')
+          .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
           .backgroundColor($r('app.color.card_background'))
           .borderRadius(12);
 
@@ -210,6 +213,7 @@ export struct MineView {
               }
               .width('100%')
               .padding(16)
+              .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
               .backgroundColor($r('app.color.card_background'))
               .borderRadius(12)
               .onClick(() => {
@@ -245,6 +249,7 @@ export struct MineView {
               }
               .width('100%')
               .padding(16)
+              .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
               .backgroundColor($r('app.color.card_background'))
               .borderRadius(12)
               .onClick(() => {
@@ -284,6 +289,7 @@ export struct MineView {
               }
               .width('100%')
               .padding(16)
+              .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
               .backgroundColor($r('app.color.card_background'))
               .borderRadius(12)
               .onClick(() => {
@@ -404,6 +410,7 @@ export struct MineView {
               });
             }
             .width('100%')
+            .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
             .backgroundColor($r('app.color.card_background'))
             .borderRadius(12);
           }
@@ -420,6 +427,7 @@ export struct MineView {
     }
     .width('100%')
     .height('100%')
+    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 

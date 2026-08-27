@@ -9,6 +9,7 @@ import { NotifyMessageService } from '../services/NotifyMessageService';
 import {
   ServerSettingsDialog
 } from '../components/ServerSettingsDialog';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'NotifyView';
@@ -155,6 +156,7 @@ export struct NotifyView {
       .width('100%')
       .padding(16)
       .alignItems(VerticalAlign.Center)
+      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
       .backgroundColor($r('app.color.index_page_top_background'));
 
       // 内容区域
@@ -191,6 +193,7 @@ export struct NotifyView {
         this.showDetail = false;
       }
     })
+    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 
@@ -368,6 +371,7 @@ export struct NotifyView {
     }
     .width('100%')
     .padding(12)
+    .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
     .backgroundColor($r('app.color.card_background'))
     .borderRadius(10)
     .alignItems(VerticalAlign.Top)
@@ -434,6 +438,7 @@ export struct NotifyView {
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_top_background'));
   }
 
@@ -465,6 +470,7 @@ export struct NotifyView {
       }
       .width('100%')
       .padding({ top: this.statusBarHeight })
+      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
       .backgroundColor($r('app.color.index_page_top_background'));
 
       // 内容区（可滚动）
@@ -508,6 +514,7 @@ export struct NotifyView {
     .height('100%')
     // 灰色背景延伸到导航栏下，实现底部沉浸
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 

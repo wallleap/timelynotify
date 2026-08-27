@@ -5,6 +5,7 @@ import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { SOURCE_CODE_URL, USE_DOCS_URL } from '../views/MineView';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'SharePage';
@@ -66,6 +67,7 @@ struct SharePage {
       }
       .width('100%')
       .padding({ left: 8, right: 8, top: 12, bottom: 12 })
+      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
       .backgroundColor($r('app.color.index_page_top_background'))
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
 
@@ -95,6 +97,7 @@ struct SharePage {
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Start)
+    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_body_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
   }

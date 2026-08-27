@@ -1,5 +1,6 @@
 import { NotifyView } from '../views/NotifyView';
 import { MineView } from '../views/MineView';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 // 底部 Tab 项定义
 interface TabItem {
@@ -61,12 +62,14 @@ struct Index {
       .onChange((index: number) => {
         this.currentIndex = index
       })
+      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
       .backgroundColor($r('app.color.index_page_bottom_background'))
       // 底部 Tab 栏背景延伸到导航条区域
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
+    .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_top_background'))
     // 顶部背景延伸到状态栏区域（沉浸式），内容布局仍在安全区内自动避让
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])

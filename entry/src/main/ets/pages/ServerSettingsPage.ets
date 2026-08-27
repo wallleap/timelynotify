@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ServerSettingsContent } from '../components/ServerSettingsContent';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 const DOMAIN: number = 0x0000;
 const TAG: string = 'ServerSettingsPage';
@@ -41,6 +42,7 @@ struct ServerSettingsPage {
         bottom: 12
       })
       .backgroundColor($r('app.color.index_page_top_background'))
+      .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
 
       // 内容区
@@ -53,12 +55,14 @@ struct ServerSettingsPage {
       }
       .layoutWeight(1)
       .width('100%')
+      .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
       .backgroundColor($r('app.color.index_page_body_background'))
       .align(Alignment.Top);
     }
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Start)
+    .backgroundBlurStyle(resolveBlurStyle('body'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_body_background'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM]);
