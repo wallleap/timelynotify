@@ -1,7 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { promptAction, UIContext, window, display } from '@kit.ArkUI';
+import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { common } from '@kit.AbilityKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
@@ -42,8 +41,10 @@ export struct NotifyView {
   @State isEditing: boolean = false;
   @State selectedIds: number[] = [];
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
-  // 状态栏高度（vp），详情模态标题栏顶部避让用
-  @State statusBarHeight: number = 36;
+  // 状态栏高度（vp），详情模态标题栏顶部避让用；EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
+  @StorageProp('statusBarHeight') statusBarHeight: number = 36;
+  // 底部导航条高度（vp），编辑操作栏与列表底部占位避让用
+  @StorageProp('navBarHeight') navBarHeight: number = 0;
   // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
@@ -57,8 +58,6 @@ export struct NotifyView {
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
-    // 状态栏高度用于详情模态顶部避让（expandSafeArea 在 bindContentCover 里不可靠，手动算）
-    this.fetchStatusBarHeight();
     // ServerManager 可能还在异步 load，必须先 await ensureLoaded 再读当前 server，
     // 否则 currentId='' 会走兜底生产 URL，显示/请求错误的地址。
     this.initAfterServerManagerReady();
@@ -85,22 +84,6 @@ export struct NotifyView {
   aboutToDisappear() {
     if (this.onChange) {
       ServerManager.getInstance().removeChangeListener(this.onChange);
-    }
-  }
-
-  // 手动计算状态栏高度（px → vp），用于详情模态标题栏顶部避让
-  // expandSafeArea 在 bindContentCover 独立模态窗口里不生效，必须手动算
-  private async fetchStatusBarHeight(): Promise<void> {
-    try {
-      const win: window.Window = await window.getLastWindow(this.getUIContext().getHostContext() as common.Context);
-      const avoidArea: window.AvoidArea = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-      const d: display.Display = display.getDefaultDisplaySync();
-      this.statusBarHeight = avoidArea.topRect.height / d.densityPixels;
-      hilog.info(DOMAIN, TAG, '状态栏高度：%{public}f vp', this.statusBarHeight);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, '获取状态栏高度失败：%{public}s，使用兜底 36vp', msg);
-      this.statusBarHeight = 36;
     }
   }
 
@@ -185,11 +168,11 @@ export struct NotifyView {
             });
         }
         .width('100%')
-        .padding(16)
+        // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
+        .padding({ left: 16, right: 16, top: 16 + this.statusBarHeight, bottom: 16 })
         .alignItems(VerticalAlign.Center)
         .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-        .backgroundColor($r('app.color.index_page_top_background'))
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
+        .backgroundColor($r('app.color.index_page_top_background'));
       }
       .width('100%')
       .layoutWeight(1);
@@ -286,12 +269,13 @@ export struct NotifyView {
     .alignItems(HorizontalAlign.Center);
   }
 
-  // 自定义下拉刷新指示器：顶部留出毛玻璃顶栏高度（64），刷新圈显示在顶栏下方而不是被玻璃盖住
+  // 自定义下拉刷新指示器：顶部留出状态栏高度 + 毛玻璃顶栏高度（64），
+  // 刷新圈显示在顶栏下方而不是被玻璃盖住
   // 仅在下拉/刷新过程中显示，静止（Inactive）时隐藏
   @Builder
   refreshHeaderBuilder() {
     Column() {
-      Row().height(64);
+      Row().height(this.statusBarHeight + 64);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
@@ -308,11 +292,11 @@ export struct NotifyView {
   listView() {
     List({ space: 8, scroller: this.scroller }) {
       // 顶部占位：随内容一起滚动，消息卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
-      // 顶栏高 64 + List 子项间距 8 = 首项初始位置 72，与原 top padding 一致
+      // 顶栏总高（状态栏 + 64）+ List 子项间距 8，首项初始位置与原 top padding 一致
       ListItem() {
         Row()
           .width('100%')
-          .height(64);
+          .height(this.statusBarHeight + 64);
       }
 
       ForEach(this.messages, (m: NotifyMessage) => {
@@ -356,10 +340,11 @@ export struct NotifyView {
       }
 
       // 底部占位：随内容一起滚动，末尾消息才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
+      // TabBar 总高 = 56 + 导航条高度，占位 64 保持视觉余量不变
       ListItem() {
         Row()
           .width('100%')
-          .height(64);
+          .height(this.navBarHeight + 64);
       }
     }
     .width('100%')
@@ -486,7 +471,8 @@ export struct NotifyView {
         });
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    // 底部补导航条高度：沉浸式布局下操作栏贴近屏幕底，避让手势条
+    .padding({ left: 16, right: 16, top: 12, bottom: 12 + this.navBarHeight })
     .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
     .backgroundColor($r('app.color.index_page_top_background'));
   }
@@ -534,8 +520,8 @@ export struct NotifyView {
             }
           }
           .width('100%')
-          // 顶部避让由首项占位实现（可滚动穿透标题栏）；左右边距与底部留白
-          .padding({ left: 16, right: 16, bottom: 24 });
+          // 顶部避让由首项占位实现（可滚动穿透标题栏）；底部补导航条高度避让手势条
+          .padding({ left: 16, right: 16, bottom: 24 + this.navBarHeight });
         }
         .align(Alignment.TopStart)
         .width('100%')
@@ -574,8 +560,7 @@ export struct NotifyView {
     }
     .width('100%')
     .height('100%')
-    // 灰色背景延伸到导航栏下，实现底部沉浸；body 模糊无内容可糊已移除
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    // 沉浸式布局下模态全屏铺满，灰色底色自然覆盖导航条区域，实现底部沉浸
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 

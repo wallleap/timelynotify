@@ -40,6 +40,9 @@ function showToast(ctx: UIContext, message: string, durationMs: number = 1500): 
 // 我的页 - 展示个人设置入口
 @Component
 export struct MineView {
+  // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
+  @StorageProp('statusBarHeight') statusBarHeight: number = 36;
+  @StorageProp('navBarHeight') navBarHeight: number = 0;
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
@@ -93,10 +96,10 @@ export struct MineView {
         Scroll() {
           Column({ space: 16 }) {
             // 顶部占位：随内容一起滚动，卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
-            // 占位 56 + Column 子项间距 16 = 首卡片初始位置 72，与原 top padding 一致
+            // 占位 = 状态栏高度 + 顶栏视觉高度 56，与沉浸式布局下的顶栏总高一致
             Row()
               .width('100%')
-              .height(56);
+              .height(this.statusBarHeight + 56);
 
             // 通知设置卡片
             Column({ space: 0 }) {
@@ -411,9 +414,10 @@ export struct MineView {
             .width('100%');
 
             // 底部占位：随内容一起滚动，末尾卡片才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
+            // TabBar 总高 = 56 + 导航条高度，占位 72 保持视觉余量不变
             Row()
               .width('100%')
-              .height(72);
+              .height(this.navBarHeight + 72);
           }
           .width('100%')
           // 左右避让边距（顶/底避让由首尾占位实现）
@@ -425,7 +429,8 @@ export struct MineView {
         .edgeEffect(EdgeEffect.Spring)
         .width('100%');
 
-        // 顶部标题栏（后声明覆盖在上层）：毛玻璃 + 半透明底色，绘制延伸到状态栏
+        // 顶部标题栏（后声明覆盖在上层）：毛玻璃 + 半透明底色
+        // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
         Row() {
           Text('我的')
             .fontSize(24)
@@ -434,10 +439,9 @@ export struct MineView {
             .textAlign(TextAlign.Center);
         }
         .width('100%')
-        .padding(16)
+        .padding({ left: 16, right: 16, top: 16 + this.statusBarHeight, bottom: 16 })
         .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-        .backgroundColor($r('app.color.index_page_top_background'))
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
+        .backgroundColor($r('app.color.index_page_top_background'));
       }
       .width('100%')
       .layoutWeight(1);

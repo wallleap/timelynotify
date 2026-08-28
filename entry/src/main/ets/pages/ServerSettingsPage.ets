@@ -9,6 +9,10 @@ const TAG: string = 'ServerSettingsPage';
 @Entry
 @Component
 struct ServerSettingsPage {
+  // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
+  @StorageProp('statusBarHeight') statusBarHeight: number = 36;
+  @StorageProp('navBarHeight') navBarHeight: number = 0;
+
   build() {
     // Stack 层叠：内容层在下、顶栏在上，滚动内容从顶栏下方穿过，毛玻璃才有内容可糊
     Stack({ alignContent: Alignment.Top }) {
@@ -16,9 +20,10 @@ struct ServerSettingsPage {
       Scroll() {
         Column() {
           // 顶部占位：随内容一起滚动，内容才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
+          // 占位 = 状态栏高度 + 顶栏视觉高度 72，与沉浸式布局下的顶栏总高一致
           Row()
             .width('100%')
-            .height(72);
+            .height(this.statusBarHeight + 72);
 
           ServerSettingsContent();
         }
@@ -26,14 +31,16 @@ struct ServerSettingsPage {
         .padding({
           left: 16,
           right: 16,
-          bottom: 16
+          // 底部补导航条高度：沉浸式布局下页面铺满屏幕，末尾内容避让手势条
+          bottom: 16 + this.navBarHeight
         });
       }
       .width('100%')
       .height('100%')
       .align(Alignment.Top);
 
-      // 顶栏（后声明，覆盖在上层）：毛玻璃 + 半透明底色，绘制延伸到状态栏
+      // 顶栏（后声明，覆盖在上层）：毛玻璃 + 半透明底色
+      // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让
       Row() {
         Image($r('app.media.arrow_left'))
           .width(32)
@@ -60,19 +67,16 @@ struct ServerSettingsPage {
       .padding({
         left: 8,
         right: 8,
-        top: 12,
+        top: 12 + this.statusBarHeight,
         bottom: 12
       })
       .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-      .backgroundColor($r('app.color.index_page_top_background'))
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
+      .backgroundColor($r('app.color.index_page_top_background'));
     }
     .width('100%')
     .height('100%')
-    // 根容器铺不透明底色（含状态栏/导航条区域），body 模糊无内容可糊已移除
-    .backgroundColor($r('app.color.index_page_body_background'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM]);
+    // 沉浸式布局下窗口铺满全屏（含状态栏/导航条区域），根容器底色兜底延伸区域
+    .backgroundColor($r('app.color.index_page_body_background'));
   }
 
   private handleBack(): void {

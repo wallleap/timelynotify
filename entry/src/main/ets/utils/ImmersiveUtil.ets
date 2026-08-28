@@ -12,6 +12,16 @@
 
 import { deviceInfo } from '@kit.BasicServicesKit';
 
+/**
+ * AppStorage 键：状态栏高度（vp）
+ * EntryAbility 在开启沉浸式布局后写入实际高度，页面通过 @StorageProp('statusBarHeight') 读取
+ * 注意：@StorageProp 装饰器参数需字符串字面量，页面侧直接写同名字符串
+ */
+export const KEY_STATUS_BAR_HEIGHT: string = 'statusBarHeight';
+
+/** AppStorage 键：底部导航条高度（vp） */
+export const KEY_NAV_BAR_HEIGHT: string = 'navBarHeight';
+
 /** 当前设备 SDK API 版本（缓存） */
 export const CURRENT_SDK_VERSION: number = deviceInfo.sdkApiVersion;
 

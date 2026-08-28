@@ -15,6 +15,9 @@ const TAG: string = 'SharePage';
 @Component
 struct SharePage {
   private controller: webview.WebviewController = new webview.WebviewController();
+  // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
+  @StorageProp('statusBarHeight') statusBarHeight: number = 36;
+  @StorageProp('navBarHeight') navBarHeight: number = 0;
   @State loadingProgress: number = 0;
   @State pageTitle: string = '开源代码';
   @State targetUrl: string = SOURCE_CODE_URL;
@@ -66,10 +69,10 @@ struct SharePage {
           });
       }
       .width('100%')
-      .padding({ left: 8, right: 8, top: 12, bottom: 12 })
+      // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让
+      .padding({ left: 8, right: 8, top: 12 + this.statusBarHeight, bottom: 12 })
       .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-      .backgroundColor($r('app.color.index_page_top_background'))
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
+      .backgroundColor($r('app.color.index_page_top_background'));
 
       // 加载进度条
       Progress({ value: this.loadingProgress, total: 100, type: ProgressType.Linear })
@@ -79,7 +82,8 @@ struct SharePage {
         .backgroundColor($r('app.color.divider_color'))
         .opacity(this.loadingProgress < 100 ? 1 : 0);
 
-      // WebView 内容区（单独扩展到导航栏后面）
+      // WebView 内容区：layoutWeight(1) 铺满到底部，网页背景色覆盖导航条区域（沉浸）
+      // 通过 onPageEnd 注入 CSS padding-bottom 让网页内容避让手势条（类似列表尾部 space）
       Web({ src: this.targetUrl, controller: this.controller })
         .width('100%')
         .layoutWeight(1)
@@ -89,18 +93,32 @@ struct SharePage {
         .cacheMode(CacheMode.None)
         .zoomAccess(true)
         .darkMode(WebDarkMode.Auto)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
         .onProgressChange((data) => {
           this.loadingProgress = data.newProgress;
+        })
+        .onPageEnd(() => {
+          // 注入 CSS：网页底部留出导航条高度，避免内容被手势条压住
+          if (this.navBarHeight > 0) {
+            try {
+              this.controller.runJavaScript(
+                `document.documentElement.style.setProperty('--safe-area-bottom', '${this.navBarHeight}px');` +
+                `let s=document.createElement('style');` +
+                `s.textContent='body{padding-bottom:var(--safe-area-bottom) !important;}';` +
+                `document.head.appendChild(s);`
+              );
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
+            }
+          }
         });
     }
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Start)
     // 保持 Column 布局：WebView 网页头部不能被顶栏遮挡，顶栏玻璃糊的是底色（网页内容不穿过）
-    // 根容器铺不透明底色，body 模糊无内容可糊已移除
-    .backgroundColor($r('app.color.index_page_body_background'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP]);
+    // 沉浸式布局下根容器底色兜底覆盖状态栏/导航条区域
+    .backgroundColor($r('app.color.index_page_body_background'));
   }
 
   private handleBack(): void {

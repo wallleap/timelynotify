@@ -12,6 +12,8 @@ interface TabItem {
 @Entry
 @Component
 struct Index {
+  // 底部导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
+  @StorageProp('navBarHeight') navBarHeight: number = 0;
   @State currentIndex: number = 0;
   private tabs: TabItem[] = [
     {
@@ -40,6 +42,8 @@ struct Index {
     .width('100%')
     .height('100%')
     .justifyContent(FlexAlign.Center)
+    // 底部补导航条高度：沉浸式布局下 TabBar 覆盖导航条区域，图标文字需避让到手势条上方
+    .padding({ bottom: this.navBarHeight })
   }
 
   build() {
@@ -57,7 +61,8 @@ struct Index {
       }
       .barMode(BarMode.Fixed)
       .barWidth('100%')
-      .barHeight(56)
+      // TabBar 高度 = 视觉高度 56 + 导航条高度（沉浸式布局下 TabBar 背景覆盖导航条区域）
+      .barHeight(56 + this.navBarHeight)
       .animationDuration(300)
       // 内容延伸到 TabBar 下方，TabBar 毛玻璃才能糊到滚动内容
       .barOverlap(true)
@@ -67,14 +72,10 @@ struct Index {
       .onChange((index: number) => {
         this.currentIndex = index
       })
-      // 底部 Tab 栏背景延伸到导航条区域
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
-    // 顶/底安全区外（状态栏+导航条）用实色兜底：TabContent 裁剪顶栏玻璃延伸、
-    // barBackgroundColor 与 barBackgroundBlurStyle 组合时 bar 延伸行为不可控，这里保证导航条区域始终有背景（沉浸）
+    // 沉浸式布局下窗口铺满全屏（含状态栏/导航条区域），根容器底色兜底延伸区域
     .backgroundColor($r('app.color.index_page_top_solid'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }
