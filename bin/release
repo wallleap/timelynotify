@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# 发版脚本：确定版本号 -> 确认 -> 打 annotated tag -> 推送 tag
+# 版本号唯一来源是 git tag：CI 构建时从 tag 注入 AppScope/app.json5（本地构建用 bin/build 同理）
+# 仓库设置了分支保护（不允许直接 push main），本脚本不产生任何 commit，只推送 tag
+#
+# 用法: bin/release [-y]              自动发版：最近一个版本 tag 的 minor +1、patch 清零（1.2.3 -> 1.3.0）
+#       bin/release [-y] <[v]x.y.z>   指定版本号发版（v 前缀可选：1.2.3 或 v1.2.3）
+#
+# 版本号规则:
+#   tag          = v{x.y.z}（annotated，含作者/时间/说明）
+#   versionName  = x.y.z（构建时注入）
+#   versionCode  = x*1000000 + y*1000 + z（与仓库现有编码一致，必须大于上一版本）
+set -euo pipefail
+
+RELEASE_BRANCH="${RELEASE_BRANCH:-main}"
+
+# ---------- 1. 参数解析 ----------
+# -y: 跳过交互确认（自动化场景使用）
+ASSUME_YES=0
+if [ "${1:-}" = "-y" ]; then
+  ASSUME_YES=1
+  shift
+fi
+if [ $# -gt 1 ]; then
+  echo "用法: bin/release [-y] [[v]x.y.z]"
+  exit 1
+fi
+
+# ---------- 2. 切换到发版分支并同步 ----------
+cd "$(git rev-parse --show-toplevel)"
+
+# 工作区必须干净：防止跨分支切换携带/冲突未提交改动
+if [ -n "$(git status --porcelain)" ]; then
+  echo "错误: 工作区有未提交的改动，请先提交或还原后再发版"
+  exit 1
+fi
+
+# 拉取远程最新与所有 tag（本地 tag 视图与远端保持一致，避免撞号/基于过期 tag 递增）
+git fetch origin "$RELEASE_BRANCH" --tags --quiet
+
+BRANCH="$(git branch --show-current)"
+ORIG_BRANCH="$BRANCH"   # 记录发版前分支，结束后切回
+if [ "$BRANCH" != "$RELEASE_BRANCH" ]; then
+  # 当前分支的提交若尚未合并进发版分支，提前提示（避免发版内容与预期不符）
+  if [ -n "$BRANCH" ] && ! git merge-base --is-ancestor "$BRANCH" "origin/$RELEASE_BRANCH" 2>/dev/null; then
+    echo "提示: 当前分支 $BRANCH 的提交尚未合并进 ${RELEASE_BRANCH}，本次发版不包含这些改动"
+  fi
+  echo "当前分支: ${BRANCH:-detached HEAD}，自动切换到 $RELEASE_BRANCH"
+  git switch "$RELEASE_BRANCH"
+fi
+
+# 快进同步本地发版分支到远程最新（--ff-only 保证不产生意外合并）
+git pull --ff-only origin "$RELEASE_BRANCH" --quiet
+
+# ---------- 3. 确定版本号 ----------
+# 版本号最高的 v tag（按版本排序取最大，而非最近创建；首次发版时为空）
+LATEST_TAG="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+
+if [ $# -eq 0 ]; then
+  # 自动模式：最近 tag 的 minor +1、patch 清零（minor 满千进位到 major）
+  if [ -z "$LATEST_TAG" ]; then
+    echo "错误: 仓库还没有版本 tag，首次发版请手动指定，如: bin/release v1.1.0"
+    exit 1
+  fi
+  CURRENT="${LATEST_TAG#v}"
+  if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "错误: 最近版本 tag '$CURRENT' 不是有效的版本号，请手动指定 [v]x.y.z"
+    exit 1
+  fi
+  MAJOR="${CURRENT%%.*}"
+  REST="${CURRENT#*.}"
+  MINOR=$(( ${REST%%.*} + 1 ))
+  PATCH=0
+  if [ "$MINOR" -ge 1000 ]; then
+    MAJOR=$((MAJOR + 1))
+    MINOR=0
+  fi
+  VERSION="$MAJOR.$MINOR.$PATCH"
+  echo "自动发版: $CURRENT -> $VERSION"
+else
+  # 手动模式：使用传入的版本号（剥掉可选的 v 前缀，v1.2.3 与 1.2.3 等价）
+  VERSION="${1#v}"
+fi
+
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "错误: 版本号必须为 x.y.z 格式（如 1.2.3），收到: $VERSION"
+  exit 1
+fi
+
+MAJOR="${VERSION%%.*}"
+REST="${VERSION#*.}"
+MINOR="${REST%%.*}"
+PATCH="${REST#*.}"
+
+# versionCode 编码约束（int32 上限 2147483647 内，各段不溢出）
+if [ "$MAJOR" -gt 2147 ] || [ "$MINOR" -ge 1000 ] || [ "$PATCH" -ge 1000 ]; then
+  echo "错误: 版本段超出范围（major <= 2147，minor/patch < 1000）"
+  exit 1
+fi
+
+VERSION_CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
+TAG="v$VERSION"
+
+# versionCode 倒退校验：AGC 要求单调递增，倒退的包在上传时会被拒
+if [ -n "$LATEST_TAG" ] && [[ "${LATEST_TAG#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  LAST="${LATEST_TAG#v}"
+  LREST="${LAST#*.}"
+  LAST_CODE=$(( ${LAST%%.*} * 1000000 + ${LREST%%.*} * 1000 + ${LREST#*.} ))
+  if [ "$VERSION_CODE" -le "$LAST_CODE" ]; then
+    echo "错误: 新版本 $VERSION (versionCode=$VERSION_CODE) 不大于最近版本 $LAST (versionCode=$LAST_CODE)，AGC 要求 versionCode 单调递增"
+    exit 1
+  fi
+fi
+
+# ---------- 4. tag 冲突校验与发版确认 ----------
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  echo "错误: tag $TAG 已存在，请换一个版本号"
+  exit 1
+fi
+
+COMMIT_SHORT="$(git rev-parse --short HEAD)"
+COMMIT_SUBJECT="$(git log -1 --format=%s HEAD)"
+echo ""
+echo "待发布: $TAG (versionName=$VERSION, versionCode=$VERSION_CODE)"
+echo "基于:   $RELEASE_BRANCH@$COMMIT_SHORT $COMMIT_SUBJECT"
+if [ "$ASSUME_YES" -ne 1 ]; then
+  # 交互确认：防止误触发发版（非交互环境下 read 得到空值，默认取消）
+  printf '确认发版? [y/N] '
+  read -r REPLY
+  if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
+    echo "已取消发版"
+    exit 1
+  fi
+fi
+
+# ---------- 5. 打 annotated tag + 推送 ----------
+# 仅创建并推送 tag：不修改 AppScope/app.json5、不产生 commit（分支保护友好）
+git tag -a "$TAG" -m "Release $TAG (versionCode=$VERSION_CODE)"
+git push origin "refs/tags/$TAG"
+
+echo ""
+echo "发版完成: $TAG (versionCode=$VERSION_CODE)"
+echo "CI 将基于 tag $TAG 构建（自动注入版本号）-> 签名 -> 上传 AGC。"
+echo "Origin: $(git remote get-url origin)（Actions 页查看进度）"
+
+# ---------- 6. 切回原分支 ----------
+if [ -n "$ORIG_BRANCH" ] && [ "$ORIG_BRANCH" != "$RELEASE_BRANCH" ]; then
+  git switch "$ORIG_BRANCH"
+fi
