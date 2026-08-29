@@ -11,8 +11,8 @@ name: CI Image — Build & Push (GHCR)
 #       → 推送 ghcr.io/<owner>/harmonyos-ci:latest（+ 可选附加 tag）
 #
 # 触发:
-#   1. workflow_dispatch 手动触发（可自定义 CLT 下载源/校验和/附加 tag）
-#   2. 修改 docker/ci/** 或本文件时自动构建（使用内置默认源）
+#   仅手动触发 workflow_dispatch（可自定义 CLT 下载源/校验和/附加 tag）
+#   —— 镜像内容不随仓库代码变化，改 Dockerfile 后需到 Actions 手动重跑
 #
 # 注意: 首次推送后 GHCR 包默认是 private，建议到
 #       GitHub → Packages → harmonyos-ci → Package settings → Change visibility → Public
@@ -34,10 +34,6 @@ on:
         description: '附加镜像 tag（如 clt-26.0.0.621；latest 总是会推送）'
         required: false
         default: ''
-  push:
-    paths:
-      - 'docker/ci/**'
-      - '.github/workflows/docker-image.yml'
 
 concurrency:
   group: ci-image-${{ github.ref }}
