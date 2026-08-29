@@ -1,0 +1,613 @@
+name: Release — Build · Sign · Upload AGC
+
+# ============================================================
+# 触发条件
+#   1. 推送 tag vX.Y.Z（由本地 bin/release 脚本触发的标准流程）
+#   2. workflow_dispatch 手动触发，可指定版本号 / 发布类型 / 跳过 AGC 上传 / 使用自托管 runner
+# ============================================================
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '手动版本号 x.y.z（tag 触发时自动忽略）'
+        required: false
+        default: ''
+      release_type:
+        description: 'AGC 发布类型：1=全量发布 · 6=HarmonyOS 测试（首次/非稳定版本建议选 6）'
+        required: false
+        default: '6'
+      skip_agc_upload:
+        description: '跳过 AGC 上传（仅出包 + 挂载 GitHub Release）'
+        required: false
+        type: boolean
+        default: false
+      runner_pool:
+        description: 'Runner：ubuntu-latest=托管（需配置 DEVECO_CLI_TOOLS_URL secret 下载 SDK）；self-hosted=自安装 SDK（推荐）'
+        required: false
+        type: choice
+        options:
+          - ubuntu-latest
+          - self-hosted
+        default: ubuntu-latest
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# 环境默认值（可通过仓库 Variables 覆盖）
+env:
+  BUNDLE_NAME: cn.oicode.timelynotify
+  OHPM_REGISTRY: ${{ vars.OHPM_REGISTRY }}
+
+# ============================================================
+# Job 1 · prepare —— 解析版本号，输出到下游 jobs
+# ============================================================
+jobs:
+  prepare:
+    name: Prepare · 解析版本号
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      version_code: ${{ steps.parse.outputs.version_code }}
+      tag: ${{ steps.parse.outputs.tag }}
+      release_type: ${{ steps.parse.outputs.release_type }}
+      skip_agc_upload: ${{ steps.parse.outputs.skip_agc_upload }}
+      runner_pool: ${{ steps.parse.outputs.runner_pool }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 解析版本号
+        id: parse
+        run: |
+          set -euo pipefail
+          # ---- 1. 版本号来源：tag 优先 → 手动输入 → 报错 ----
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" && "${GITHUB_REF_NAME:-}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            TAG="$GITHUB_REF_NAME"
+            echo "触发方式: tag push ($TAG)"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            V="${{ github.event.inputs.version }}"
+            VERSION="${V#v}"
+            TAG="v$VERSION"
+            echo "触发方式: workflow_dispatch (手动版本 $TAG)"
+          else
+            echo "错误: 既不是 tag 触发也未提供手动 version 输入"
+            exit 1
+          fi
+
+          # ---- 2. 格式校验 + 计算 versionCode ----
+          if ! [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "错误: 版本号 '$VERSION' 不是 x.y.z 格式"
+            exit 1
+          fi
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
+          PATCH="${BASH_REMATCH[3]}"
+          # 各段范围约束（与 bin/release 一致）
+          if [ "$MAJOR" -gt 2147 ] || [ "$MINOR" -ge 1000 ] || [ "$PATCH" -ge 1000 ]; then
+            echo "错误: 版本段越界（major≤2147, minor/patch<1000）"
+            exit 1
+          fi
+          VERSION_CODE=$(( MAJOR * 1000000 + MINOR * 1000 + PATCH ))
+
+          # ---- 3. 发布类型 ----
+          RELEASE_TYPE="${{ github.event.inputs.release_type }}"
+          RELEASE_TYPE="${RELEASE_TYPE:-6}"   # tag 触发时默认 HarmonyOS 测试
+
+          # ---- 4. 其他输入透传 ----
+          SKIP_AGC="${{ github.event.inputs.skip_agc_upload }}"
+          SKIP_AGC="${SKIP_AGC:-false}"
+          RUNNER="${{ github.event.inputs.runner_pool }}"
+          RUNNER="${RUNNER:-ubuntu-latest}"
+
+          # ---- 5. 输出 ----
+          echo "version=$VERSION"        >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"                >> "$GITHUB_OUTPUT"
+          echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
+          echo "skip_agc_upload=$SKIP_AGC"  >> "$GITHUB_OUTPUT"
+          echo "runner_pool=$RUNNER"     >> "$GITHUB_OUTPUT"
+
+          echo "========================================"
+          echo "  Tag:           $TAG"
+          echo "  versionName:   $VERSION"
+          echo "  versionCode:   $VERSION_CODE"
+          echo "  AGC 类型:      $RELEASE_TYPE (1=全量 6=HarmonyOS 测试)"
+          echo "  跳过 AGC:      $SKIP_AGC"
+          echo "  Runner:        $RUNNER"
+          echo "========================================"
+
+# ============================================================
+# Job 2 · build-sign —— 构建 unsigned HAP → 用 hap-sign-tool 重签名
+# ============================================================
+  build-sign:
+    name: Build · Sign HAP
+    needs: prepare
+    runs-on: ${{ needs.prepare.outputs.runner_pool }}
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      # --------------------------------------------------------
+      # 环境准备：JDK 17（hap-sign-tool.jar 运行需要 Java 8+，统一用 17 LTS）
+      # --------------------------------------------------------
+      - name: Setup JDK 17
+        if: runner.environment != 'self-hosted' || env.FORCE_SETUP_JAVA == '1'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # --------------------------------------------------------
+      # 环境准备：DevEco SDK / Command Line Tools
+      #   自托管 runner：跳过，直接用预装的 DEVECO_SDK_HOME / NODE_HOME
+      #   ubuntu-latest：通过 secret DEVECO_CLI_TOOLS_URL 下载并解包
+      # --------------------------------------------------------
+      - name: Setup DevEco SDK & Node.js（托管 runner）
+        if: needs.prepare.outputs.runner_pool == 'ubuntu-latest'
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.DEVECO_CLI_TOOLS_URL }}" ]; then
+            echo "错误: 托管 runner 需要配置 secret DEVECO_CLI_TOOLS_URL（DevEco Command Line Tools 下载地址）"
+            echo "或改用 runner_pool=self-hosted（在自托管机器预装 DevEco SDK）"
+            exit 1
+          fi
+          SDK_PREFIX="$HOME/deveco"
+          mkdir -p "$SDK_PREFIX"
+          cd "$SDK_PREFIX"
+          curl -fSL --retry 3 -o cli_tools.zip "${{ secrets.DEVECO_CLI_TOOLS_URL }}"
+          unzip -q cli_tools.zip
+          rm cli_tools.zip
+          # 查找实际解包出的目录结构（不同 CLT 版本可能不同，做容错）
+          if [ -d "$SDK_PREFIX/command-line-tools" ]; then BASE="$SDK_PREFIX/command-line-tools"
+          elif [ -d "$SDK_PREFIX/sdk" ]; then BASE="$SDK_PREFIX"
+          else BASE="$(ls -1d */ 2>/dev/null | head -n1 | sed 's:/*$::')"; fi
+          echo "DEVECO_BASE=$BASE"
+          # 定位 SDK 根目录（包含 toolchains / openharmony 等子目录）
+          if [ -d "$BASE/sdk/default" ]; then
+            echo "DEVECO_SDK_HOME=$BASE/sdk/default" >> "$GITHUB_ENV"
+          elif [ -d "$BASE/openharmony" ]; then
+            echo "DEVECO_SDK_HOME=$BASE" >> "$GITHUB_ENV"
+          else
+            echo "无法定位 SDK 根目录，结构如下:"; ls -la "$BASE"
+            exit 1
+          fi
+          # 定位 Node（CLT 通常自带 tools/node 或 sdk 外层有 node）
+          if [ -d "$BASE/tools/node" ]; then
+            echo "NODE_HOME=$BASE/tools/node" >> "$GITHUB_ENV"
+          elif command -v node >/dev/null 2>&1; then
+            # 系统已有 node（ubuntu-latest 自带），只要版本 ≥ 16 即可
+            echo "NODE_HOME=$(dirname $(dirname $(which node)))" >> "$GITHUB_ENV"
+          else
+            echo "错误: 未找到 Node.js"
+            exit 1
+          fi
+          # 定位 hvigorw（或 hvigor 主程序）
+          if [ -f "$BASE/tools/hvigor/bin/hvigorw" ]; then
+            echo "HVIGORW=$BASE/tools/hvigor/bin/hvigorw" >> "$GITHUB_ENV"
+          elif [ -f "$BASE/hvigor/bin/hvigor" ]; then
+            echo "HVIGORW=$BASE/hvigor/bin/hvigor" >> "$GITHUB_ENV"
+          else
+            echo "无法定位 hvigor 可执行文件"
+            exit 1
+          fi
+
+      # --------------------------------------------------------
+      # 环境校验（自托管也走一次，确认路径有效）
+      # --------------------------------------------------------
+      - name: 环境信息校验
+        run: |
+          set -euo pipefail
+          : "${DEVECO_SDK_HOME:?需要 DEVECO_SDK_HOME（自托管请预装 SDK 并写入环境变量；托管已由上一步设置）}"
+          : "${NODE_HOME:?需要 NODE_HOME}"
+          HVIGORW="${HVIGORW:-$(command -v hvigorw || true)}"
+          : "${HVIGORW:?未找到 hvigorw，自托管请确保在 PATH 或设置 HVIGORW 变量}"
+          export PATH="$NODE_HOME/bin:$PATH"
+          echo "DEVECO_SDK_HOME=$DEVECO_SDK_HOME"
+          echo "NODE_HOME       =$NODE_HOME"
+          echo "HVIGORW         =$HVIGORW"
+          node -v
+          npm -v
+          java -version
+          ls "$DEVECO_SDK_HOME" || true
+          # 记录到 GITHUB_ENV 供后续步骤使用
+          echo "PATH=$NODE_HOME/bin:$PATH"       >> "$GITHUB_ENV"
+          echo "HVIGORW=$HVIGORW"                 >> "$GITHUB_ENV"
+          # ohpm 定位
+          if command -v ohpm >/dev/null 2>&1; then echo "OHPM=$(which ohpm)" >> "$GITHUB_ENV"
+          elif [ -f "$DEVECO_SDK_HOME/../tools/ohpm/bin/ohpm" ]; then echo "OHPM=$DEVECO_SDK_HOME/../tools/ohpm/bin/ohpm" >> "$GITHUB_ENV"
+          elif [ -f "$NODE_HOME/bin/ohpm" ]; then echo "OHPM=$NODE_HOME/bin/ohpm" >> "$GITHUB_ENV"
+          else echo "警告: 未找到 ohpm，将尝试 npm install -g @ohos/ohpm-cli（部分版本 CLT 不自带）"; fi
+
+      # --------------------------------------------------------
+      # （可选）安装 ohpm —— 部分老版 CLT 不自带 ohpm 命令
+      # --------------------------------------------------------
+      - name: 安装 ohpm（如果缺失）
+        run: |
+          if [ -z "${OHPM:-}" ]; then
+            npm install -g @ohos/ohpm-cli 2>&1 | tail -5
+            echo "OHPM=$(dirname $(dirname $(npm root -g)))/bin/ohpm" >> "$GITHUB_ENV"
+          fi
+          ${OHPM:-ohpm} -v
+
+      # --------------------------------------------------------
+      # OHPM 依赖安装（带缓存加速）
+      # --------------------------------------------------------
+      - name: 缓存 ohpm 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ohpm
+            oh_modules
+            entry/oh_modules
+          key: ohpm-${{ runner.os }}-${{ hashFiles('oh-package-lock.json5', 'entry/oh-package.json5') }}
+          restore-keys: |
+            ohpm-${{ runner.os }}-
+
+      - name: 安装 OHPM 依赖
+        run: |
+          set -euo pipefail
+          OHPM_BIN="${OHPM:-ohpm}"
+          if [ -n "$OHPM_REGISTRY" ]; then
+            "$OHPM_BIN" config set registry "$OHPM_REGISTRY"
+          fi
+          "$OHPM_BIN" install --all 2>&1 | tail -20
+
+      # --------------------------------------------------------
+      # 注入版本号（与 bin/build 逻辑一致：perl 写入，不修改原仓库 —— CI 无需还原）
+      # --------------------------------------------------------
+      - name: 注入版本号到 AppScope/app.json5
+        run: |
+          set -euo pipefail
+          echo "注入 versionName=$VERSION  versionCode=$VERSION_CODE → AppScope/app.json5"
+          perl -i -pe "
+            s/\"versionCode\"\s*:\s*\d+/\"versionCode\": $VERSION_CODE/;
+            s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$VERSION\"/;
+          " AppScope/app.json5
+          echo "--- 注入结果 ---"
+          cat AppScope/app.json5
+
+      # --------------------------------------------------------
+      # 构建 unsigned HAP（release 模式）
+      #   说明：CI 不直接使用 build-profile.json5 的签名配置（路径/加密密码只对本机 DevEco 有效），
+      #         而是先产出 unsigned，下阶段用 hap-sign-tool.jar + 发布证书重签名。
+      # --------------------------------------------------------
+      - name: 构建 HAP（release）
+        run: |
+          set -euo pipefail
+          # 构建参数说明：
+          #   --mode module           模块级构建（HAP）
+          #   -p product=default      与 build-profile.json5 products.name 对应
+          #   -p buildMode=release    触发 release 构建（走 entry/build-profile.json5 中 release 配置，含代码混淆配置）
+          #   --no-daemon             CI 环境禁用 daemon
+          "$HVIGORW" assembleHap --mode module \
+            -p product=default \
+            -p buildMode=release \
+            --no-daemon 2>&1 | tail -80
+
+          # 列出生成产物
+          OUTDIR="entry/build/default/outputs/default"
+          echo "--- 构建产物 ($OUTDIR) ---"
+          ls -lh "$OUTDIR" || { echo "错误: 产物目录不存在，构建失败"; exit 1; }
+
+      # --------------------------------------------------------
+      # 确认 unsigned HAP 路径（不同 SDK 版本命名略有差异）
+      # --------------------------------------------------------
+      - name: 定位 unsigned HAP
+        id: find_unsigned
+        run: |
+          OUTDIR="entry/build/default/outputs/default"
+          CANDIDATES=(
+            "$OUTDIR/entry-default-unsigned.hap"
+            "$OUTDIR/entry-default.hap"
+          )
+          HAP=""
+          for f in "${CANDIDATES[@]}"; do [ -f "$f" ] && HAP="$f" && break; done
+          if [ -z "$HAP" ]; then
+            echo "未找到 unsigned HAP，目录下所有文件:"
+            ls -la "$OUTDIR"
+            exit 1
+          fi
+          echo "unsigned_hap=$HAP" >> "$GITHUB_OUTPUT"
+          echo "找到 unsigned HAP: $HAP"
+          ls -lh "$HAP"
+
+      # --------------------------------------------------------
+      # 解码签名材料（发布版 .p12 / .cer / .p7b，从 secrets 的 base64 写回文件）
+      # --------------------------------------------------------
+      - name: 解码签名材料
+        env:
+          SIGN_STORE_P12: ${{ secrets.SIGN_STORE_P12 }}
+          SIGN_CERT_CER:  ${{ secrets.SIGN_CERT_CER }}
+          SIGN_PROFILE_P7B: ${{ secrets.SIGN_PROFILE_P7B }}
+        run: |
+          set -euo pipefail
+          MATERIAL_DIR="$HOME/sign_material"
+          mkdir -p "$MATERIAL_DIR"
+          # 必填项校验
+          for v in SIGN_STORE_P12 SIGN_CERT_CER SIGN_PROFILE_P7B; do
+            VAL="${!v}"
+            if [ -z "$VAL" ]; then
+              echo "错误: secret $v 为空。请在仓库 Settings → Secrets 中配置发布签名材料。"
+              echo "  - SIGN_STORE_P12  = base64(发布密钥库 .p12)"
+              echo "  - SIGN_CERT_CER   = base64(发布证书 .cer)"
+              echo "  - SIGN_PROFILE_P7B= base64(发布 Profile .p7b)"
+              exit 1
+            fi
+          done
+          echo "$SIGN_STORE_P12"   | base64 -d > "$MATERIAL_DIR/release.p12"
+          echo "$SIGN_CERT_CER"    | base64 -d > "$MATERIAL_DIR/release.cer"
+          echo "$SIGN_PROFILE_P7B" | base64 -d > "$MATERIAL_DIR/release.p7b"
+          # 校验文件
+          ls -lh "$MATERIAL_DIR"
+          file "$MATERIAL_DIR"/*
+          # SHA256 指纹（便于人工比对 AGC 控制台）
+          echo "--- 证书指纹 ---"
+          keytool -printcert -file "$MATERIAL_DIR/release.cer" 2>/dev/null | grep -E "SHA256|指纹" || true
+          echo "MATERIAL_DIR=$MATERIAL_DIR" >> "$GITHUB_ENV"
+
+      # --------------------------------------------------------
+      # 定位 hap-sign-tool.jar（SDK toolchains/lib 下）
+      # --------------------------------------------------------
+      - name: 定位签名工具 hap-sign-tool.jar
+        id: find_jarsigner
+        run: |
+          set -euo pipefail
+          JAR="$(find "$DEVECO_SDK_HOME" -name 'hap-sign-tool.jar' -type f 2>/dev/null | head -n1)"
+          if [ -z "$JAR" ]; then
+            echo "错误: 在 DEVECO_SDK_HOME=$DEVECO_SDK_HOME 下找不到 hap-sign-tool.jar"
+            find "$DEVECO_SDK_HOME" -name '*.jar' 2>/dev/null | head -20 || true
+            exit 1
+          fi
+          echo "hap_sign_tool_jar=$JAR" >> "$GITHUB_OUTPUT"
+          echo "找到签名工具: $JAR"
+
+      # --------------------------------------------------------
+      # 重签名（mode=localSign，算法 SHA256withECDSA —— HarmonyOS 要求）
+      # --------------------------------------------------------
+      - name: HAP 重签名（release 证书）
+        id: sign
+        env:
+          SIGN_STORE_PASSWORD: ${{ secrets.SIGN_STORE_PASSWORD }}
+          SIGN_KEY_PASSWORD:   ${{ secrets.SIGN_KEY_PASSWORD }}
+          SIGN_KEY_ALIAS:      ${{ secrets.SIGN_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          # 必填密码/别名校验
+          for v in SIGN_STORE_PASSWORD SIGN_KEY_PASSWORD SIGN_KEY_ALIAS; do
+            VAL="${!v}"
+            if [ -z "$VAL" ]; then
+              echo "错误: secret $v 未配置（SIGN_STORE_PASSWORD / SIGN_KEY_PASSWORD / SIGN_KEY_ALIAS）"
+              exit 1
+            fi
+          done
+          UNSIGNED="${{ steps.find_unsigned.outputs.unsigned_hap }}"
+          SIGNED="$HOME/entry-release-signed.hap"
+          JAR="${{ steps.find_jarsigner.outputs.hap_sign_tool_jar }}"
+          CMD="java -jar \"$JAR\" sign-app
+            -mode          localSign
+            -keyAlias      \"$SIGN_KEY_ALIAS\"
+            -signAlg       SHA256withECDSA
+            -keystoreFile  \"$MATERIAL_DIR/release.p12\"
+            -keystorePwd   \"$SIGN_STORE_PASSWORD\"
+            -keyPwd        \"$SIGN_KEY_PASSWORD\"
+            -appCertFile   \"$MATERIAL_DIR/release.cer\"
+            -profileFile   \"$MATERIAL_DIR/release.p7b\"
+            -inFile        \"$UNSIGNED\"
+            -outFile       \"$SIGNED\""
+          echo "执行签名命令（敏感参数已屏蔽显示）:"
+          echo "  java -jar $JAR sign-app -mode localSign -keyAlias *** -signAlg SHA256withECDSA ..."
+          set +u
+          java -jar "$JAR" sign-app \
+            -mode          localSign \
+            -keyAlias      "$SIGN_KEY_ALIAS" \
+            -signAlg       SHA256withECDSA \
+            -keystoreFile  "$MATERIAL_DIR/release.p12" \
+            -keystorePwd   "$SIGN_STORE_PASSWORD" \
+            -keyPwd        "$SIGN_KEY_PASSWORD" \
+            -appCertFile   "$MATERIAL_DIR/release.cer" \
+            -profileFile   "$MATERIAL_DIR/release.p7b" \
+            -inFile        "$UNSIGNED" \
+            -outFile       "$SIGNED"
+          set -u
+          if [ ! -f "$SIGNED" ]; then echo "错误: 签名失败，未生成 $SIGNED"; exit 1; fi
+          echo "--- 签名完成 ---"
+          ls -lh "$SIGNED"
+          echo "signed_hap=$SIGNED"           >> "$GITHUB_OUTPUT"
+          echo "signed_hap_size=$(stat -c%s "$SIGNED" 2>/dev/null || stat -f%z "$SIGNED")" >> "$GITHUB_OUTPUT"
+
+      # --------------------------------------------------------
+      # 计算 SHA256 / 上传 artifacts
+      # --------------------------------------------------------
+      - name: 计算 SHA256 校验和
+        id: sha
+        run: |
+          SIGNED="${{ steps.sign.outputs.signed_hap }}"
+          SHA="$(sha256sum "$SIGNED" | awk '{print $1}')"
+          BASENAME="timelynotify-${{ needs.prepare.outputs.version }}-signed.hap"
+          # 重命名成带版本号的文件名（便于 artifact / Release 附件辨识）
+          RENAMED="$HOME/$BASENAME"
+          cp "$SIGNED" "$RENAMED"
+          echo "$SHA  $BASENAME" > "$HOME/$BASENAME.sha256"
+          cat "$HOME/$BASENAME.sha256"
+          echo "renamed_hap=$RENAMED"           >> "$GITHUB_OUTPUT"
+          echo "renamed_basename=$BASENAME"     >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA"                    >> "$GITHUB_OUTPUT"
+
+      - name: 上传 HAP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: timelynotify-${{ needs.prepare.outputs.version }}-hap
+          path: |
+            ${{ steps.sha.outputs.renamed_hap }}
+            ${{ steps.sha.outputs.renamed_hap }}.sha256
+          if-no-files-found: error
+          retention-days: 90
+
+# ============================================================
+# Job 3 · upload-agc —— 上传到 AppGallery Connect（通过 agc-api-cli）
+# ============================================================
+  upload-agc:
+    name: Upload to AGC
+    needs: [prepare, build-sign]
+    if: needs.prepare.outputs.skip_agc_upload != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 下载 signed HAP artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: timelynotify-${{ needs.prepare.outputs.version }}-hap
+          path: ./artifact
+
+      - name: 安装 agc-api-cli
+        run: |
+          npm install -g agc-api-cli@latest 2>&1 | tail -5
+          agc-cli --version
+
+      - name: 配置 AGC 凭证并上传
+        env:
+          AGC_CLIENT_ID:     ${{ secrets.AGC_CLIENT_ID }}
+          AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
+          AGC_DOMAIN:        ${{ vars.AGC_DOMAIN }}
+          AGC_APP_ID:        ${{ secrets.AGC_APP_ID }}
+          RELEASE_TYPE:      ${{ needs.prepare.outputs.release_type }}
+          VERSION:           ${{ needs.prepare.outputs.version }}
+          BUNDLE_NAME:       cn.oicode.timelynotify
+        run: |
+          set -euo pipefail
+          # ---- 1. 凭证校验 ----
+          if [ -z "$AGC_CLIENT_ID" ] || [ -z "$AGC_CLIENT_SECRET" ]; then
+            echo "错误: secret AGC_CLIENT_ID 或 AGC_CLIENT_SECRET 未配置"
+            echo "创建入口: AGC 控制台 → 用户与访问 → API 客户端（项目域务必选择 N/A，否则 403）"
+            exit 1
+          fi
+          HAP_FILE="$(ls ./artifact/*.hap | head -n1)"
+          SHA_FILE="$(ls ./artifact/*.sha256 | head -n1)"
+          [ -f "$HAP_FILE" ] || { echo "错误: 未找到 HAP artifact"; exit 1; }
+          echo "待上传: $HAP_FILE ($(du -h "$HAP_FILE" | cut -f1))"
+          echo "SHA256 : $(cat "$SHA_FILE")"
+
+          # ---- 2. 登录（client_credentials 模式，agc-cli 默认） ----
+          # 使用 .env 方式（避免命令行参数暴露明文）
+          cat > .env <<EOF
+          AGC_AUTH_MODE=client_credentials
+          AGC_CLIENT_ID=$AGC_CLIENT_ID
+          AGC_CLIENT_SECRET=$AGC_CLIENT_SECRET
+          EOF
+          [ -n "$AGC_DOMAIN" ] && echo "AGC_DOMAIN=$AGC_DOMAIN" >> .env || true
+          agc-cli auth status || agc-cli auth login
+
+          # ---- 3. 查询 appId（secret AGC_APP_ID 有值时跳过） ----
+          if [ -n "$AGC_APP_ID" ]; then
+            APP_ID="$AGC_APP_ID"
+            echo "使用 secret 中的 AGC_APP_ID=$APP_ID"
+          else
+            echo "通过包名查询 appId ..."
+            APP_ID_JSON="$(agc-cli publish app-id -p "$BUNDLE_NAME")"
+            echo "$APP_ID_JSON" | jq . 2>/dev/null || echo "$APP_ID_JSON"
+            APP_ID="$(echo "$APP_ID_JSON" | jq -r '.appId // .ret.appId // empty' 2>/dev/null || true)"
+            if [ -z "$APP_ID" ]; then
+              # 回退：输出全量 JSON，方便排查
+              echo "未能从响应解析 appId。上面是完整响应，请确认包名 $BUNDLE_NAME 是否在 AGC 创建了应用。"
+              exit 1
+            fi
+          fi
+          echo "AGC App ID = $APP_ID"
+
+          # ---- 4. 上传 ----
+          # release_type: 1=全量, 6=HarmonyOS 测试
+          echo "开始上传 HAP（releaseType=$RELEASE_TYPE）..."
+          UPLOAD_JSON="$(agc-cli upload file -a "$APP_ID" -f "$HAP_FILE" -r "$RELEASE_TYPE" 2>&1)"
+          echo "upload 响应:"
+          echo "$UPLOAD_JSON" | jq . 2>/dev/null || echo "$UPLOAD_JSON"
+          # 提取返回码/URL（agc-api-cli 不同版本输出结构略有差异，这里容错）
+          RET_CODE="$(echo "$UPLOAD_JSON" | jq -r '.code // .ret.code // 0' 2>/dev/null || echo 0)"
+          if [ "$RET_CODE" = "0" ] || [ "$RET_CODE" = "null" ]; then
+            echo "✅ AGC 上传成功（版本 $VERSION · 发布类型 $RELEASE_TYPE）"
+          else
+            echo "❌ AGC 上传失败（code=$RET_CODE），详情见上方 JSON"
+            exit 1
+          fi
+
+          # ---- 5. 写入 summary ----
+          {
+            echo "### AGC 上传结果"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| 包名 | \`$BUNDLE_NAME\` |"
+            echo "| AGC App ID | \`$APP_ID\` |"
+            echo "| 版本 | $VERSION (releaseType=$RELEASE_TYPE) |"
+            echo "| 文件 | \`$(basename "$HAP_FILE")\` |"
+            echo "| SHA256 | \`$(cat "$SHA_FILE" | awk '{print $1}')\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+# ============================================================
+# Job 4 · github-release —— 创建 GitHub Release 并挂载 HAP
+# ============================================================
+  github-release:
+    name: GitHub Release
+    needs: [prepare, build-sign]
+    if: always() && needs.build-sign.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载 signed HAP artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: timelynotify-${{ needs.prepare.outputs.version }}-hap
+          path: ./artifact
+
+      - name: 列出 artifact 文件
+        run: ls -lh ./artifact/
+
+      - name: 创建/更新 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: Release ${{ needs.prepare.outputs.version }}
+          body: |
+            ## TimelyNotify ${{ needs.prepare.outputs.version }}
+
+            - **versionCode**: `\${{ needs.prepare.outputs.version_code }}`
+            - **versionName**: `${{ needs.prepare.outputs.version }}`
+            - **包名**: `cn.oicode.timelynotify`
+
+            ### 附件说明
+
+            - `timelynotify-${{ needs.prepare.outputs.version }}-signed.hap` — HarmonyOS 安装包（release 签名），可用 `hdc install` 安装
+            - `*.sha256` — SHA256 校验和
+
+            ### 校验
+
+            ```sh
+            sha256sum -c timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
+            ```
+          files: |
+            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap
+            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
+          fail_on_unmatched_files: true
+          make_latest: true
+          generate_release_notes: false

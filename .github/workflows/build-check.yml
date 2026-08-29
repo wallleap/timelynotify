@@ -1,0 +1,170 @@
+name: Build Check — PR 构建检查
+
+# ============================================================
+# 用途: 每次 push / PR 到 main / develop 等分支时，跑一次构建（debug + release 模式）
+#       确保代码可编译通过，但不执行真实签名（使用 debug 证书或跳过签名）、不上传 AGC。
+# ============================================================
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'release/**'
+      - 'hotfix/**'
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/**'
+  workflow_dispatch:
+
+concurrency:
+  group: build-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUNDLE_NAME: cn.oicode.timelynotify
+  OHPM_REGISTRY: ${{ vars.OHPM_REGISTRY }}
+
+jobs:
+  build-check:
+    name: Build Check（debug + release）
+    runs-on: ${{ vars.BUILD_CHECK_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        build_mode: [ debug, release ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        if: runner.environment != 'self-hosted'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      # ------------------------------------------------------------
+      # SDK 环境准备
+      #   托管 runner → 需要 secret DEVECO_CLI_TOOLS_URL（或 vars.BUILD_CHECK_RUNNER=self-hosted）
+      #   自托管 → 跳过下载，使用预装 DEVECO_SDK_HOME / NODE_HOME
+      # ------------------------------------------------------------
+      - name: Setup DevEco SDK & Node.js（托管 runner）
+        if: (vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest') && runner.environment != 'self-hosted'
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.DEVECO_CLI_TOOLS_URL }}" ]; then
+            echo "错误: 托管 runner 需要 secret DEVECO_CLI_TOOLS_URL；或设置 vars.BUILD_CHECK_RUNNER=self-hosted 使用自托管 runner"
+            exit 1
+          fi
+          SDK_PREFIX="$HOME/deveco"
+          mkdir -p "$SDK_PREFIX" && cd "$SDK_PREFIX"
+          curl -fSL --retry 3 -o cli_tools.zip "${{ secrets.DEVECO_CLI_TOOLS_URL }}"
+          unzip -q cli_tools.zip && rm cli_tools.zip
+          if [ -d "command-line-tools" ]; then BASE="$SDK_PREFIX/command-line-tools"
+          elif [ -d "sdk" ]; then BASE="$SDK_PREFIX"
+          else BASE="$(ls -1d */ 2>/dev/null | head -n1 | sed 's:/*$::')"; fi
+          if [ -d "$BASE/sdk/default" ]; then echo "DEVECO_SDK_HOME=$BASE/sdk/default" >> "$GITHUB_ENV"
+          elif [ -d "$BASE/openharmony" ]; then echo "DEVECO_SDK_HOME=$BASE" >> "$GITHUB_ENV"
+          else echo "无法定位 SDK 根"; ls -la "$BASE"; exit 1; fi
+          if [ -d "$BASE/tools/node" ]; then echo "NODE_HOME=$BASE/tools/node" >> "$GITHUB_ENV"
+          else echo "NODE_HOME=$(dirname $(dirname $(which node)))" >> "$GITHUB_ENV"; fi
+          if [ -f "$BASE/tools/hvigor/bin/hvigorw" ]; then echo "HVIGORW=$BASE/tools/hvigor/bin/hvigorw" >> "$GITHUB_ENV"
+          elif [ -f "$BASE/hvigor/bin/hvigor" ]; then echo "HVIGORW=$BASE/hvigor/bin/hvigor" >> "$GITHUB_ENV"
+          else echo "HVIGORW=$(command -v hvigorw || command -v hvigor)" >> "$GITHUB_ENV"; fi
+
+      - name: 环境校验
+        run: |
+          set -euo pipefail
+          : "${DEVECO_SDK_HOME:?缺少 DEVECO_SDK_HOME}"
+          : "${NODE_HOME:?缺少 NODE_HOME}"
+          HVIGORW="${HVIGORW:-$(command -v hvigorw || true)}"
+          : "${HVIGORW:?缺少 HVIGORW}"
+          export PATH="$NODE_HOME/bin:$PATH"
+          echo "DEVECO_SDK_HOME=$DEVECO_SDK_HOME"
+          echo "NODE_HOME=$NODE_HOME"
+          echo "HVIGORW=$HVIGORW"
+          node -v && java -version
+          echo "PATH=$NODE_HOME/bin:$PATH" >> "$GITHUB_ENV"
+          echo "HVIGORW=$HVIGORW" >> "$GITHUB_ENV"
+          if command -v ohpm >/dev/null 2>&1; then echo "OHPM=$(which ohpm)" >> "$GITHUB_ENV"
+          elif [ -f "$DEVECO_SDK_HOME/../tools/ohpm/bin/ohpm" ]; then echo "OHPM=$DEVECO_SDK_HOME/../tools/ohpm/bin/ohpm" >> "$GITHUB_ENV"; fi
+
+      - name: 安装 ohpm（若缺失）
+        run: |
+          if [ -z "${OHPM:-}" ]; then npm install -g @ohos/ohpm-cli 2>&1 | tail -3
+            echo "OHPM=$(dirname $(dirname $(npm root -g)))/bin/ohpm" >> "$GITHUB_ENV"; fi
+          ${OHPM:-ohpm} -v
+
+      - name: 缓存 ohpm 依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ohpm
+            oh_modules
+            entry/oh_modules
+          key: ohpm-check-${{ runner.os }}-${{ matrix.build_mode }}-${{ hashFiles('oh-package-lock.json5', 'entry/oh-package.json5') }}
+          restore-keys: |
+            ohpm-check-${{ runner.os }}-${{ matrix.build_mode }}-
+            ohpm-${{ runner.os }}-
+
+      - name: 安装 OHPM 依赖
+        run: |
+          OHPM_BIN="${OHPM:-ohpm}"
+          [ -n "$OHPM_REGISTRY" ] && "$OHPM_BIN" config set registry "$OHPM_REGISTRY" || true
+          "$OHPM_BIN" install --all 2>&1 | tail -15
+
+      # ------------------------------------------------------------
+      # 注入虚拟版本号（构建必填；不影响仓库任何文件）
+      # ------------------------------------------------------------
+      - name: 注入版本号（CI 占位）
+        run: |
+          # 版本号: 0.0.<run_number>（确保构建能生成，不代表真实发布版本）
+          V="0.0.${{ github.run_number }}"
+          VC="${{ github.run_number }}"
+          perl -i -pe "
+            s/\"versionCode\"\s*:\s*\d+/\"versionCode\": $VC/;
+            s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$V\"/;
+          " AppScope/app.json5
+          echo "注入版本 $V (versionCode=$VC)"
+          cat AppScope/app.json5
+
+      # ------------------------------------------------------------
+      # 构建 —— 只做编译验证，不需要真正可安装的签名包
+      # ------------------------------------------------------------
+      - name: 构建 HAP（${{ matrix.build_mode }}）
+        run: |
+          "$HVIGORW" assembleHap --mode module \
+            -p product=default \
+            -p buildMode=${{ matrix.build_mode }} \
+            --no-daemon 2>&1 | tail -60
+          OUTDIR="entry/build/default/outputs/default"
+          echo "--- ${{ matrix.build_mode }} 产物 ---"
+          ls -lh "$OUTDIR" 2>/dev/null || {
+            echo "错误: 构建失败（未生成 output 目录）";
+            echo "hvigor 日志前 200 行以辅助排错:";
+            find entry/build -name '*.log' -exec echo '== {} ==' \; -exec head -200 {} \; 2>/dev/null || true;
+            exit 1;
+          }
+
+      # ------------------------------------------------------------
+      # 单元测试（Hypium 本地 UT，不需要设备）
+      # ------------------------------------------------------------
+      - name: 运行本地单元测试（Hypium）
+        if: matrix.build_mode == 'debug'
+        continue-on-error: true
+        run: |
+          if grep -q '@ohos/hypium' entry/oh-package.json5 2>/dev/null \
+             || grep -q '@ohos/hypium' oh-package.json5 2>/dev/null; then
+            echo "=== 检测到 Hypium 依赖，尝试执行 testLocal ==="
+            "$HVIGORW" test --mode module -p product=default -p module=entry@default --no-daemon 2>&1 | tail -40 \
+              || echo "（Hypium 本地测试执行失败已忽略，可在本地验证）"
+          else
+            echo "未检测到 Hypium 依赖，跳过单元测试"
+          fi

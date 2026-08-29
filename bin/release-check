@@ -1,0 +1,639 @@
+#!/usr/bin/env bash
+# ==========================================================================
+# bin/release-check —— 运行 `bin/release` 之前的一键环境预检脚本
+#
+# 用法:
+#   bin/release-check [--with-build] [--with-ci] [--skip-net] [-q|-y] [-h]
+#
+#   --with-build   额外检查本地构建/签名工具链（DEVECO SDK / ohpm / hvigorw / JDK
+#                  以及签名材料 .p12/.cer/.p7b），最后尝试 bin/build 构建一次
+#   --with-ci      额外预检远端 CI 配置：gh CLI 登录态 → GitHub Secrets 清单比对
+#                  → AGC 客户端凭证（AGC_CLIENT_ID/AGC_CLIENT_SECRET）连通性测试
+#   --skip-net     跳过所有需要联网的检查项（git fetch / AGC API ping 等）
+#   -q, --quiet    仅输出失败/警告项（批量场景）
+#   -y             非交互模式：结尾不等待回车，遇 FAIL 直接 exit 1（便于脚本串联）
+#   -h, --help     显示此帮助
+#
+# 退出码:
+#   0  全部通过（或仅有 WARN 且用户手动确认继续）
+#   1  存在 FAIL 项（-y 模式）或用户中断
+#   2  参数错误
+#
+# 设计说明:
+#   · 所有检查结果分三态: ✅ PASS / ⚠️ WARN / ❌ FAIL
+#   · 只要出现 FAIL 就不建议继续发版
+#   · 跨平台兼容: macOS（默认 bash 3.2）/ Linux，临时文件使用 TMPDIR 变量
+#   · 敏感信息（密码/token）不打印到任何输出，只做「存在/格式正确」校验
+# ==========================================================================
+set -uo pipefail   # 注意: 不用 -e，单条检查失败要继续执行后续项，用 $RC 统一汇总
+
+# -------------------- 临时目录 & 全局计数 --------------------
+TMP_BASE="${TMPDIR:-${HOME:-/tmp}}/release-check.$$"
+mkdir -p "$TMP_BASE"
+trap 'rm -rf "$TMP_BASE"' EXIT
+
+PASS_COUNT=0
+WARN_COUNT=0
+FAIL_COUNT=0
+VERBOSE=1           # -q 时置 0
+INTERACTIVE=1       # -y 时置 0
+WITH_BUILD=0
+WITH_CI=0
+SKIP_NET=0
+RC=0
+
+# -------------------- 参数解析 --------------------
+for arg in "$@"; do
+  case "$arg" in
+    --with-build) WITH_BUILD=1 ;;
+    --with-ci)    WITH_CI=1 ;;
+    --skip-net)   SKIP_NET=1 ;;
+    -q|--quiet)   VERBOSE=0 ;;
+    -y)           INTERACTIVE=0 ;;
+    -h|--help)
+      sed -n '2,28p' "$0"   # 输出顶部注释中的「用法」段
+      exit 0 ;;
+    *)
+      echo "❌ 未知参数: $arg" >&2
+      echo "用法: bin/release-check [--with-build] [--with-ci] [--skip-net] [-q] [-y] [-h]" >&2
+      exit 2 ;;
+  esac
+done
+
+# -------------------- 彩色 / 图标输出（兼容 NO_COLOR） --------------------
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  C_RED=$'\033[31m'; C_YELLOW=$'\033[33m'; C_GREEN=$'\033[32m'
+  C_DIM=$'\033[2m';   C_CLEAR=$'\033[0m';    C_BOLD=$'\033[1m'
+else
+  C_RED=""; C_YELLOW=""; C_GREEN=""; C_DIM=""; C_CLEAR=""; C_BOLD=""
+fi
+
+# 三态输出函数: pass "描述" "修复建议(可选)"
+pass() {
+  PASS_COUNT=$((PASS_COUNT+1))
+  [ "$VERBOSE" -eq 1 ] && printf "  ${C_GREEN}✅ PASS${C_CLEAR}  %s\n" "$1"
+  return 0
+}
+warn() {
+  WARN_COUNT=$((WARN_COUNT+1))
+  printf "  ${C_YELLOW}⚠️  WARN${C_CLEAR}  %s\n" "$1"
+  [ -n "${2:-}" ] && printf "          ${C_DIM}↳ %s${C_CLEAR}\n" "$2"
+  return 0
+}
+fail() {
+  FAIL_COUNT=$((FAIL_COUNT+1))
+  RC=1
+  printf "  ${C_RED}❌ FAIL${C_CLEAR}  %s\n" "$1"
+  [ -n "${2:-}" ] && printf "          ${C_DIM}↳ %s${C_CLEAR}\n" "$2"
+  return 0
+}
+section() {
+  [ "$VERBOSE" -eq 1 ] && printf "\n${C_BOLD}▍%s${C_CLEAR}\n" "$1"
+}
+sub() {
+  [ "$VERBOSE" -eq 1 ] && printf "  ${C_DIM}· %s${C_CLEAR}\n" "$1"
+}
+
+# 带超时的网络命令包装（避免在弱网卡死；对齐经验：所有阻塞外部命令统一超时模型）
+# 用法: run_with_timeout <秒数> <命令...>
+run_with_timeout() {
+  local secs="$1"; shift
+  local out="$TMP_BASE/net.out"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@" >"$out" 2>&1
+    local rc=$?
+  else
+    # macOS 无 coreutils timeout：使用「后台 + sleep + kill」兜底
+    ( "$@" >"$out" 2>&1 ) &
+    local pid=$!
+    ( sleep "$secs"; kill "$pid" 2>/dev/null ) &
+    local watch=$!
+    wait "$pid" 2>/dev/null
+    local rc=$?
+    kill "$watch" 2>/dev/null
+    wait "$watch" 2>/dev/null
+  fi
+  cat "$out"
+  return $rc
+}
+
+# ==============================================================
+# 【A 组】基础工具检查（无论是否带参数都必跑）
+# ==============================================================
+section "A. 基础命令行工具"
+
+# bash 版本（>=3.2 基本满足；但 macOS 老版本需提醒）
+BASH_VER="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
+if (( BASH_VERSINFO[0] >= 3 && BASH_VERSINFO[1] >= 2 )); then
+  pass "bash 版本: $BASH_VER"
+else
+  fail "bash 版本过低: $BASH_VER（需 ≥ 3.2）" "升级 bash：brew install bash（macOS）/ 系统包管理器"
+fi
+
+# 基础工具逐一检查
+REQUIRED_CMDS=(git perl grep sed awk base64 curl)
+for cmd in "${REQUIRED_CMDS[@]}"; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    pass "命令存在: $cmd ( $(command -v $cmd) )"
+  else
+    fail "缺少命令: $cmd" "安装：brew install $cmd（macOS）/ apt-get install -y $cmd（Linux）"
+  fi
+done
+
+# git 版本（≥ 2.23 支持 git switch；bin/release 使用了 git switch）
+if command -v git >/dev/null 2>&1; then
+  GIT_VER="$(git version | sed 's/[^0-9.]*//')"
+  GIT_MAJ="${GIT_VER%%.*}"
+  GIT_MIN="${GIT_VER#*.}"; GIT_MIN="${GIT_MIN%%.*}"
+  if (( GIT_MAJ > 2 || (GIT_MAJ == 2 && GIT_MIN >= 23) )); then
+    pass "git 版本: $GIT_VER (支持 git switch)"
+  else
+    warn "git 版本偏低: $GIT_VER（bin/release 用到 git switch，建议 ≥ 2.23）" \
+         "升级：brew install git / 或在脚本中将『git switch X』替换为『git checkout X』"
+  fi
+fi
+
+# 可选工具（用于构建/签名/CI），缺了只 WARN
+OPTIONAL_CMDS=(java keytool node npm)
+for cmd in "${OPTIONAL_CMDS[@]}"; do
+  if command -v "$cmd" >/dev/null 2>&1; then
+    pass "可选命令存在: $cmd ( $(command -v $cmd) )"
+  else
+    case "$cmd" in
+      java|keytool)
+        if [ "$WITH_BUILD" -eq 1 ]; then
+          fail "缺少命令: $cmd（--with-build 模式需要）" "安装 JDK 8+：brew install openjdk@17"
+        else
+          warn "缺少命令: $cmd（--with-build 检查签名时需要）" "安装 JDK：brew install openjdk@17"
+        fi ;;
+      node|npm)
+        if [ "$WITH_BUILD" -eq 1 ]; then
+          warn "缺少命令: $cmd（若无 NODE_HOME 覆盖则 DevEco SDK 需自带 Node）" ""
+        else
+          warn "缺少命令: $cmd（本地构建时需要，CI 容器已内置）" ""
+        fi ;;
+    esac
+  fi
+done
+
+# jq（CI 预检和 AGC API 调试神器，缺了 WARN）
+if command -v jq >/dev/null 2>&1; then
+  pass "可选命令存在: jq"
+else
+  warn "缺少命令: jq（解析 JSON 响应时非常便利）" "安装：brew install jq"
+fi
+
+# ==============================================================
+# 【B 组】Git 环境 & 仓库状态（bin/release 核心前置）
+# ==============================================================
+section "B. Git 环境与仓库状态"
+
+# 1. 是否在 git 仓库内
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  pass "位于 Git 工作树: $REPO_ROOT"
+  cd "$REPO_ROOT"   # 切换到根目录，后续路径一致
+else
+  fail "当前目录不在 Git 工作树中" "cd 到项目根目录后再运行；或执行 git init（新仓库）"
+  echo "⚠️  后续 Git 相关检查无法执行，提前退出"
+  RC=1; goto_end_of_b=1
+fi
+
+if [ -z "${goto_end_of_b:-}" ]; then
+
+# 2. 基础身份配置（打 tag 需要，否则 tag 作者是匿名）
+GIT_NAME="$(git config --get user.name || true)"
+GIT_EMAIL="$(git config --get user.email || true)"
+if [ -n "$GIT_NAME" ] && [ -n "$GIT_EMAIL" ]; then
+  pass "Git 身份: $GIT_NAME <$GIT_EMAIL>"
+else
+  fail "Git user.name / user.email 未配置（tag/annotated tag 必须署名）" \
+       "git config --global user.name \"你的名字\" && git config --global user.email \"邮箱\""
+fi
+
+# 3. 工作区干净（bin/release 开头硬性要求）
+WS="$(git status --porcelain 2>/dev/null || true)"
+if [ -z "$WS" ]; then
+  pass "工作区干净（无未提交改动）"
+else
+  fail "工作区有未提交改动（bin/release 会直接终止）" \
+       "提交：git add -A && git commit；或丢弃：git checkout -- ."
+  [ "$VERBOSE" -eq 1 ] && echo "$WS" | sed 's/^/          /'
+fi
+
+# 4. 远端 origin 存在
+REMOTE_URL="$(git remote get-url origin 2>/dev/null || true)"
+if [ -n "$REMOTE_URL" ]; then
+  pass "远端 origin 存在: $REMOTE_URL"
+else
+  fail "未配置远端 origin" "git remote add origin <GitHub 仓库 SSH/HTTPS URL>"
+fi
+
+# 5. 网络检查：能否 fetch origin main
+RELEASE_BRANCH="${RELEASE_BRANCH:-main}"
+if [ "$SKIP_NET" -eq 0 ] && [ -n "$REMOTE_URL" ]; then
+  sub "测试远端可达性 & fetch 最新（含 tags）…"
+  if run_with_timeout 20 git fetch origin "$RELEASE_BRANCH" --tags --quiet 2>"$TMP_BASE/git-err.log"; then
+    pass "远端 origin/$RELEASE_BRANCH 可达，fetch 成功"
+  else
+    MSG="$(cat "$TMP_BASE/git-err.log" 2>/dev/null | tr '\n' ' ')"
+    fail "git fetch origin $RELEASE_BRANCH 失败: ${MSG:-超时/无网络}" \
+         "检查网络/代理；或 SSH key 未加入 ssh-agent；或加 --skip-net 跳过联网检查"
+  fi
+elif [ "$SKIP_NET" -eq 1 ]; then
+  warn "--skip-net：跳过远端可达性检查" "正式发版前建议去掉 --skip-net 再跑一遍确认"
+fi
+
+# 6. 发布分支存在（本地或远端至少有一个）
+if git show-ref --verify --quiet "refs/heads/$RELEASE_BRANCH" 2>/dev/null \
+   || git show-ref --verify --quiet "refs/remotes/origin/$RELEASE_BRANCH" 2>/dev/null; then
+  pass "发布分支存在: $RELEASE_BRANCH"
+else
+  fail "找不到发布分支 '$RELEASE_BRANCH'（本地和 origin 都没有）" \
+       "通过 RELEASE_BRANCH 环境变量覆盖；或检查分支名：git branch -a"
+fi
+
+# 7. 当前分支如果不是 release 分支，要有正确的合并关系
+CUR_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+if [ -n "$CUR_BRANCH" ] && [ "$CUR_BRANCH" != "$RELEASE_BRANCH" ]; then
+  # 如果本地 fetch 过了，做 merge-base 判断（避免发版内容漏合入）
+  if git merge-base --is-ancestor HEAD "origin/$RELEASE_BRANCH" 2>/dev/null; then
+    pass "当前分支 $CUR_BRANCH 的提交已合入 origin/$RELEASE_BRANCH（发版内容完整）"
+  elif [ "$SKIP_NET" -eq 0 ] && git rev-parse -q --verify "origin/$RELEASE_BRANCH" >/dev/null; then
+    warn "当前分支 $CUR_BRANCH 有未合入 origin/$RELEASE_BRANCH 的提交 —— 正式发版时将『不包含』这些改动" \
+         "如需包含：先 PR/Merge 到 $RELEASE_BRANCH，或 git switch $RELEASE_BRANCH 再 bin/release"
+  else
+    warn "当前在分支 $CUR_BRANCH，正式发版时 bin/release 会自动 switch 到 $RELEASE_BRANCH" ""
+  fi
+fi
+
+# 8. tag 是否撞号（模拟 bin/release 中的冲突检查）
+sub "检查最近版本号区间…"
+LATEST_TAG="$(git tag --list 'v[0-9]*' --sort=-v:refname 2>/dev/null | head -n1 || true)"
+if [ -n "$LATEST_TAG" ]; then
+  NEXT_MINOR="0"
+  if [[ "${LATEST_TAG#v}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    NEXT_MINOR=$(( BASH_REMATCH[2] + 1 ))
+  fi
+  EXPECTED_NEXT="v${BASH_REMATCH[1]:-1}.${NEXT_MINOR}.0"
+  pass "最近版本 tag: $LATEST_TAG → 自动递增下一版预计: $EXPECTED_NEXT"
+  # 检查不存在冲突 tag（例如用户自己手动创建未 push 的）
+  if git rev-parse -q --verify "refs/tags/$EXPECTED_NEXT" >/dev/null 2>&1; then
+    fail "预期下一版 tag $EXPECTED_NEXT 已存在本地（会冲突）" \
+         "删除本地冲突 tag：git tag -d $EXPECTED_NEXT；或手动指定更高版本：bin/release 1.x.0"
+  fi
+else
+  warn "尚未有任何 v* 版本 tag，首次发版默认 1.0.0" "如需自定义首版：bin/release 0.9.0 等"
+fi
+
+# 9. 能否 push tag（只做连通性试探，不真正推送）—— 检查凭证
+if [ "$SKIP_NET" -eq 0 ] && [ -n "$REMOTE_URL" ]; then
+  sub "测试对 origin 的 tag 推送权限（仅推送一个 dry-run 空引用，不产生远端变更）…"
+  # 使用 --dry-run push 一个不存在的 dummy ref：成功代表凭证 OK
+  DUMMY_REF="refs/tags/_release_check_dummy_$$"
+  if run_with_timeout 20 git push --dry-run origin "$DUMMY_REF:$DUMMY_REF" 2>"$TMP_BASE/push.log"; then
+    pass "tag 推送权限 OK（--dry-run 通过）"
+  else
+    PUSH_ERR="$(cat "$TMP_BASE/push.log" 2>/dev/null | tail -3 | tr '\n' ' ')"
+    # 如果是「dst refspec already exists」之类说明至少认证通过 → PASS
+    if echo "$PUSH_ERR" | grep -qiE 'permission|denied|auth|fatal|could not read'; then
+      fail "无法向 origin 推送 tag：$PUSH_ERR" \
+           "检查凭证：SSH 私钥是否 ssh-add；HTTPS 模式需要 gh auth login / 手动输入 PAT"
+    else
+      # 其他错误（例如 ref already exist）多半是因 dummy 冲突，说明权限 OK
+      pass "tag 推送权限 OK（dry-run 非致命响应：${PUSH_ERR:-(empty)}）"
+    fi
+  fi
+fi
+
+# end goto_end_of_b guard
+fi
+
+# ==============================================================
+# 【C 组】本地构建 & 签名工具链预检（--with-build 开启）
+# ==============================================================
+if [ "$WITH_BUILD" -eq 1 ]; then
+section "C. 本地构建 / 签名工具链（--with-build）"
+
+# C1. 环境变量 & 可执行文件存在
+export DEVECO_SDK_HOME="${DEVECO_SDK_HOME:-/Applications/DevEco-Studio.app/Contents/sdk}"
+export NODE_HOME="${NODE_HOME:-/Applications/DevEco-Studio.app/Contents/tools/node}"
+HVIGORW_DEFAULT="/Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw"
+HVIGORW="${HVIGORW:-$HVIGORW_DEFAULT}"
+
+for dir_var in DEVECO_SDK_HOME NODE_HOME; do
+  VAL="${!dir_var}"
+  if [ -d "$VAL" ]; then
+    pass "$dir_var = $VAL（目录存在）"
+  else
+    fail "$dir_var 不存在：$VAL" "设置正确的 SDK 路径：export $dir_var=/正确路径（DevEco 安装目录下）"
+  fi
+done
+
+if [ -x "$HVIGORW" ]; then
+  pass "hvigorw 可执行: $HVIGORW"
+else
+  fail "hvigorw 不可执行: $HVIGORW" "确认 DevEco Studio 安装完成，或 export HVIGORW=/正确路径/hvigorw"
+fi
+
+# ohpm
+OHPM_BIN=""
+if command -v ohpm >/dev/null 2>&1; then OHPM_BIN="$(command -v ohpm)"
+elif [ -f "$DEVECO_SDK_HOME/../tools/ohpm/bin/ohpm" ]; then OHPM_BIN="$DEVECO_SDK_HOME/../tools/ohpm/bin/ohpm"
+elif [ -f "$NODE_HOME/bin/ohpm" ]; then OHPM_BIN="$NODE_HOME/bin/ohpm"; fi
+if [ -n "$OHPM_BIN" ] && [ -x "$OHPM_BIN" ]; then
+  OHPM_V="$("$OHPM_BIN" -v 2>/dev/null || true)"
+  pass "ohpm 存在: $OHPM_BIN (v$OHPM_V)"
+else
+  fail "ohpm 命令不可用" "DevEco SDK 自带 ohpm；或手动：npm i -g @ohos/ohpm-cli"
+fi
+
+# C2. 签名工具 jar 是否存在
+HAP_SIGN_JAR="$(find "$DEVECO_SDK_HOME" -name 'hap-sign-tool.jar' -type f 2>/dev/null | head -n1 || true)"
+if [ -f "$HAP_SIGN_JAR" ]; then
+  pass "hap-sign-tool.jar 存在: $HAP_SIGN_JAR"
+else
+  warn "SDK 中未找到 hap-sign-tool.jar（本项目 CI 采用先出 unsigned 再重签名策略时需要）" \
+       "检查 SDK 是否完整安装 toolchains 组件；本项目 bin/build 依赖 hvigor 内置签名，不依赖该 jar（前提 build-profile.json5 签名配置有效）"
+fi
+
+# C3. 检查 build-profile.json5 中配置的签名材料路径是否存在（本机 hvigor 自动签名）
+sub "检查 build-profile.json5 的签名材料…"
+BPF="build-profile.json5"
+if [ -f "$BPF" ]; then
+  # 用 perl 提取 6 个字段：certpath/profile/storeFile / keyAlias / keyPassword / storePassword
+  SIGNING_JSON="$(perl -0777 -ne '
+    if (/\"signingConfigs\"\s*:\s*\[(.*?)\]/s) {
+      $blk = $1;
+      for $k (qw(certpath profile storeFile keyAlias keyPassword storePassword signAlg)) {
+        if ($blk =~ /\"$k\"\s*:\s*\"([^\"]+)\"/) { print "$k=$1\n"; }
+      }
+    }' "$BPF" 2>/dev/null || true)"
+  if [ -n "$SIGNING_JSON" ]; then
+    [ "$VERBOSE" -eq 1 ] && echo "$SIGNING_JSON" | sed -e 's/password=.*/password=***/' -e 's/^/          /'
+    # 逐行检查文件存在
+    while IFS='=' read -r k v; do
+      case "$k" in
+        certpath|profile|storeFile)
+          if [ -f "$v" ]; then
+            pass "签名配置文件存在: $k = $v"
+          else
+            fail "签名配置文件缺失: $k = $v（本地 hvigor 自动签名会失败）" \
+                 "打开 DevEco Studio → Project Structure → Signing Configs 重新配置一次"
+          fi
+          ;;
+        signAlg)
+          if [ "$v" = "SHA256withECDSA" ]; then
+            pass "签名算法正确: signAlg = $v"
+          else
+            warn "签名算法: $v（HarmonyOS 官方推荐 SHA256withECDSA，其他算法可能被 AGC 拒签）" ""
+          fi
+          ;;
+        keyAlias)
+          [ -n "$v" ] && pass "keyAlias 已配置: $v" || fail "keyAlias 为空" ""
+          ;;
+        keyPassword|storePassword)
+          # 加密密码（以 0000001A 开头）无法在脚本里解密，只检查非空
+          if [ -n "$v" ]; then
+            pass "$k 已配置（长度 ${#v}，DevEco Studio 加密格式）"
+          else
+            fail "$k 为空" "在 DevEco Studio Signing Configs 中重新输入密码"
+          fi
+          ;;
+      esac
+    done <<< "$SIGNING_JSON"
+  else
+    warn "build-profile.json5 中未找到 signingConfigs 字段" \
+         "CI 流程会自动使用 hap-sign-tool.jar 重签名（不受影响）；但本地 bin/build 不会产出 signed HAP"
+  fi
+else
+  fail "未找到 $BPF（项目结构被破坏）" ""
+fi
+
+# C4. AppScope/app.json5 格式合法
+sub "验证 AppScope/app.json5 版本字段…"
+if [ -f "AppScope/app.json5" ]; then
+  VC_LINE="$(grep -E '"versionCode"' AppScope/app.json5 || true)"
+  VN_LINE="$(grep -E '"versionName"' AppScope/app.json5 || true)"
+  if [ -n "$VC_LINE" ] && [ -n "$VN_LINE" ]; then
+    pass "AppScope/app.json5 包含 versionCode / versionName（可被 bin/build 注入）"
+    [ "$VERBOSE" -eq 1 ] && echo "          $VC_LINE" && echo "          $VN_LINE"
+  else
+    fail "AppScope/app.json5 缺少 versionCode 或 versionName 字段" ""
+  fi
+  # 文件改动检查（bin/build 会拒绝，避免还原时丢失）
+  if [ -n "$(git status --porcelain -- AppScope/app.json5 2>/dev/null)" ]; then
+    fail "AppScope/app.json5 有未提交改动（bin/build 会终止）" "提交或还原该文件后重试"
+  else
+    pass "AppScope/app.json5 无未提交改动（bin/build trap 还原安全）"
+  fi
+else
+  fail "未找到 AppScope/app.json5" ""
+fi
+
+# C5. ohpm 依赖就绪（或能安装）—— 试跑 ohpm install --dry-run 无则安装
+sub "检查 ohpm 依赖（如缺失将执行 ohpm install --all）…"
+if [ -n "${OHPM_BIN:-}" ] && command -v "$OHPM_BIN" >/dev/null 2>&1; then
+  if [ -d "oh_modules" ] || [ "$VERBOSE" -eq 0 ]; then
+    pass "oh_modules 目录存在（依赖可能已就绪）"
+  else
+    warn "oh_modules 目录不存在：稍后构建时会自动执行 ohpm install --all（耗时约 1~5 分钟）" ""
+  fi
+fi
+
+# C6. 试跑一次 bin/build（构建版本号用 0.0.1-CI-check，避免 tag 冲突）
+sub "试跑 bin/build（构建模式，预计耗时 3~10 分钟）…"
+CHECK_VERSION="0.0.999"
+# bin/build 本身成功返回 0；失败返回非 0
+if bash bin/build "$CHECK_VERSION" >"$TMP_BASE/build.log" 2>&1; then
+  HAP_OUT="entry/build/default/outputs/default"
+  if ls "$HAP_OUT"/*.hap >/dev/null 2>&1; then
+    SIGNED_COUNT=$(ls "$HAP_OUT"/*signed.hap 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$SIGNED_COUNT" -gt 0 ]; then
+      pass "本地构建成功 + 产出签名 HAP（$(ls -lh "$HAP_OUT"/*signed.hap | awk '{print $5, $NF}')）"
+    else
+      warn "本地构建成功，但未找到签名 HAP（仅 unsigned）" \
+           "检查 C3 中的签名材料路径/密码配置；CI 流程不受影响（CI 用 hap-sign-tool.jar 独立签名）"
+    fi
+  else
+    warn "bin/build 返回 0 但未找到 HAP 产物" "查看完整日志：cat $TMP_BASE/build.log（脚本退出前保留）"
+  fi
+else
+  fail "本地构建失败（bin/build $CHECK_VERSION 返回非零）" \
+       "查看完整日志：tail -80 $TMP_BASE/build.log （本脚本 EXIT 前临时文件不删除，便于排查）"
+  echo "---------- 构建日志最后 60 行 ----------"
+  tail -60 "$TMP_BASE/build.log" | sed 's/^/    /'
+  echo "--------------------------------------"
+fi
+
+fi  # end --with-build
+
+# ==============================================================
+# 【D 组】CI 配置预检（--with-ci：GitHub Secrets / AGC 凭证）
+# ==============================================================
+if [ "$WITH_CI" -eq 1 ]; then
+section "D. CI 配置预检（GitHub Secrets + AGC 凭证）"
+
+# D1. gh CLI 是否安装并登录
+if command -v gh >/dev/null 2>&1; then
+  GH_AUTH_OUT="$(gh auth status 2>&1 || true)"
+  if echo "$GH_AUTH_OUT" | grep -qiE 'Logged in to github.com'; then
+    GH_USER="$(gh api user --jq .login 2>/dev/null || echo '未知')"
+    pass "GitHub CLI 已登录: $GH_USER"
+  else
+    warn "GitHub CLI 未登录（无法自动检查 Secrets 清单）" \
+         "执行：gh auth login（选择 HTTPS + Git Credential Manager 最省心）"
+    NO_GH=1
+  fi
+else
+  warn "未安装 GitHub CLI（gh）" "安装：brew install gh，之后执行 gh auth login"
+  NO_GH=1
+fi
+
+# D2. 如果已登录，对比仓库 Secrets 清单
+if [ -z "${NO_GH:-}" ] && [ "$SKIP_NET" -eq 0 ]; then
+  # 推导仓库 owner/repo（SSH / HTTPS 两种 remote URL 形式都兼容）
+  REMOTE_URL="${REMOTE_URL:-$(git remote get-url origin 2>/dev/null || true)}"
+  REPO_SLUG=""
+  if [[ "$REMOTE_URL" =~ github\.com[:/]([^/]+/[^.]+) ]]; then
+    REPO_SLUG="${BASH_REMATCH[1]%.git}"
+  fi
+  if [ -n "$REPO_SLUG" ]; then
+    sub "比对仓库 $REPO_SLUG 的 Secrets（只读 API，不会读取值）…"
+    # 必填的发布签名 + AGC 客户端 Secret 名列表
+    REQUIRED_SECRETS=(
+      SIGN_STORE_P12 SIGN_CERT_CER SIGN_PROFILE_P7B
+      SIGN_STORE_PASSWORD SIGN_KEY_PASSWORD SIGN_KEY_ALIAS
+      AGC_CLIENT_ID AGC_CLIENT_SECRET
+    )
+    # 可选
+    OPTIONAL_SECRETS=(AGC_APP_ID DEVECO_CLI_TOOLS_URL)
+
+    # 拿一次 secrets 列表
+    SECRET_LIST="$TMP_BASE/gh-secrets.txt"
+    if gh api -X GET "repos/$REPO_SLUG/actions/secrets?per_page=100" --jq '.secrets[].name' >"$SECRET_LIST" 2>/dev/null; then
+      for sec in "${REQUIRED_SECRETS[@]}"; do
+        if grep -Fxq "$sec" "$SECRET_LIST"; then
+          pass "GitHub Secret 已配置: $sec"
+        else
+          fail "GitHub Secret 缺失: $sec（CI Job 必败）" \
+               "到 https://github.com/$REPO_SLUG/settings/secrets/actions 添加"
+        fi
+      done
+      for sec in "${OPTIONAL_SECRETS[@]}"; do
+        if grep -Fxq "$sec" "$SECRET_LIST"; then
+          pass "GitHub Secret（可选）已配置: $sec"
+        else
+          case "$sec" in
+            DEVECO_CLI_TOOLS_URL)
+              warn "Secret DEVECO_CLI_TOOLS_URL 未设置（使用托管 ubuntu-latest 时必填，自托管 runner 不需要）" \
+                   "如使用自托管 runner，可忽略" ;;
+            AGC_APP_ID)
+              warn "Secret AGC_APP_ID 未设置（CI 会通过包名自动查询，建议直接填写节省时间/避免失败）" "" ;;
+          esac
+        fi
+      done
+    else
+      warn "读取 GitHub Secrets 列表失败（权限不足？）" "确认 gh 登录账号对 $REPO_SLUG 有 Admin 权限"
+    fi
+
+    # D3. Runners 状态
+    sub "检查可用 Runners …"
+    RUNNERS_OUT="$TMP_BASE/gh-runners.json"
+    if gh api -X GET "repos/$REPO_SLUG/actions/runners?per_page=50" --jq '.runners[] | [.name, .status, .labels[].name] | @tsv' >"$RUNNERS_OUT" 2>/dev/null && [ -s "$RUNNERS_OUT" ]; then
+      ONLINE_SELF=$(grep -iE "online.*self-hosted" "$RUNNERS_OUT" 2>/dev/null | wc -l | tr -d ' ')
+      if [ "$ONLINE_SELF" -gt 0 ]; then
+        pass "自托管 Runner 在线数: $ONLINE_SELF"
+      else
+        warn "未检测到在线的 self-hosted runner（若使用托管 ubuntu-latest 可忽略）" ""
+      fi
+      [ "$VERBOSE" -eq 1 ] && {
+        echo "          所有 Runner 摘要:"
+        awk -F'\t' '{printf "            · %s  status=%s  labels=%s\n", $1, $2, $3}' "$RUNNERS_OUT"
+      }
+    else
+      warn "无法读取 Runners 列表（权限？托管 ubuntu-latest 无需自托管 Runner）" ""
+    fi
+  else
+    warn "无法从 remote URL 解析 GitHub owner/repo: $REMOTE_URL" "只支持 GitHub；Gitee/GitLab 等平台需手动检查"
+  fi
+fi
+
+# D4. AGC 客户端凭证连通性测试（从环境变量读，不打印）
+if [ "$SKIP_NET" -eq 0 ]; then
+  sub "预检 AGC 客户端凭证连通性（读取本地环境变量，不会打印明文）…"
+  HAS_ID=0; HAS_SEC=0
+  [ -n "${AGC_CLIENT_ID:-}" ]  && HAS_ID=1
+  [ -n "${AGC_CLIENT_SECRET:-}" ] && HAS_SEC=1
+  # 若没设置本地 env，尝试读取 .env（CI/本地开发常见）
+  if [ $HAS_ID -eq 0 ] || [ $HAS_SEC -eq 0 ]; then
+    if [ -f ".env" ]; then
+      [ -z "${AGC_CLIENT_ID:-}" ]  && AGC_CLIENT_ID="$(grep -E '^AGC_CLIENT_ID=' .env 2>/dev/null | cut -d= -f2- || true)"
+      [ -z "${AGC_CLIENT_SECRET:-}" ] && AGC_CLIENT_SECRET="$(grep -E '^AGC_CLIENT_SECRET=' .env 2>/dev/null | cut -d= -f2- || true)"
+      [ -n "$AGC_CLIENT_ID" ]  && HAS_ID=1
+      [ -n "$AGC_CLIENT_SECRET" ] && HAS_SEC=1
+    fi
+  fi
+  if [ $HAS_ID -eq 1 ] && [ $HAS_SEC -eq 1 ]; then
+    pass "本地 AGC_CLIENT_ID / AGC_CLIENT_SECRET 环境变量已存在"
+    # 尝试用 curl 获取 token 验证有效性（华为 OAuth2 Token 端点）
+    AGC_DOMAIN="${AGC_DOMAIN:-connect-api.cloud.huawei.com}"
+    sub "调用 AGC token 端点验证凭证（超时 15 秒）…"
+    TOKEN_RESP="$(run_with_timeout 15 curl -sS -X POST \
+      "https://$AGC_DOMAIN/api/oauth2/v1/token" \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      -d "grant_type=client_credentials&client_id=${AGC_CLIENT_ID}&client_secret=${AGC_CLIENT_SECRET}" 2>/dev/null || true)"
+    if echo "$TOKEN_RESP" | grep -qE '"access_token"'; then
+      EXPIRES="$(echo "$TOKEN_RESP" | command grep -oE '"expires_in":[0-9]+' | head -n1 | tr -dc '0-9' || echo '?')"
+      pass "AGC 凭证验证通过，access_token 有效期 ≈ ${EXPIRES}s"
+    else
+      ERR_MSG="$(echo "$TOKEN_RESP" | tr -d '\n' | head -c 300)"
+      fail "AGC 凭证无效或网络不通：${ERR_MSG:-无响应}" \
+           "确认：① 凭证是在『API 客户端』Tab 创建（不是 Project Settings 的 Client info）② Project 下拉必须选 N/A ③ 角色有『应用管理员』+『管理员』"
+    fi
+  else
+    warn "本地未设置 AGC_CLIENT_ID / AGC_CLIENT_SECRET（CI 从 GitHub Secrets 读取，不影响发版）" \
+         "如需本地调用 AGC API：export AGC_CLIENT_ID=xxx AGC_CLIENT_SECRET=yyy"
+  fi
+fi
+
+fi  # end --with-ci
+
+# ==============================================================
+# 汇总输出
+# ==============================================================
+section "──────────────── 环境检查汇总 ────────────────"
+
+printf "  ${C_GREEN}✅ PASS${C_CLEAR} = %d    " "$PASS_COUNT"
+printf "${C_YELLOW}⚠️  WARN${C_CLEAR} = %d    " "$WARN_COUNT"
+printf "${C_RED}❌ FAIL${C_CLEAR} = %d\n"  "$FAIL_COUNT"
+echo ""
+
+if [ "$FAIL_COUNT" -gt 0 ]; then
+  printf "  ${C_RED}${C_BOLD}结论: 存在 %d 个 ❌ FAIL，不建议继续发版。${C_CLEAR}\n" "$FAIL_COUNT"
+  printf "  ${C_DIM}修复上方 FAIL 项后，重新执行 bin/release-check 直到 0 FAIL。${C_CLEAR}\n"
+  if [ "$INTERACTIVE" -eq 0 ]; then
+    exit 1
+  else
+    printf "\n  是否仍要继续发版？（不推荐）输入 YES 继续，其他任意键退出："
+    read -r CONFIRM
+    [ "$CONFIRM" = "YES" ] && exit 0 || exit 1
+  fi
+elif [ "$WARN_COUNT" -gt 0 ]; then
+  printf "  ${C_YELLOW}${C_BOLD}结论: 0 FAIL，但存在 %d 个 ⚠️ WARN。${C_CLEAR}\n" "$WARN_COUNT"
+  printf "  ${C_DIM}可继续发版；但建议先处理 WARN 项以避免后续 CI 小概率失败。${C_CLEAR}\n"
+  if [ "$INTERACTIVE" -eq 1 ]; then
+    printf "\n  按回车执行 bin/release（Ctrl-C 取消）…"
+    read -r _ </dev/tty 2>/dev/null || true
+  fi
+  printf "  ${C_GREEN}${C_BOLD}→ 运行: bin/release $*${C_CLEAR}\n"
+  exit 0
+else
+  printf "  ${C_GREEN}${C_BOLD}结论: 环境完美！可以放心发版 🎉${C_CLEAR}\n"
+  if [ "$INTERACTIVE" -eq 1 ]; then
+    printf "  按回车执行 bin/release（Ctrl-C 取消）…"
+    read -r _ </dev/tty 2>/dev/null || true
+  fi
+  printf "  ${C_GREEN}${C_BOLD}→ 运行: bin/release $*${C_CLEAR}\n"
+  exit 0
+fi
