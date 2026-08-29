@@ -378,9 +378,8 @@ jobs:
           echo "$SIGN_STORE_P12"   | base64 -d > "$MATERIAL_DIR/release.p12"
           echo "$SIGN_CERT_CER"    | base64 -d > "$MATERIAL_DIR/release.cer"
           echo "$SIGN_PROFILE_P7B" | base64 -d > "$MATERIAL_DIR/release.p7b"
-          # 校验文件
+          # 校验文件（file 命令容器内没有，keytool 校验足够）
           ls -lh "$MATERIAL_DIR"
-          file "$MATERIAL_DIR"/*
           # SHA256 指纹（便于人工比对 AGC 控制台）
           echo "--- 证书指纹 ---"
           keytool -printcert -file "$MATERIAL_DIR/release.cer" 2>/dev/null | grep -E "SHA256|指纹" || true
@@ -445,17 +444,6 @@ jobs:
           UNSIGNED="${{ steps.find_unsigned.outputs.unsigned_hap }}"
           SIGNED="$HOME/entry-release-signed.hap"
           JAR="${{ steps.find_jarsigner.outputs.hap_sign_tool_jar }}"
-          CMD="java -jar \"$JAR\" sign-app
-            -mode          localSign
-            -keyAlias      \"$SIGN_KEY_ALIAS\"
-            -signAlg       SHA256withECDSA
-            -keystoreFile  \"$MATERIAL_DIR/release.p12\"
-            -keystorePwd   \"$SIGN_STORE_PASSWORD\"
-            -keyPwd        \"$SIGN_KEY_PASSWORD\"
-            -appCertFile   \"$MATERIAL_DIR/release.cer\"
-            -profileFile   \"$MATERIAL_DIR/release.p7b\"
-            -inFile        \"$UNSIGNED\"
-            -outFile       \"$SIGNED\""
           echo "执行签名命令（敏感参数已屏蔽显示）:"
           echo "  java -jar $JAR sign-app -mode localSign -keyAlias *** -signAlg SHA256withECDSA ..."
           set +u
