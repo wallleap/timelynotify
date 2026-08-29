@@ -1,18 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { UIContext } from '@kit.ArkUI';
 import { NotifyMessageService } from '../services/NotifyMessageService';
+import { DOMAIN } from '../common/Constant';
+import showToast from './showToast';
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'ClientTokenDlg';
-
-function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
-  try {
-    ctx.getPromptAction().showToast({ message: message, duration: durationMs });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    hilog.warn(DOMAIN, TAG, 'Toast 调用失败：%{public}s', msg);
-  }
-}
 
 @Builder
 function emptyTokenBuilder(): void {
@@ -27,35 +18,14 @@ export struct ClientTokenDialog {
     alignment: DialogAlignment.Center,
     offset: { dx: 0, dy: 0 },
   });
-
+  @State inputToken: string = '';
   // 拉取当前已保存的 token 预填
   getInitToken: () => string = () => '';
-  onSaved: () => void = () => {};
-
-  @State inputToken: string = '';
+  onSaved: () => void = () => {
+  };
 
   aboutToAppear() {
     this.inputToken = this.getInitToken();
-  }
-
-  private close(): void {
-    try {
-      this.controller.close();
-    } catch (err) {
-      hilog.warn(DOMAIN, TAG, 'close 失败');
-    }
-  }
-
-  private async save(): Promise<void> {
-    const token: string = this.inputToken.trim();
-    const ok: boolean = await NotifyMessageService.getInstance().setClientToken(null, token);
-    this.close();
-    if (ok) {
-      showToast(this.getUIContext(), '已保存', 1200);
-      this.onSaved();
-    } else {
-      showToast(this.getUIContext(), '保存失败');
-    }
   }
 
   build() {
@@ -118,5 +88,25 @@ export struct ClientTokenDialog {
     .padding(18)
     .backgroundColor($r('app.color.card_background'))
     .borderRadius(14);
+  }
+
+  private close(): void {
+    try {
+      this.controller.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'close 失败');
+    }
+  }
+
+  private async save(): Promise<void> {
+    const token: string = this.inputToken.trim();
+    const ok: boolean = await NotifyMessageService.getInstance().setClientToken(null, token);
+    this.close();
+    if (ok) {
+      showToast(this.getUIContext(), '已保存', 1200);
+      this.onSaved();
+    } else {
+      showToast(this.getUIContext(), '保存失败');
+    }
   }
 }

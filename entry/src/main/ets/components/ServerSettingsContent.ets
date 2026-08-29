@@ -1,22 +1,13 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { UIContext } from '@kit.ArkUI';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerActionMenuDialog, ServerKeyDialog, ServerRenameDialog, } from './ServerActionDialogs';
+import showToast from './showToast';
+import { DOMAIN } from '../common/Constant';
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'ServerContent';
-
-function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
-  try {
-    ctx.getPromptAction().showToast({ message: message, duration: durationMs });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    hilog.warn(DOMAIN, TAG, 'Toast 调用失败：%{public}s', msg);
-  }
-}
 
 // 抽出 extractHost 到文件级（MineView/ServerSettingsPage 都可以复用）
 export function extractHost(url: string): string {
@@ -110,17 +101,17 @@ export struct ServerSettingsContent {
     Row({ space: 12 }) {
       Column({ space: 2 }) {
         Row({ space: 8 }) {
-          Text(s.name && s.name.length > 0 ? s.name : extractHost(s.baseURL))
-            .fontSize(16)
-            .fontWeight(this.titleWeight(s.id))
-            .fontColor(this.titleColor(s.id))
-            .layoutWeight(1);
-
           if (this.isCurrent(s.id)) {
             Text('●')
               .fontSize(10)
               .fontColor($r('app.color.text_accent_color'));
           }
+
+          Text(s.name && s.name.length > 0 ? s.name : extractHost(s.baseURL))
+            .fontSize(16)
+            .fontWeight(this.titleWeight(s.id))
+            .fontColor(this.titleColor(s.id))
+            .layoutWeight(1);
         }
         .width('100%');
 
@@ -163,7 +154,7 @@ export struct ServerSettingsContent {
       }
     }
     .width('100%')
-    .padding(14)
+    .padding(16)
     .backgroundColor(this.rowBg(s.id))
     .borderRadius(10)
     .border({ width: 1, color: this.rowBorder(s.id) })
@@ -177,7 +168,7 @@ export struct ServerSettingsContent {
       Column({ space: 8 }) {
         TextInput({ placeholder: 'http://host:port 或域名', text: this.inputURL })
           .width('100%')
-          .height(40)
+          .height(48)
           .backgroundColor($r('app.color.input_background_color'))
           .borderRadius(8)
           .padding({ left: 12, right: 12 })
@@ -187,7 +178,7 @@ export struct ServerSettingsContent {
 
         TextInput({ placeholder: '名称（可选）', text: this.inputName })
           .width('100%')
-          .height(40)
+          .height(48)
           .backgroundColor($r('app.color.input_background_color'))
           .borderRadius(8)
           .padding({ left: 12, right: 12 })
@@ -197,7 +188,7 @@ export struct ServerSettingsContent {
 
         Button('添加服务器')
           .width('100%')
-          .height(42)
+          .height(48)
           .fontSize(14)
           .backgroundColor($r('app.color.text_accent_color'))
           .borderRadius(8)

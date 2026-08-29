@@ -1,7 +1,7 @@
 import { http } from '@kit.NetworkKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { DOMAIN } from '../common/Constant';
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'HttpUtil';
 
 export class HttpResponse<T extends Object> {

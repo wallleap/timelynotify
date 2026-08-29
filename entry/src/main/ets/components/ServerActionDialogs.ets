@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { DOMAIN } from '../common/Constant';
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'ServerActionDlg';
 
 // 空 builder 占位（给 controller 字段做默认值，避免 SDK 注入前空引用崩溃）
@@ -18,34 +18,29 @@ export struct ServerActionMenuDialog {
     alignment: DialogAlignment.Center,
     offset: { dx: 0, dy: 0 },
   });
-
-  onCopy: () => void = () => {};
-  onResetKey: () => void = () => {};
-  onRename: () => void = () => {};
-  onDelete: () => void = () => {};
-
-  private close(): void {
-    try {
-      this.controller.close();
-    } catch (err) {
-      hilog.warn(DOMAIN, TAG, 'close menu 失败');
-    }
-  }
+  onCopy: () => void = () => {
+  };
+  onResetKey: () => void = () => {
+  };
+  onRename: () => void = () => {
+  };
+  onDelete: () => void = () => {
+  };
 
   build() {
     Column() {
       // 顶部：标题 + 右上角 close icon
       Stack({ alignContent: Alignment.TopEnd }) {
         Text('操作')
-          .fontSize(16)
+          .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .width('100%')
           .textAlign(TextAlign.Center)
           .padding({ top: 6, bottom: 6 });
 
         Image($r('app.media.close'))
-          .width(22)
-          .height(22)
+          .width(24)
+          .height(24)
           .objectFit(ImageFit.Contain)
           .fillColor($r('app.color.text_quinary_color'))
           .padding(4)
@@ -53,6 +48,7 @@ export struct ServerActionMenuDialog {
             this.close();
           });
       }
+      .padding({ bottom: 8 })
       .width('100%');
 
       Divider().color($r('app.color.divider_color'));
@@ -61,7 +57,7 @@ export struct ServerActionMenuDialog {
         .fontSize(16)
         .fontColor($r('app.color.text_primary_color'))
         .width('100%')
-        .height(48)
+        .height(52)
         .textAlign(TextAlign.Center)
         .onClick(() => {
           this.close();
@@ -74,7 +70,7 @@ export struct ServerActionMenuDialog {
         .fontSize(16)
         .fontColor($r('app.color.text_primary_color'))
         .width('100%')
-        .height(48)
+        .height(52)
         .textAlign(TextAlign.Center)
         .onClick(() => {
           this.close();
@@ -87,7 +83,7 @@ export struct ServerActionMenuDialog {
         .fontSize(16)
         .fontColor($r('app.color.text_primary_color'))
         .width('100%')
-        .height(48)
+        .height(52)
         .textAlign(TextAlign.Center)
         .onClick(() => {
           this.close();
@@ -100,17 +96,29 @@ export struct ServerActionMenuDialog {
         .fontSize(16)
         .fontColor($r('app.color.text_error_color'))
         .width('100%')
-        .height(48)
+        .height(52)
         .textAlign(TextAlign.Center)
         .onClick(() => {
           this.close();
           this.onDelete();
         });
     }
-    .width('78%')
-    .padding({ top: 12, bottom: 8, left: 4, right: 4 })
-    .backgroundColor($r('app.color.card_background'))
+    .padding({
+      top: 16,
+      bottom: 8,
+      left: 16,
+      right: 16
+    })
+    .backgroundColor($r('app.color.dialog_background'))
     .borderRadius(14);
+  }
+
+  private close(): void {
+    try {
+      this.controller.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'close menu 失败');
+    }
   }
 }
 
@@ -123,28 +131,14 @@ export struct ServerRenameDialog {
     alignment: DialogAlignment.Center,
     offset: { dx: 0, dy: 0 },
   });
-
+  @State inputName: string = '';
   // 通过回调拉取初始名（闭包捕获外层 this，open 时取最新值）
   getInitName: () => string = () => '';
-  onConfirm: (newName: string) => void = (_n: string) => {};
-
-  @State inputName: string = '';
+  onConfirm: (newName: string) => void = (_n: string) => {
+  };
 
   aboutToAppear() {
     this.inputName = this.getInitName();
-  }
-
-  private close(): void {
-    try {
-      this.controller.close();
-    } catch (err) {
-      hilog.warn(DOMAIN, TAG, 'close rename 失败');
-    }
-  }
-
-  private confirm(): void {
-    this.close();
-    this.onConfirm(this.inputName);
   }
 
   build() {
@@ -189,10 +183,22 @@ export struct ServerRenameDialog {
       }
       .width('100%');
     }
-    .width('80%')
     .padding(18)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor($r('app.color.dialog_background'))
     .borderRadius(14);
+  }
+
+  private close(): void {
+    try {
+      this.controller.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'close rename 失败');
+    }
+  }
+
+  private confirm(): void {
+    this.close();
+    this.onConfirm(this.inputName);
   }
 }
 
@@ -207,31 +213,16 @@ export struct ServerKeyDialog {
     alignment: DialogAlignment.Center,
     offset: { dx: 0, dy: 0 },
   });
-
-  getCurrentKey: () => string = () => '';
-  // inputKey 为空 = 重置；有值 = 还原
-  onConfirm: (inputKey: string) => void = (_k: string) => {};
-
   @State inputKey: string = '';
   @State currentKey: string = '';
+  getCurrentKey: () => string = () => '';
+  // inputKey 为空 = 重置；有值 = 还原
+  onConfirm: (inputKey: string) => void = (_k: string) => {
+  };
 
   aboutToAppear() {
     this.currentKey = this.getCurrentKey();
     this.inputKey = '';
-  }
-
-  private close(): void {
-    try {
-      this.controller.close();
-    } catch (err) {
-      hilog.warn(DOMAIN, TAG, 'close key 失败');
-    }
-  }
-
-  private confirm(): void {
-    const k: string = this.inputKey.trim();
-    this.close();
-    this.onConfirm(k);
   }
 
   build() {
@@ -290,9 +281,22 @@ export struct ServerKeyDialog {
       }
       .width('100%');
     }
-    .width('82%')
     .padding(18)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor($r('app.color.dialog_background'))
     .borderRadius(14);
+  }
+
+  private close(): void {
+    try {
+      this.controller.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'close key 失败');
+    }
+  }
+
+  private confirm(): void {
+    const k: string = this.inputKey.trim();
+    this.close();
+    this.onConfirm(k);
   }
 }

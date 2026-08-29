@@ -6,7 +6,11 @@
     },
     {
       "name": "index_page_top_background",
-      "value": "#EAFFFFFF"
+      "value": "#ffffff"
+    },
+    {
+      "name": "index_page_top_glass_background",
+      "value": "#1affffff"
     },
     {
       "name": "index_page_top_solid",
@@ -18,7 +22,11 @@
     },
     {
       "name": "index_page_bottom_background",
-      "value": "#EAFFFFFF"
+      "value": "#ffffff"
+    },
+    {
+      "name": "index_page_bottom_glass_background",
+      "value": "#1affffff"
     },
     {
       "name": "card_background",
@@ -26,7 +34,7 @@
     },
     {
       "name": "card_glass_background",
-      "value": "#F0FFFFFF"
+      "value": "#99ffffff"
     },
     {
       "name": "divider_color",
@@ -39,6 +47,10 @@
     {
       "name": "selected_row_background",
       "value": "#FFF3E8"
+    },
+    {
+      "name": "dialog_background",
+      "value": "#ffffff"
     },
     {
       "name": "text_accent_color",

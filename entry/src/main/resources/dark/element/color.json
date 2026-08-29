@@ -6,7 +6,11 @@
     },
     {
       "name": "index_page_top_background",
-      "value": "#EA181818"
+      "value": "#181818"
+    },
+    {
+      "name": "index_page_top_glass_background",
+      "value": "#1a181818"
     },
     {
       "name": "index_page_top_solid",
@@ -14,31 +18,55 @@
     },
     {
       "name": "index_page_body_background",
-      "value": "#2c2c2c"
-    },
-    {
-      "name": "index_page_bottom_background",
-      "value": "#EA181818"
-    },
-    {
-      "name": "card_background",
       "value": "#181818"
     },
     {
-      "name": "card_glass_background",
-      "value": "#F0181818"
+      "name": "index_page_bottom_background",
+      "value": "#181818"
     },
     {
-      "name": "divider_color",
-      "value": "#333333"
+      "name": "index_page_bottom_glass_background",
+      "value": "#1a181818"
     },
     {
-      "name": "input_background_color",
+      "name": "card_background",
       "value": "#2c2c2c"
     },
     {
+      "name": "card_glass_background",
+      "value": "#992c2c2c"
+    },
+    {
+      "name": "divider_color",
+      "value": "#1affffff"
+    },
+    {
+      "name": "input_background_color",
+      "value": "#992c2c2c"
+    },
+    {
       "name": "selected_row_background",
-      "value": "#3D2818"
+      "value": "#333d2818"
+    },
+    {
+      "name": "dialog_background",
+      "value": "#1f2021"
+    },
+    {
+      "name": "text_accent_color",
+      "value": "#FF6F22"
+    },
+    {
+      "name": "text_success_color",
+      "value": "#00B42A"
+    },
+    {
+      "name": "text_warning_color",
+      "value": "#FF9800"
+    },
+    {
+      "name": "text_error_color",
+      "value": "#F53F3F"
     },
     {
       "name": "text_primary_color",
@@ -55,10 +83,6 @@
     {
       "name": "text_quaternary_color",
       "value": "#fff"
-    },
-    {
-      "name": "text_error_color",
-      "value": "#FF6B6B"
     }
   ]
 }

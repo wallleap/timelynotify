@@ -18,6 +18,10 @@
       {
         "name": "app_id",
         "value": "6917614352726343880"
+      },
+      {
+        "name": "ohos.arkui.UIMaterial.state",
+        "value": "enable"
       }
     ],
     "requestPermissions": [

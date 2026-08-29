@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { DOMAIN } from '../common/Constant';
 import { ServerSettingsContent } from './ServerSettingsContent';
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'ServerDlg';
 
 // 空 builder 占位（用于给 controller 字段做默认值，避免 SDK 注入前的空引用崩溃）
@@ -45,9 +45,8 @@ export struct ServerSettingsDialog {
           }
         });
     }
-    .width('92%')
     .padding(18)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor($r('app.color.dialog_background'))
     .borderRadius(14);
   }
 }

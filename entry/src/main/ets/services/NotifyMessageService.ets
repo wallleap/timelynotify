@@ -3,11 +3,11 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
 import { ServerManager } from './ServerManager';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
-import { HttpUtil, HttpResponse } from '../utils/HttpUtil';
+import { HttpResponse, HttpUtil } from '../utils/HttpUtil';
 import { AppContextStore } from '../common/AppContextStore';
 import { NotifyMessage } from '../model/NotifyMessage';
+import { DOMAIN } from '../common/Constant';
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'NotifyMsgSvc';
 
 // 内置默认客户端 Token（BASE64，运行时 decode 后使用）
@@ -18,7 +18,7 @@ const DEFAULT_CLIENT_TOKEN_BASE64: string = 'OTkwMDgzODA0';
 function decodeDefaultClientToken(): string {
   try {
     const bytes: Uint8Array = new util.Base64Helper().decodeSync(DEFAULT_CLIENT_TOKEN_BASE64);
-    // 默认 token 为纯 ASCII 数字（'990083804'），逐字节转字符避免调用已弃用的 decodeWithStream
+    // 默认 token 为纯 ASCII 数字，逐字节转字符避免调用已弃用的 decodeWithStream
     let s: string = '';
     for (let i: number = 0; i < bytes.length; i++) {
       s += String.fromCharCode(bytes[i]);
@@ -60,6 +60,46 @@ export class NotifyMessageService {
       NotifyMessageService.instance = new NotifyMessageService();
     }
     return NotifyMessageService.instance;
+  }
+
+  // 3) 顶层是单条对象（有 id/message 等字段）→ 当作单条解析
+  private static extractMessages(data: Object | null): NotifyMessage[] {
+    const list: NotifyMessage[] = [];
+    if (!data) {
+      return list;
+    }
+
+    // 情况 1：顶层是数组
+    if (data instanceof Array) {
+      const arr: Object[] = data as Object[];
+      for (let i = 0; i < arr.length; i++) {
+        const item = arr[i] as Record<string, Object>;
+        if (item) {
+          list.push(NotifyMessage.fromRaw(item));
+        }
+      }
+      return list;
+    }
+
+    const raw = data as Record<string, Object>;
+    // 情况 2：顶层 messages 是数组（标准格式）
+    const messagesVal: Object | undefined = raw['messages'];
+    if (messagesVal instanceof Array) {
+      const arr: Object[] = messagesVal as Object[];
+      for (let i = 0; i < arr.length; i++) {
+        const item = arr[i] as Record<string, Object>;
+        if (item) {
+          list.push(NotifyMessage.fromRaw(item));
+        }
+      }
+      return list;
+    }
+
+    // 情况 3：顶层本身像单条消息
+    if (raw['id'] !== undefined || raw['message'] !== undefined || raw['body'] !== undefined) {
+      list.push(NotifyMessage.fromRaw(raw));
+    }
+    return list;
   }
 
   // 获取用户手动配置并持久化的 client token（不含内置默认；返回空 = 用户没填）
@@ -104,6 +144,10 @@ export class NotifyMessageService {
     return eff.length > 0;
   }
 
+  // 拉取消息列表。device_key 来自 DeviceRegisterService，client token 来自持久化
+  // 返回 MessageListResult：ok=false 时 errorMsg 含原因（未注册/未配置 token/网络失败/认证失败）
+  // since > 0 时拼接 ?since=N，用于触底分页加载更老的消息（gotify 协议：返回 ID <= since 的消息）
+
   async setClientToken(context: common.Context | null, token: string): Promise<boolean> {
     const ctx: common.Context | null = resolveContext(context);
     if (!ctx) {
@@ -114,11 +158,13 @@ export class NotifyMessageService {
     return PreferencesUtil.putString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, v);
   }
 
-  // 拉取消息列表。device_key 来自 DeviceRegisterService，client token 来自持久化
-  // 返回 MessageListResult：ok=false 时 errorMsg 含原因（未注册/未配置 token/网络失败/认证失败）
-  // since > 0 时拼接 ?since=N，用于触底分页加载更老的消息（gotify 协议：返回 ID <= since 的消息）
+  // 从响应体解析消息列表，容错多种结构：
+  // 1) 顶层是 {messages: [...]} → 解析 messages（gotify/timelynotify 标准格式）
+  // 2) 顶层直接是数组 → 直接解析
+
   // limit 默认 100，控制单次返回条数；客户端据此判断是否到底（返回 < limit 视为到底）
-  async getMessages(context: common.Context | null = null, since: number = 0, limit: number = 100): Promise<MessageListResult> {
+  async getMessages(context: common.Context | null = null, since: number = 0,
+    limit: number = 100): Promise<MessageListResult> {
     const result = new MessageListResult();
     // const ctx: common.Context | null = resolveContext(context);
 
@@ -177,50 +223,8 @@ export class NotifyMessageService {
     return result;
   }
 
-  // 从响应体解析消息列表，容错多种结构：
-  // 1) 顶层是 {messages: [...]} → 解析 messages（gotify/timelynotify 标准格式）
-  // 2) 顶层直接是数组 → 直接解析
-  // 3) 顶层是单条对象（有 id/message 等字段）→ 当作单条解析
-  private static extractMessages(data: Object | null): NotifyMessage[] {
-    const list: NotifyMessage[] = [];
-    if (!data) {
-      return list;
-    }
-
-    // 情况 1：顶层是数组
-    if (data instanceof Array) {
-      const arr: Object[] = data as Object[];
-      for (let i = 0; i < arr.length; i++) {
-        const item = arr[i] as Record<string, Object>;
-        if (item) {
-          list.push(NotifyMessage.fromRaw(item));
-        }
-      }
-      return list;
-    }
-
-    const raw = data as Record<string, Object>;
-    // 情况 2：顶层 messages 是数组（标准格式）
-    const messagesVal: Object | undefined = raw['messages'];
-    if (messagesVal instanceof Array) {
-      const arr: Object[] = messagesVal as Object[];
-      for (let i = 0; i < arr.length; i++) {
-        const item = arr[i] as Record<string, Object>;
-        if (item) {
-          list.push(NotifyMessage.fromRaw(item));
-        }
-      }
-      return list;
-    }
-
-    // 情况 3：顶层本身像单条消息
-    if (raw['id'] !== undefined || raw['message'] !== undefined || raw['body'] !== undefined) {
-      list.push(NotifyMessage.fromRaw(raw));
-    }
-    return list;
-  }
-
   // 删除单条消息（服务端 API）：DELETE /{device_key}/message/{id}
+
   // 返回 '' 表示成功；非空是错误描述
   async deleteMessage(messageId: number, context: common.Context | null = null): Promise<string> {
     if (messageId <= 0) {

@@ -4,10 +4,10 @@ import { ServerEntry } from '../model/ServerEntry';
 import { ApiConfig } from '../config/ApiConfig';
 import { AppContextStore } from '../common/AppContextStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
-import { HttpUtil, HttpResponse } from '../utils/HttpUtil';
+import { HttpResponse, HttpUtil } from '../utils/HttpUtil';
 import { DeviceRegisterService } from './DeviceRegisterService';
+import { DOMAIN } from '../common/Constant';
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'ServerMgr';
 
 // 解析 context：优先入参，否则回退全局
@@ -109,19 +109,16 @@ class PingResponse extends Object {
 
 export class ServerManager {
   private static instance: ServerManager | null = null;
-
   private static readonly KEY_DELETED_BUILTIN: string = 'server_deleted_builtin';
   // 内置 server 的 deviceKey 映射（id → key）。内置条目本身不持久化（跟随 ApiConfig 动态构造），
   // 但 deviceKey 必须跨启动保留，否则每次冷启动都会因 per-server key 为空而重置
   private static readonly KEY_BUILTIN_DEVICE_KEYS: string = 'server_builtin_device_keys';
-
   private servers: ServerEntry[] = [];
   private currentId: string = '';
   // 内置项：baseURL 不持久化、不缓存，每次获取都从 ApiConfig 动态取值，
   // 保证 ApiConfig.PROD_BASE_URL 修改后内置项地址立即跟随
   private deletedBuiltInIds: string[] = [];
   private listeners: ServerChangeListener[] = [];
-
   // 初始化 Promise：所有需要读取当前 server/baseURL 的入口都应先 await ensureLoaded()，
   // 避免与 load() 竞态导致读到空 currentId 走兜底生产 URL
   private ready: Promise<void> | null = null;
@@ -133,17 +130,6 @@ export class ServerManager {
     this.ready = new Promise<void>((resolve) => {
       this.readyResolver = resolve;
     });
-  }
-
-  // 内置项定义与工厂：每次调用都用 ApiConfig 当前值，避免编译期固化
-  private getBuiltInServers(): ServerEntry[] {
-    const prod = new ServerEntry(
-      'builtin-prod',
-      '默认服务',
-      normalizeBaseURL(ApiConfig.PROD_BASE_URL),
-      true,
-    );
-    return [prod];
   }
 
   static getInstance(): ServerManager {
@@ -178,17 +164,6 @@ export class ServerManager {
     const idx: number = this.listeners.indexOf(listener);
     if (idx >= 0) {
       this.listeners.splice(idx, 1);
-    }
-  }
-
-  private emitChange(): void {
-    const snapshot: ServerEntry[] = this.getList();
-    for (let i = 0; i < this.listeners.length; i++) {
-      try {
-        this.listeners[i](snapshot, this.currentId);
-      } catch (err) {
-        hilog.warn(DOMAIN, TAG, 'listener 调用失败');
-      }
     }
   }
 
@@ -311,75 +286,6 @@ export class ServerManager {
     }
   }
 
-  /** private isBuiltInId(id: string): boolean {
-    const builtIn: ServerEntry[] = this.getBuiltInServers();
-    for (let i = 0; i < builtIn.length; i++) {
-      if (builtIn[i].id === id) {
-        return true;
-      }
-    }
-    return false;
-  } */
-
-  private isDeletedBuiltInId(id: string): boolean {
-    for (let i = 0; i < this.deletedBuiltInIds.length; i++) {
-      if (this.deletedBuiltInIds[i] === id) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private async persist(context: common.Context | null): Promise<void> {
-    const ctx: common.Context | null = resolveContext(context);
-    // 持久化自定义（非内置）条目
-    const customs: ServerEntryJson[] = [];
-    for (let i = 0; i < this.servers.length; i++) {
-      const s: ServerEntry = this.servers[i];
-      if (!s.isBuiltIn) {
-        const j = new ServerEntryJson();
-        j.id = s.id;
-        j.name = s.name;
-        j.baseURL = s.baseURL;
-        j.isBuiltIn = false;
-        j.deviceKey = s.deviceKey;
-        customs.push(j);
-      }
-    }
-    await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_SERVER_LIST_JSON, JSON.stringify(customs));
-    await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_SERVER_CURRENT_ID, this.currentId);
-    // 持久化内置 server 的 deviceKey 映射（仅非空项）
-    const builtinKeys: Record<string, string> = {};
-    for (let i = 0; i < this.servers.length; i++) {
-      const s: ServerEntry = this.servers[i];
-      if (s.isBuiltIn && s.deviceKey && s.deviceKey.length > 0) {
-        builtinKeys[s.id] = s.deviceKey;
-      }
-    }
-    await PreferencesUtil.putString(ctx, ServerManager.KEY_BUILTIN_DEVICE_KEYS, JSON.stringify(builtinKeys));
-    // 持久化已删除的内置 id 列表
-    await PreferencesUtil.putString(ctx, ServerManager.KEY_DELETED_BUILTIN, JSON.stringify(this.deletedBuiltInIds));
-  }
-
-  private findById(id: string): ServerEntry | null {
-    for (let i = 0; i < this.servers.length; i++) {
-      if (this.servers[i].id === id) {
-        return this.servers[i];
-      }
-    }
-    return null;
-  }
-
-  private findByBaseURL(baseURL: string): ServerEntry | null {
-    const normalized: string = normalizeBaseURL(baseURL);
-    for (let i = 0; i < this.servers.length; i++) {
-      if (this.servers[i].baseURL === normalized) {
-        return this.servers[i];
-      }
-    }
-    return null;
-  }
-
   getList(): ServerEntry[] {
     return this.servers.slice();
   }
@@ -387,6 +293,16 @@ export class ServerManager {
   getCurrentServer(): ServerEntry | null {
     return this.findById(this.currentId);
   }
+
+  /** private isBuiltInId(id: string): boolean {
+  const builtIn: ServerEntry[] = this.getBuiltInServers();
+  for (let i = 0; i < builtIn.length; i++) {
+  if (builtIn[i].id === id) {
+  return true;
+  }
+  }
+  return false;
+  } */
 
   getCurrentBaseURL(): string {
     const cur = this.findById(this.currentId);
@@ -405,8 +321,6 @@ export class ServerManager {
     return builtIn.length > 0 ? builtIn[0].baseURL : ApiConfig.PROD_BASE_URL;
   }
 
-  // 获取当前 server 应使用的 device_key：只认 per-server 保存的 deviceKey。
-  // 若 per-server 为空，说明 syncKeyForServer 还没跑（如刚切 server 或首次使用），
   // 则内联触发一次 syncKeyForServer 拿到 key 再返回。
   async getCurrentDeviceKey(context: common.Context | null = null): Promise<string> {
     await this.ensureLoaded();
@@ -487,20 +401,6 @@ export class ServerManager {
     return true;
   }
 
-  private syncKeyForServerAsync(ctx: common.Context | null, serverId: string): void {
-    const server: ServerEntry | null = this.findById(serverId);
-    if (!server) {
-      return;
-    }
-    DeviceRegisterService.getInstance().syncKeyForServer(
-      ctx, serverId, this.getCurrentBaseURL(), server.deviceKey
-    ).then((key: string | null) => {
-      hilog.info(DOMAIN, TAG, 'switchTo syncKeyForServer 完成：key=%{public}s', key ?? 'null');
-    }).catch((err: Error) => {
-      hilog.warn(DOMAIN, TAG, 'switchTo syncKeyForServer 异常：%{public}s', err.message);
-    });
-  }
-
   // 验证 URL 并 ping 服务器。返回空字符串 = OK；返回非空 = 错误信息
   async validateAndPing(rawURL: string): Promise<string> {
     const errMsg: string = validateURL(rawURL);
@@ -527,6 +427,9 @@ export class ServerManager {
     hilog.info(DOMAIN, TAG, 'ping 成功：%{public}s', pingURL);
     return '';
   }
+
+  // 获取当前 server 应使用的 device_key：只认 per-server 保存的 deviceKey。
+  // 若 per-server 为空，说明 syncKeyForServer 还没跑（如刚切 server 或首次使用），
 
   // 新增自定义服务器（URL 已存在则只切过去）。返回新条目/命中条目。context 可传 null
   async addServer(context: common.Context | null, rawURL: string, name: string): Promise<ServerEntry | null> {
@@ -592,5 +495,100 @@ export class ServerManager {
     hilog.info(DOMAIN, TAG, '已重命名：id=%{public}s name=%{public}s', id, name);
     this.emitChange();
     return true;
+  }
+
+  // 内置项定义与工厂：每次调用都用 ApiConfig 当前值，避免编译期固化
+  private getBuiltInServers(): ServerEntry[] {
+    const prod = new ServerEntry(
+      'builtin-prod',
+      '默认服务',
+      normalizeBaseURL(ApiConfig.PROD_BASE_URL),
+      true,
+    );
+    return [prod];
+  }
+
+  private emitChange(): void {
+    const snapshot: ServerEntry[] = this.getList();
+    for (let i = 0; i < this.listeners.length; i++) {
+      try {
+        this.listeners[i](snapshot, this.currentId);
+      } catch (err) {
+        hilog.warn(DOMAIN, TAG, 'listener 调用失败');
+      }
+    }
+  }
+
+  private isDeletedBuiltInId(id: string): boolean {
+    for (let i = 0; i < this.deletedBuiltInIds.length; i++) {
+      if (this.deletedBuiltInIds[i] === id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private async persist(context: common.Context | null): Promise<void> {
+    const ctx: common.Context | null = resolveContext(context);
+    // 持久化自定义（非内置）条目
+    const customs: ServerEntryJson[] = [];
+    for (let i = 0; i < this.servers.length; i++) {
+      const s: ServerEntry = this.servers[i];
+      if (!s.isBuiltIn) {
+        const j = new ServerEntryJson();
+        j.id = s.id;
+        j.name = s.name;
+        j.baseURL = s.baseURL;
+        j.isBuiltIn = false;
+        j.deviceKey = s.deviceKey;
+        customs.push(j);
+      }
+    }
+    await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_SERVER_LIST_JSON, JSON.stringify(customs));
+    await PreferencesUtil.putString(ctx, PreferencesUtil.KEY_SERVER_CURRENT_ID, this.currentId);
+    // 持久化内置 server 的 deviceKey 映射（仅非空项）
+    const builtinKeys: Record<string, string> = {};
+    for (let i = 0; i < this.servers.length; i++) {
+      const s: ServerEntry = this.servers[i];
+      if (s.isBuiltIn && s.deviceKey && s.deviceKey.length > 0) {
+        builtinKeys[s.id] = s.deviceKey;
+      }
+    }
+    await PreferencesUtil.putString(ctx, ServerManager.KEY_BUILTIN_DEVICE_KEYS, JSON.stringify(builtinKeys));
+    // 持久化已删除的内置 id 列表
+    await PreferencesUtil.putString(ctx, ServerManager.KEY_DELETED_BUILTIN, JSON.stringify(this.deletedBuiltInIds));
+  }
+
+  private findById(id: string): ServerEntry | null {
+    for (let i = 0; i < this.servers.length; i++) {
+      if (this.servers[i].id === id) {
+        return this.servers[i];
+      }
+    }
+    return null;
+  }
+
+  private findByBaseURL(baseURL: string): ServerEntry | null {
+    const normalized: string = normalizeBaseURL(baseURL);
+    for (let i = 0; i < this.servers.length; i++) {
+      if (this.servers[i].baseURL === normalized) {
+        return this.servers[i];
+      }
+    }
+    return null;
+  }
+
+  private syncKeyForServerAsync(ctx: common.Context | null, serverId: string): void {
+    const server: ServerEntry | null = this.findById(serverId);
+    if (!server) {
+      return;
+    }
+    DeviceRegisterService.getInstance().syncKeyForServer(
+      ctx, serverId, this.getCurrentBaseURL(), server.deviceKey
+    ).then((key: string | null) => {
+      hilog.info(DOMAIN, TAG, 'switchTo syncKeyForServer 完成：key=%{public}s', key ?? 'null');
+    }).catch((err: Error) => {
+      hilog.warn(DOMAIN, TAG, 'switchTo syncKeyForServer 异常：%{public}s', err.message);
+    });
   }
 }

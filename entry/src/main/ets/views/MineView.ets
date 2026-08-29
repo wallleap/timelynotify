@@ -10,13 +10,14 @@ import { ClientTokenDialog } from '../components/ClientTokenDialog';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
-import { resolveBlurStyle } from '../utils/ImmersiveUtil';
+import showToast from '../components/showToast';
+import { DOMAIN } from '../common/Constant';
+import { getSystemMaterial, resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 // 版本号兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常
 const FALLBACK_VERSION_NAME: string = '1.0.0';
 const FALLBACK_VERSION_CODE: number = 1000000;
 
-const DOMAIN: number = 0x0000;
 const TAG: string = 'MineView';
 
 export const SOURCE_CODE_URL: string = 'https://github.com/wallleap/timelynotify';
@@ -28,14 +29,6 @@ export const PRIVACY_URL: string =
 
 export const FEEDBACK_EMAIL: string = 'vonnelu@163.com';
 
-function showToast(ctx: UIContext, message: string, durationMs: number = 1500): void {
-  try {
-    ctx.getPromptAction().showToast({ message: message, duration: durationMs });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    hilog.warn(DOMAIN, TAG, 'Toast 调用失败：%{public}s', msg);
-  }
-}
 
 // 我的页 - 展示个人设置入口
 @Component
@@ -43,6 +36,8 @@ export struct MineView {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
+  // 沉浸光感材质就绪信号：uiMaterial 模块（API 26+）动态加载成功后置 true，触发重渲染切换到材质分支
+  @StorageProp('immersiveMaterialReady') materialReady: boolean = false;
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
@@ -61,8 +56,7 @@ export struct MineView {
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
   private tokenDialogController: CustomDialogController = new CustomDialogController({
     builder: ClientTokenDialog({
-      getInitToken: (): string => this.customClientToken,
-      onSaved: (): void => {
+      getInitToken: (): string => this.customClientToken, onSaved: (): void => {
         this.refreshClientToken();
       },
     }),
@@ -89,21 +83,42 @@ export struct MineView {
     }
   }
 
+  @Builder
+  titleBar() {
+    if (this.materialReady) {
+      Row() {
+        Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
+      }.width('100%').padding({
+        left: 16,
+        right: 16,
+        top: 16 + this.statusBarHeight,
+        bottom: 16
+      }).systemMaterial(getSystemMaterial('bar'))
+      .backgroundColor($r('app.color.index_page_top_glass_background'));
+    } else {
+      Row() {
+        Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
+      }.width('100%').padding({
+        left: 16,
+        right: 16,
+        top: 16 + this.statusBarHeight,
+        bottom: 16
+      })
+      .backgroundBlurStyle(resolveBlurStyle('bar')!)
+      .backgroundColor($r('app.color.index_page_top_glass_background'));
+    }
+  }
+
   build() {
-    Column() {
-      // Stack 层叠：内容在下、顶栏在上，滚动内容从顶栏下方穿过，毛玻璃才有内容可糊
+    Column() { // Stack 层叠：内容在下、顶栏在上，滚动内容从顶栏下方穿过，毛玻璃才有内容可糊
       Stack({ alignContent: Alignment.Top }) {
         Scroll() {
-          Column({ space: 16 }) {
-            // 顶部占位：随内容一起滚动，卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
+          Column({ space: 16 }) { // 顶部占位：随内容一起滚动，卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
             // 占位 = 状态栏高度 + 顶栏视觉高度 56，与沉浸式布局下的顶栏总高一致
-            Row()
-              .width('100%')
-              .height(this.statusBarHeight + 56);
+            Row().width('100%').height(this.statusBarHeight + 56);
 
             // 通知设置卡片
-            Column({ space: 0 }) {
-              // 开启应用订阅通知（开关）
+            Column({ space: 0 }) { // 开启应用订阅通知（开关）
               Row() {
                 Column({ space: 2 }) {
                   Text('开启应用订阅通知')
@@ -114,18 +129,14 @@ export struct MineView {
                     .fontSize(12)
                     .fontColor(
                       this.notifyEnabled ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
-                }
-                .alignItems(HorizontalAlign.Start)
-                .layoutWeight(1);
+                }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
                 Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
                   .selectedColor($r('app.color.text_accent_color'))
                   .onChange((isOn: boolean) => {
                     this.onNotifyToggle(isOn);
                   });
-              }
-              .width('100%')
-              .padding(16);
+              }.width('100%').padding(16);
 
               Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
 
@@ -142,15 +153,12 @@ export struct MineView {
                   .height(24)
                   .objectFit(ImageFit.Contain)
                   .fillColor($r('app.color.text_quinary_color'));
-              }
-              .width('100%')
-              .padding(16)
-              .onClick(() => {
+              }.width('100%').padding(16).onClick(() => {
                 this.openNotifySettings();
               });
             }
             .width('100%')
-            .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
+            .backgroundBlurStyle(resolveBlurStyle('bar')!)
             .backgroundColor($r('app.color.card_glass_background'))
             .borderRadius(12);
 
@@ -161,8 +169,7 @@ export struct MineView {
                 .width('100%')
                 .padding({ left: 12 });
 
-              Column({ space: 12 }) {
-                // 服务器入口卡片
+              Column({ space: 12 }) { // 服务器入口卡片
                 Row({ space: 14 }) {
                   Column({ space: 4 }) {
                     Row() {
@@ -170,8 +177,7 @@ export struct MineView {
                         .fontSize(17)
                         .fontWeight(FontWeight.Medium)
                         .fontColor($r('app.color.text_primary_color'));
-                    }
-                    .width('100%');
+                    }.width('100%');
 
                     Row() {
                       Text(this.serverName)
@@ -179,28 +185,18 @@ export struct MineView {
                         .fontColor($r('app.color.text_tertiary_color'))
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis });
-                      Text(' (')
-                        .fontSize(14)
-                        .fontColor($r('app.color.text_tertiary_color'))
-                        .maxLines(1)
+                      Text(' (').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
                       Text(this.hostDisplay)
                         .fontSize(12)
                         .fontColor($r('app.color.text_accent_color'))
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis });
-                      Text(')')
-                        .fontSize(14)
-                        .fontColor($r('app.color.text_tertiary_color'))
-                        .maxLines(1)
+                      Text(')').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
                     }.width('100%')
-                  }
-                  .alignItems(HorizontalAlign.Start)
-                  .layoutWeight(1);
+                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
                   Row() {
-                    Text(`共 ${this.serverCount} 个`)
-                      .fontSize(12)
-                      .fontColor($r('app.color.text_quinary_color'));
+                    Text(`共 ${this.serverCount} 个`).fontSize(12).fontColor($r('app.color.text_quinary_color'));
                     Image($r('app.media.arrow_right'))
                       .width(32)
                       .height(32)
@@ -211,7 +207,7 @@ export struct MineView {
                 }
                 .width('100%')
                 .padding(16)
-                .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
+                .backgroundBlurStyle(resolveBlurStyle('bar')!)
                 .backgroundColor($r('app.color.card_glass_background'))
                 .borderRadius(12)
                 .onClick(() => {
@@ -234,9 +230,7 @@ export struct MineView {
                       .width('100%')
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis });
-                  }
-                  .alignItems(HorizontalAlign.Start)
-                  .layoutWeight(1);
+                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
                   Image($r('app.media.arrow_right'))
                     .width(32)
@@ -247,7 +241,7 @@ export struct MineView {
                 }
                 .width('100%')
                 .padding(16)
-                .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
+                .backgroundBlurStyle(resolveBlurStyle('bar')!)
                 .backgroundColor($r('app.color.card_glass_background'))
                 .borderRadius(12)
                 .onClick(() => {
@@ -256,7 +250,8 @@ export struct MineView {
 
                 // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
                 Row({ space: 14 }) {
-                  Column({ space: 4 }) {                  Row() {
+                  Column({ space: 4 }) {
+                    Row() {
                       Text('推送 Token')
                         .fontSize(17)
                         .fontWeight(FontWeight.Medium)
@@ -267,11 +262,8 @@ export struct MineView {
                         .maxLines(1)
                         .textOverflow({ overflow: TextOverflow.Ellipsis });
                       Blank();
-                      Text('点击复制')
-                        .fontSize(12)
-                        .fontColor($r('app.color.text_accent_color'));
-                    }
-                    .width('100%');
+                      Text('点击复制').fontSize(12).fontColor($r('app.color.text_accent_color'));
+                    }.width('100%');
 
                     Text(this.buildDeviceTokenDisplay())
                       .fontSize(14)
@@ -280,21 +272,18 @@ export struct MineView {
                       .width('100%')
                       .maxLines(1)
                       .textOverflow({ overflow: TextOverflow.Ellipsis });
-                  }
-                  .alignItems(HorizontalAlign.Start)
-                  .layoutWeight(1);
+                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
                 }
                 .width('100%')
                 .padding(16)
-                .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
+                .backgroundBlurStyle(resolveBlurStyle('bar')!)
                 .backgroundColor($r('app.color.card_glass_background'))
                 .borderRadius(12)
                 .onClick(() => {
                   this.copyDeviceToken();
                 });
               }.width('100%')
-            }
-            .width('100%');
+            }.width('100%');
 
             // 关于板块（卡片内承载后续扩展项）
             Column({ space: 8 }) {
@@ -304,8 +293,7 @@ export struct MineView {
                 .width('100%')
                 .padding({ left: 12 });
 
-              Column({ space: 0 }) {
-                // 版本号行（整行点击复制版本信息）
+              Column({ space: 0 }) { // 版本号行（整行点击复制版本信息）
                 Row() {
                   Text('当前版本')
                     .fontSize(16)
@@ -315,10 +303,7 @@ export struct MineView {
                   Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
                     .fontSize(14)
                     .fontColor($r('app.color.text_tertiary_color'));
-                }
-                .width('100%')
-                .padding(16)
-                .onClick(() => {
+                }.width('100%').padding(16).onClick(() => {
                   this.copyVersionInfo();
                 });
 
@@ -336,10 +321,7 @@ export struct MineView {
                     .height(24)
                     .objectFit(ImageFit.Contain)
                     .fillColor($r('app.color.text_quinary_color'));
-                }
-                .width('100%')
-                .padding(16)
-                .onClick(() => {
+                }.width('100%').padding(16).onClick(() => {
                   this.openSourceLink();
                 });
 
@@ -357,10 +339,7 @@ export struct MineView {
                     .height(24)
                     .objectFit(ImageFit.Contain)
                     .fillColor($r('app.color.text_quinary_color'));
-                }
-                .width('100%')
-                .padding(16)
-                .onClick(() => {
+                }.width('100%').padding(16).onClick(() => {
                   this.openDocs();
                 });
 
@@ -378,10 +357,7 @@ export struct MineView {
                     .height(24)
                     .objectFit(ImageFit.Contain)
                     .fillColor($r('app.color.text_quinary_color'));
-                }
-                .width('100%')
-                .padding(16)
-                .onClick(() => {
+                }.width('100%').padding(16).onClick(() => {
                   this.openPrivacy();
                 });
 
@@ -399,28 +375,20 @@ export struct MineView {
                     .height(24)
                     .objectFit(ImageFit.Contain)
                     .fillColor($r('app.color.text_quinary_color'));
-                }
-                .width('100%')
-                .padding(16)
-                .onClick(() => {
+                }.width('100%').padding(16).onClick(() => {
                   this.sendFeedback();
                 });
               }
               .width('100%')
-              .backgroundBlurStyle(resolveBlurStyle('card'), { scale: 1.0 })
+              .backgroundBlurStyle(resolveBlurStyle('bar')!)
               .backgroundColor($r('app.color.card_glass_background'))
               .borderRadius(12);
-            }
-            .width('100%');
+            }.width('100%');
 
             // 底部占位：随内容一起滚动，末尾卡片才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
             // TabBar 总高 = 56 + 导航条高度，占位 72 保持视觉余量不变
-            Row()
-              .width('100%')
-              .height(this.navBarHeight + 72);
-          }
-          .width('100%')
-          // 左右避让边距（顶/底避让由首尾占位实现）
+            Row().width('100%').height(this.navBarHeight + 72);
+          }.width('100%') // 左右避让边距（顶/底避让由首尾占位实现）
           .padding({ left: 16, right: 16 });
         }
         .align(Alignment.TopStart)
@@ -431,24 +399,9 @@ export struct MineView {
 
         // 顶部标题栏（后声明覆盖在上层）：毛玻璃 + 半透明底色
         // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
-        Row() {
-          Text('我的')
-            .fontSize(24)
-            .fontWeight(FontWeight.Bold)
-            .width('100%')
-            .textAlign(TextAlign.Center);
-        }
-        .width('100%')
-        .padding({ left: 16, right: 16, top: 16 + this.statusBarHeight, bottom: 16 })
-        .backgroundBlurStyle(resolveBlurStyle('bar'), { scale: 1.0 })
-        .backgroundColor($r('app.color.index_page_top_background'));
-      }
-      .width('100%')
-      .layoutWeight(1);
-    }
-    .width('100%')
-    .height('100%')
-    // 根容器铺不透明底色，body 模糊无内容可糊已移除
+        this.titleBar();
+      }.width('100%').layoutWeight(1);
+    }.width('100%').height('100%') // 根容器铺不透明底色，body 模糊无内容可糊已移除
     .backgroundColor($r('app.color.index_page_body_background'));
   }
 
@@ -476,8 +429,7 @@ export struct MineView {
     if (this.isDefaultClientToken) {
       return '•••••••• (内置默认 · 可修改)';
     }
-    const t: string = this.customClientToken;
-    // 用户自定义：只显示占位 + 长度，不暴露原文任何片段
+    const t: string = this.customClientToken; // 用户自定义：只显示占位 + 长度，不暴露原文任何片段
     const masked: string = '••••••••';
     return `${masked} (已配置 · ${t.length} 位)`;
   }
@@ -508,7 +460,7 @@ export struct MineView {
   private async copyDeviceToken(): Promise<void> {
     const t: string = this.deviceTokenDisplay;
     if (!t || t.length === 0) {
-      showToast(this.getUIContext(), '推送 Token 尚未获取');
+      showToast(this.getUIContext(), '推送 Token 尚未获取', 3000);
       return;
     }
     try {
@@ -529,7 +481,8 @@ export struct MineView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'router push 失败：%{public}s', msg);
-      showToast(this.getUIContext(), '页面无法打开');    }
+      showToast(this.getUIContext(), '页面无法打开');
+    }
   }
 
   private openTokenDialog(): void {
@@ -572,33 +525,26 @@ export struct MineView {
       return;
     }
     const uiCtx: UIContext = this.getUIContext();
-    const onButtons: promptAction.Button[] = [
-      { text: '残忍拒绝', color: $r('app.color.text_tertiary_color') },
-      { text: '接受推送', color: $r('app.color.text_accent_color') },
-    ];
-    const offButtons: promptAction.Button[] = [
-      { text: '保持推送', color: $r('app.color.text_tertiary_color') },
-      { text: '取消推送', color: $r('app.color.text_accent_color') },
-    ];
+    const onButtons: promptAction.Button[] = [{ text: '残忍拒绝', color: $r('app.color.text_tertiary_color') },
+      { text: '接受推送', color: $r('app.color.text_accent_color') },];
+    const offButtons: promptAction.Button[] = [{ text: '保持推送', color: $r('app.color.text_tertiary_color') },
+      { text: '取消推送', color: $r('app.color.text_accent_color') },];
     uiCtx.getPromptAction().showDialog({
       title: isOn ? '开启订阅' : '关闭订阅',
       message: isOn ? '是否要接收此订阅的通知栏推送？' : '是否要取消此订阅的通知栏推送？',
       buttons: isOn ? onButtons : offButtons,
     }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err) {
-        hilog.warn(DOMAIN, TAG, 'showDialog 失败：%{public}s', err.message);
-        // 弹窗异常关闭，Toggle 需回滚到实际状态
+        hilog.warn(DOMAIN, TAG, 'showDialog 失败：%{public}s', err.message); // 弹窗异常关闭，Toggle 需回滚到实际状态
         this.notifyEnabled = isOn;
         this.notifyEnabled = !isOn;
         return;
       }
-      if (result.index === 1) {
-        // 确认：写盘 + 翻转本地状态（纯 UI 层；系统通知权限由【通知权限设置】入口控制）
+      if (result.index === 1) { // 确认：写盘 + 翻转本地状态（纯 UI 层；系统通知权限由【通知权限设置】入口控制）
         this.notifyEnabled = isOn;
         PreferencesUtil.putString(null, PreferencesUtil.KEY_NOTIFY_ENABLED, isOn ? 'true' : 'false');
         return;
-      }
-      // 取消/拒绝：notifyEnabled 未变化，Toggle 不会自动回滚，需强制同步
+      } // 取消/拒绝：notifyEnabled 未变化，Toggle 不会自动回滚，需强制同步
       // 先设为点击值（匹配 Toggle 当前视觉），再还原实际值触发重渲染
       this.notifyEnabled = isOn;
       this.notifyEnabled = !isOn;
@@ -625,20 +571,19 @@ export struct MineView {
   private async refreshAppVersion(): Promise<void> {
     try {
       const flags: number = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION;
-      const info: bundleManager.BundleInfo = await bundleManager.getBundleInfoForSelf(flags);
-      // versionName 可能因 module.json5 未声明 version.name 而空串，非空才覆盖兜底
+      const info: bundleManager.BundleInfo =
+        await bundleManager.getBundleInfoForSelf(flags); // versionName 可能因 module.json5 未声明 version.name 而空串，非空才覆盖兜底
       if (info.versionName && info.versionName.length > 0) {
         this.versionNameDisplay = info.versionName;
       }
       if (info.versionCode > 0) {
         this.versionCodeDisplay = info.versionCode;
       }
-      hilog.info(DOMAIN, TAG, '版本号读取：name=%{public}s code=%{public}d',
-        this.versionNameDisplay, this.versionCodeDisplay);
+      hilog.info(DOMAIN, TAG, '版本号读取：name=%{public}s code=%{public}d', this.versionNameDisplay,
+        this.versionCodeDisplay);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, 'getBundleInfoForSelf 失败：%{public}s，使用兜底版本', msg);
-      // 失败时保留构造时设置的兜底常量，不做 UI 提示
+      hilog.warn(DOMAIN, TAG, 'getBundleInfoForSelf 失败：%{public}s，使用兜底版本', msg); // 失败时保留构造时设置的兜底常量，不做 UI 提示
     }
   }
 
@@ -661,8 +606,7 @@ export struct MineView {
   private async openSourceLink(): Promise<void> {
     try {
       await this.getUIContext().getRouter().pushUrl({
-        url: 'pages/SharePage',
-        params: { url: SOURCE_CODE_URL, title: '开源代码' }
+        url: 'pages/SharePage', params: { url: SOURCE_CODE_URL, title: '开源代码' }
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -675,8 +619,7 @@ export struct MineView {
   private async openDocs(): Promise<void> {
     try {
       await this.getUIContext().getRouter().pushUrl({
-        url: 'pages/SharePage',
-        params: { url: USE_DOCS_URL, title: '使用文档' }
+        url: 'pages/SharePage', params: { url: USE_DOCS_URL, title: '使用文档' }
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -689,8 +632,7 @@ export struct MineView {
   private async openPrivacy(): Promise<void> {
     try {
       await this.getUIContext().getRouter().pushUrl({
-        url: 'pages/SharePage',
-        params: { url: PRIVACY_URL, title: '隐私协议' }
+        url: 'pages/SharePage', params: { url: PRIVACY_URL, title: '隐私协议' }
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -708,16 +650,11 @@ export struct MineView {
       try {
         model = deviceInfo.productModel;
         osVer = deviceInfo.osFullName;
-      } catch (_e) {
-        // 设备信息读取失败时留空，不阻断发邮件
+      } catch (_e) { // 设备信息读取失败时留空，不阻断发邮件
       }
-      const body: string =
-        '请在此描述你遇到的问题或建议：\n\n' +
-          '---------------- 设备信息 ----------------\n' +
-          `应用版本：${appVersion}\n` +
-          `设备型号：${model}\n` +
-          `系统版本：${osVer}\n` +
-          `反馈时间：${new Date().toLocaleString()}\n`;
+      const body: string = '请在此描述你遇到的问题或建议：\n\n' + '---------------- 设备信息 ----------------\n' +
+        `应用版本：${appVersion}\n` + `设备型号：${model}\n` + `系统版本：${osVer}\n` +
+        `反馈时间：${new Date().toLocaleString()}\n`;
       const subject: string = `TimelyNotify 反馈 - ${model}`;
       const ctx: common.UIAbilityContext = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const wantParam: Record<string, Object> = {
@@ -731,8 +668,7 @@ export struct MineView {
           hilog.warn(DOMAIN, TAG, '邮件应用拉起失败：code=%{public}d name=%{public}s msg=%{public}s，回退为复制邮箱',
             code, name, message);
           this.copyFeedbackEmail();
-        },
-        onResult: (_result) => {
+        }, onResult: (_result) => {
           hilog.info(DOMAIN, TAG, '邮件应用返回');
         }
       };
