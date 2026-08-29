@@ -396,7 +396,7 @@ export struct NotifyView {
       ListItem() {
         Row()
           .width('100%')
-          .height(this.statusBarHeight + 64);
+          .height(this.statusBarHeight + 64 + 12);
       }
 
       ForEach(this.messages, (m: NotifyMessage) => {

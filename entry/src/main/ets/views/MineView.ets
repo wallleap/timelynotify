@@ -118,7 +118,7 @@ export struct MineView {
         Scroll() {
           Column({ space: 16 }) { // 顶部占位：随内容一起滚动，卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
             // 占位 = 状态栏高度 + 顶栏视觉高度 56，与沉浸式布局下的顶栏总高一致
-            Row().width('100%').height(this.statusBarHeight + 56);
+            Row().width('100%').height(this.statusBarHeight + 56 + 8);
 
             // 通知设置卡片
             Column({ space: 0 }) { // 开启应用订阅通知（开关）
