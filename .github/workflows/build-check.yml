@@ -35,6 +35,9 @@ jobs:
     name: Build Check（debug + release）
     runs-on: ${{ vars.BUILD_CHECK_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 25
+    # 托管 runner 用自建 GHCR CI 镜像（预装 DevEco CLT + JDK17，见 docker-image.yml）；
+    # 表达式结果为空串时 = 不使用容器（self-hosted 走机器上预装的 SDK）
+    container: ${{ (vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest') && (vars.CI_IMAGE || format('ghcr.io/{0}/harmonyos-ci:latest', github.repository_owner)) || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -43,41 +46,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup JDK 17
-        if: runner.environment != 'self-hosted'
+      - name: Setup JDK 17（self-hosted 兜底）
+        if: vars.BUILD_CHECK_RUNNER == 'self-hosted'
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
       # ------------------------------------------------------------
-      # SDK 环境准备
-      #   托管 runner → 需要 secret DEVECO_CLI_TOOLS_URL（或 vars.BUILD_CHECK_RUNNER=self-hosted）
-      #   自托管 → 跳过下载，使用预装 DEVECO_SDK_HOME / NODE_HOME
+      # 容器内工具链环境（托管 runner）
+      #   CI 镜像布局：/opt/harmonyos-tools/command-line-tools/{bin, sdk/default, tool/node}
       # ------------------------------------------------------------
-      - name: Setup DevEco SDK & Node.js（托管 runner）
-        if: (vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest') && runner.environment != 'self-hosted'
+      - name: 容器内工具链环境（托管 runner）
+        if: vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest'
         run: |
           set -euo pipefail
-          if [ -z "${{ secrets.DEVECO_CLI_TOOLS_URL }}" ]; then
-            echo "错误: 托管 runner 需要 secret DEVECO_CLI_TOOLS_URL；或设置 vars.BUILD_CHECK_RUNNER=self-hosted 使用自托管 runner"
-            exit 1
-          fi
-          SDK_PREFIX="$HOME/deveco"
-          mkdir -p "$SDK_PREFIX" && cd "$SDK_PREFIX"
-          curl -fSL --retry 3 -o cli_tools.zip "${{ secrets.DEVECO_CLI_TOOLS_URL }}"
-          unzip -q cli_tools.zip && rm cli_tools.zip
-          if [ -d "command-line-tools" ]; then BASE="$SDK_PREFIX/command-line-tools"
-          elif [ -d "sdk" ]; then BASE="$SDK_PREFIX"
-          else BASE="$(ls -1d */ 2>/dev/null | head -n1 | sed 's:/*$::')"; fi
-          if [ -d "$BASE/sdk/default" ]; then echo "DEVECO_SDK_HOME=$BASE/sdk/default" >> "$GITHUB_ENV"
-          elif [ -d "$BASE/openharmony" ]; then echo "DEVECO_SDK_HOME=$BASE" >> "$GITHUB_ENV"
-          else echo "无法定位 SDK 根"; ls -la "$BASE"; exit 1; fi
-          if [ -d "$BASE/tools/node" ]; then echo "NODE_HOME=$BASE/tools/node" >> "$GITHUB_ENV"
-          else echo "NODE_HOME=$(dirname $(dirname $(which node)))" >> "$GITHUB_ENV"; fi
-          if [ -f "$BASE/tools/hvigor/bin/hvigorw" ]; then echo "HVIGORW=$BASE/tools/hvigor/bin/hvigorw" >> "$GITHUB_ENV"
-          elif [ -f "$BASE/hvigor/bin/hvigor" ]; then echo "HVIGORW=$BASE/hvigor/bin/hvigor" >> "$GITHUB_ENV"
-          else echo "HVIGORW=$(command -v hvigorw || command -v hvigor)" >> "$GITHUB_ENV"; fi
+          CLT_ROOT="/opt/harmonyos-tools/command-line-tools"
+          for p in "$CLT_ROOT/sdk/default" "$CLT_ROOT/tool/node" "$CLT_ROOT/bin/hvigorw" "$CLT_ROOT/bin/ohpm"; do
+            [ -e "$p" ] || { echo "错误: CI 镜像内缺少 $p"; echo "镜像版本与预期不符？可用仓库 Variable CI_IMAGE 指定其他镜像"; exit 1; }
+          done
+          echo "DEVECO_SDK_HOME=$CLT_ROOT/sdk/default" >> "$GITHUB_ENV"
+          echo "NODE_HOME=$CLT_ROOT/tool/node"        >> "$GITHUB_ENV"
+          echo "HVIGORW=$CLT_ROOT/bin/hvigorw"        >> "$GITHUB_ENV"
+          echo "OHPM=$CLT_ROOT/bin/ohpm"              >> "$GITHUB_ENV"
 
       - name: 环境校验
         run: |

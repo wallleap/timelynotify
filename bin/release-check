@@ -507,7 +507,7 @@ if [ -z "${NO_GH:-}" ] && [ "$SKIP_NET" -eq 0 ]; then
       AGC_CLIENT_ID AGC_CLIENT_SECRET
     )
     # 可选
-    OPTIONAL_SECRETS=(AGC_APP_ID DEVECO_CLI_TOOLS_URL)
+    OPTIONAL_SECRETS=(AGC_APP_ID)
 
     # 拿一次 secrets 列表
     SECRET_LIST="$TMP_BASE/gh-secrets.txt"
@@ -525,9 +525,6 @@ if [ -z "${NO_GH:-}" ] && [ "$SKIP_NET" -eq 0 ]; then
           pass "GitHub Secret（可选）已配置: $sec"
         else
           case "$sec" in
-            DEVECO_CLI_TOOLS_URL)
-              warn "Secret DEVECO_CLI_TOOLS_URL 未设置（使用托管 ubuntu-latest 时必填，自托管 runner 不需要）" \
-                   "如使用自托管 runner，可忽略" ;;
             AGC_APP_ID)
               warn "Secret AGC_APP_ID 未设置（CI 会通过包名自动查询，建议直接填写节省时间/避免失败）" "" ;;
           esac

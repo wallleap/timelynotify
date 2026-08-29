@@ -1,0 +1,144 @@
+name: CI Image — Build & Push (GHCR)
+
+# ============================================================
+# 用途: 构建 HarmonyOS CI 镜像（docker/ci/Dockerfile）并推送到 GHCR
+#       镜像预装 DevEco Command Line Tools(Linux) + JDK17，
+#       供 release.yml / build-check.yml 的 job.container 使用，
+#       使托管 runner 无需在每次构建时下载 2GB SDK。
+#
+# 触发:
+#   1. workflow_dispatch 手动触发（可自定义 CLT 下载源/校验和/附加 tag）
+#   2. 修改 docker/ci/** 或本文件时自动构建（使用内置默认源）
+#
+# 产物: ghcr.io/<owner>/harmonyos-ci:latest（+ 可选附加 tag）
+# 注意: 首次推送后 GHCR 包默认是 private，建议到
+#       GitHub → Packages → harmonyos-ci → Package settings → Change visibility → Public
+#       （保持 private 也能用，release.yml 已声明 packages:read 权限）
+# ============================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      clt_url:
+        description: 'CLT (Linux x64) zip 下载地址（留空 = 仓库 Variable CLT_URL = 内置默认源）'
+        required: false
+        default: ''
+      clt_sha256:
+        description: '上述 zip 的 SHA256 校验值（留空 = 仓库 Variable CLT_SHA256 = 内置默认）'
+        required: false
+        default: ''
+      image_tag:
+        description: '附加镜像 tag（如 clt-6.1.1.280；latest 总是会推送）'
+        required: false
+        default: ''
+  push:
+    paths:
+      - 'docker/ci/**'
+      - '.github/workflows/docker-image.yml'
+
+concurrency:
+  group: ci-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+# 内置默认下载源（与 Dockerfile 默认一致；官方 CLT 26.0.0.621 的自托管转存，SHA256 已固定）
+env:
+  CLT_URL_DEFAULT: https://static.oicode.cn/temp/ctl/commandline-tools-linux-x64-26.0.0.621.zip
+  CLT_SHA256_DEFAULT: 0cea7ad6cc1af98ac701b9c61b7c9aae2d0f2104749a80ae84c1f6ca0fc17555
+
+jobs:
+  build-push:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- 解析镜像名（GHCR 要求小写） ----
+      - name: 计算镜像名
+        id: image
+        run: |
+          set -euo pipefail
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/$OWNER_LC/harmonyos-ci"
+          echo "name=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "镜像名: $IMAGE"
+
+      # ---- 解析 CLT 下载源：inputs > 仓库 Variables > 内置默认 ----
+      - name: 解析 CLT 下载源与校验和
+        id: clt
+        env:
+          IN_URL: ${{ github.event.inputs.clt_url }}
+          IN_SHA: ${{ github.event.inputs.clt_sha256 }}
+        run: |
+          set -euo pipefail
+          URL="${IN_URL:-${{ vars.CLT_URL }}}"
+          URL="${URL:-$CLT_URL_DEFAULT}"
+          SHA="${IN_SHA:-${{ vars.CLT_SHA256 }}}"
+          SHA="${SHA:-$CLT_SHA256_DEFAULT}"
+          echo "url=$URL"         >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA"      >> "$GITHUB_OUTPUT"
+          echo "CLT_URL=$URL"
+          echo "CLT_SHA256=$SHA"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- 解析 tags：latest + 可选附加 tag ----
+      - name: 解析镜像 tags
+        id: tags
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          EXTRA: ${{ github.event.inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          TAGS="$IMAGE:latest"
+          if [ -n "$EXTRA" ]; then TAGS="$TAGS
+          $IMAGE:$EXTRA"; fi
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "--- 将推送 tags ---"; echo "$TAGS"
+
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/ci/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          build-args: |
+            CLT_URL=${{ steps.clt.outputs.url }}
+            CLT_SHA256=${{ steps.clt.outputs.sha256 }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=HarmonyOS CI image: DevEco Command Line Tools (Linux) + JDK 17
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 写入构建摘要
+        run: |
+          {
+            echo "### CI 镜像构建完成"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "| --- | --- |"
+            echo "| 镜像 | \`${{ steps.image.outputs.name }}:latest\` |"
+            echo "| CLT 源 | \`${{ steps.clt.outputs.url }}\` |"
+            echo "| CLT SHA256 | \`${{ steps.clt.outputs.sha256 }}\` |"
+            echo ""
+            echo "> 首次推送后请到 GitHub → Packages → \`harmonyos-ci\` 将可见性改为 **Public**（加速拉取；私有亦可，流水线已声明 packages:read）"
+          } >> "$GITHUB_STEP_SUMMARY"
