@@ -89,6 +89,8 @@ push 链接同时发送到 iOS 和 HarmonyOS。
 
 | 脚本 | 用法 | 说明 |
 |---|---|---|
+| `bin/build` | `bin/build [[v]x.y.z]` | 本地构建：自动注入版本号（tag 或手动指定）→ hvigor 构建 → 自动还原 `app.json5`，产出 `entry-default-signed.hap` |
+| `bin/release-check` | `bin/release-check [--with-build] [--with-ci] [--skip-net] [-q] [-y]` | **发版前一键环境预检**：工具链/Git 状态/凭证权限/Secrets 缺失/AGC 连通性，三态输出 ✅/⚠️/❌ + 修复建议，0 FAIL 才建议发版 |
 | `bin/release` | `bin/release [-y] [--dry-run] [[v]x.y.z]` | 发版：自动切到 main 并同步 → 确定版本号（倒退/冲突校验）→ 交互确认 → 打 annotated tag 并推送，触发 CI 构建 → 签名 → 上传 AGC |
 
 - 自动模式：最近 tag 的 minor +1、patch 清零（如 1.2.3 → 1.3.0，minor 满千进位到 major）；无历史 tag 时默认发 1.0.0
