@@ -22,6 +22,10 @@ struct SharePage {
   @State loadingProgress: number = 0;
   @State pageTitle: string = '开源代码';
   @State targetUrl: string = SOURCE_CODE_URL;
+  // 下拉刷新状态：单向绑定 + 手动控制（ArkTS 双向绑定 $$ 当前 SDK 不支持）
+  @State refreshing: boolean = false;
+  // 自定义刷新指示器不会自动隐藏，需按状态控制显隐（Done 不会自动回到 Inactive，需视为隐藏）
+  @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   private controller: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear() {
@@ -100,6 +104,24 @@ struct SharePage {
     }
   }
 
+  // 自定义刷新指示器：仅在下拉/刷新过程中显示（Inactive 隐藏）；
+  // 顶部 spacer 让转圈下移到毛玻璃顶栏（高 = statusBarHeight + 56）下方，避免被遮挡
+  @Builder
+  refreshHeaderBuilder() {
+    Column() {
+      Row().height(this.statusBarHeight + 56 + 16);
+
+      if (this.refreshState !== RefreshStatus.Inactive) {
+        LoadingProgress()
+          .width(28)
+          .height(28)
+          .color($r('app.color.text_accent_color'));
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Center);
+  }
+
   build() {
     Stack({ alignContent: Alignment.Top }) {
       // 内容层（下层）：Progress + WebView 铺满 Stack，顶部延伸到状态栏
@@ -111,31 +133,58 @@ struct SharePage {
           .backgroundColor($r('app.color.divider_color'))
           .opacity(this.loadingProgress < 100 ? 1 : 0);
 
-        Web({ src: this.targetUrl, controller: this.controller })
-          .width('100%')
-          .layoutWeight(1)
-          .javaScriptAccess(true)
-          .domStorageAccess(true)
-          .databaseAccess(false)
-          .cacheMode(CacheMode.None)
-          .zoomAccess(true)
-          .darkMode(WebDarkMode.Auto)
-          .onProgressChange((data) => {
-            this.loadingProgress = data.newProgress;
-          })
-          .onPageEnd(() => {
-            const topSafe = this.statusBarHeight + 56;
-            this.controller.runJavaScript(
-              `document.documentElement.style.setProperty('--safe-area-top', '${topSafe}px');` +
-                `document.documentElement.style.setProperty('--safe-area-bottom', '${this.navBarHeight}px');` +
-                `let s=document.createElement('style');` +
-                `s.textContent='body{padding-top:var(--safe-area-top) !important;padding-bottom:var(--safe-area-bottom) !important;}';` +
-                `document.head.appendChild(s);`
-            ).catch((err: Error) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
+        // 下拉刷新容器：Web 触顶后下拉手势才交给 Refresh，页面中间下拉仍是网页正常滚动
+        Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
+          Web({ src: this.targetUrl, controller: this.controller })
+            .width('100%')
+            .height('100%')
+            .javaScriptAccess(true)
+            .domStorageAccess(true)
+            .databaseAccess(false)
+            .cacheMode(CacheMode.None)
+            .zoomAccess(true)
+            .darkMode(WebDarkMode.Auto)
+            // 嵌套滚动：Web 自身先滚动，到边界（触顶）后交给父容器 Refresh 触发下拉刷新
+            .nestedScroll({
+              scrollForward: NestedScrollMode.SELF_FIRST,
+              scrollBackward: NestedScrollMode.SELF_FIRST
+            })
+            .onProgressChange((data) => {
+              this.loadingProgress = data.newProgress;
+            })
+            .onPageEnd(() => {
+              // 刷新/加载完成：收起下拉刷新指示器
+              this.refreshing = false;
+              const topSafe = this.statusBarHeight + 56;
+              this.controller.runJavaScript(
+                `document.documentElement.style.setProperty('--safe-area-top', '${topSafe}px');` +
+                  `document.documentElement.style.setProperty('--safe-area-bottom', '${this.navBarHeight}px');` +
+                  `let s=document.createElement('style');` +
+                  `s.textContent='body{padding-top:var(--safe-area-top) !important;padding-bottom:var(--safe-area-bottom) !important;}';` +
+                  `document.head.appendChild(s);`
+              ).catch((err: Error) => {
+                const msg = err instanceof Error ? err.message : String(err);
+                hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
+              });
             });
-          });
+        }
+        .layoutWeight(1)
+        .onStateChange((state: RefreshStatus) => {
+          // 同步刷新状态给自定义指示器，控制其显隐
+          // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
+          this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
+        })
+        .onRefreshing(() => {
+          // 触顶下拉触发：刷新 WebView 当前页；失败时立即收起指示器
+          this.refreshing = true;
+          try {
+            this.controller.refresh();
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            hilog.warn(DOMAIN, TAG, 'WebView 刷新失败：%{public}s', msg);
+            this.refreshing = false;
+          }
+        });
       }
       .width('100%')
       .height('100%')
