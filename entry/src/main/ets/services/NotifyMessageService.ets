@@ -31,6 +31,20 @@ function decodeDefaultClientToken(): string {
   }
 }
 
+// POST /push 请求体（V2 单设备推送，见 SERVER_API.md）
+class PushRequest extends Object {
+  device_key: string = '';
+  title: string = '';
+  body: string = '';
+}
+
+// POST /push 响应信封：{ code, message, timestamp }
+class PushEnvelope extends Object {
+  code: number = 0;
+  message: string = '';
+  timestamp: number = 0;
+}
+
 // 服务端响应格式（gotify 兼容）：{ paging, messages: [...] }
 // 注意：message 接口不走服务端统一 envelope，顶层直接是 {paging, messages}
 class GotifyMessageResponse extends Object {
@@ -367,6 +381,46 @@ export class NotifyMessageService {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '清空消息异常：%{public}s', msg);
       return `清空失败：${msg}`;
+    }
+  }
+
+  // 发送测试推送（SERVER_API.md：POST /push，V2 单设备推送，默认无认证）
+  // 固定 title「订阅通知」+ 固定文案 body，目标为当前服务器对应的 device_key
+  // 返回 '' 表示成功；非空为错误描述
+  async sendTestPush(context: common.Context | null = null): Promise<string> {
+    const ctx: common.Context | null = resolveContext(context);
+    await ServerManager.getInstance().ensureLoaded();
+    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
+    if (!deviceKey || deviceKey.length === 0) {
+      return '设备未注册';
+    }
+
+    const req = new PushRequest();
+    req.device_key = deviceKey;
+    req.title = '[订阅通知] 及时通知推送';
+    req.body = '这是一条测试通知，收到即表示订阅推送链路工作正常';
+
+    const fullURL: string = ServerManager.getInstance().resolveURL('/push');
+    hilog.info(DOMAIN, TAG, '测试推送：POST %{public}s', fullURL);
+    try {
+      const resp: HttpResponse<PushEnvelope> = await HttpUtil.post<PushEnvelope, PushRequest>(fullURL, req);
+      if (resp.code < 200 || resp.code >= 300) {
+        // code=0 为网络层异常（resp.message 已含原因），否则为 HTTP 状态错误
+        return resp.code === 0 ? resp.message : `推送失败（HTTP ${resp.code}）`;
+      }
+      if (!resp.result) {
+        return '响应为空';
+      }
+      // 服务端信封 code 非 200 时透出原因（正常应与 HTTP 状态一致）
+      if (resp.result.code !== 200 && resp.result.message.length > 0) {
+        return resp.result.message;
+      }
+      hilog.info(DOMAIN, TAG, '测试推送成功：device_key=%{public}s', deviceKey);
+      return '';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '测试推送异常：%{public}s', msg);
+      return `推送失败：${msg}`;
     }
   }
 }
