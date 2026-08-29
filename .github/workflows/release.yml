@@ -264,6 +264,11 @@ jobs:
             s/\"versionCode\"\s*:\s*\d+/\"versionCode\": $VERSION_CODE/;
             s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$VERSION\"/;
           " AppScope/app.json5
+          # 剥离工程内调试签名（material 是 Mac 本机加密材料，CI 容器无法解析，hvigor SignHap 会报 00303107）
+          # → 让 hvigor 产出 entry-default-unsigned.hap，由后续 hap-sign-tool 步骤用 release 证书重签名
+          perl -0pi -e 's/\n\s*"signingConfig":\s*"default",//' build-profile.json5
+          perl -0pi -e 's/"signingConfigs":\s*\[.*?\]/"signingConfigs": []/s' build-profile.json5
+          echo "--- build-profile.json5 调试签名已剥离 ---"
           echo "--- 注入结果 ---"
           cat AppScope/app.json5
 

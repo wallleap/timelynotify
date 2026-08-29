@@ -130,6 +130,9 @@ jobs:
             s/\"versionCode\"\s*:\s*\d+/\"versionCode\": $VC/;
             s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$V\"/;
           " AppScope/app.json5
+          # 剥离工程内调试签名（本机加密材料 CI 无法解析）→ 产出 unsigned HAP，构建检查只验证编译链路
+          perl -0pi -e 's/\n\s*"signingConfig":\s*"default",//' build-profile.json5
+          perl -0pi -e 's/"signingConfigs":\s*\[.*?\]/"signingConfigs": []/s' build-profile.json5
           echo "注入版本 $V (versionCode=$VC)"
           cat AppScope/app.json5
 
