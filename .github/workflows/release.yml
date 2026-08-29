@@ -132,8 +132,9 @@ jobs:
           echo "========================================"
 
 # ============================================================
-# Job 2 · build-sign —— 构建 unsigned HAP → hap-sign-tool 重签 → 打包 .app
-#   （hvigor 直接签名需 DevEco 本机加密密码，CI 不可行，实测报 00303116）
+# Job 2 · build-sign —— assembleApp 构建 unsigned.app → 解包 → hap-sign-tool 重签 HAP → 回填打包
+#   （hvigor 直接签名需 DevEco 本机加密密码，CI 不可行，实测报 00303116；
+#     .app 三件套 pac.json/pack.info/HAP 均由 hvigor 生成，仅 HAP 被替换为签名版）
 # ============================================================
   build-sign:
     name: Build · Sign HAP + APP
@@ -344,42 +345,36 @@ jobs:
           echo "build_time=$BUILD_TIME"   >> "$GITHUB_OUTPUT"
 
       # --------------------------------------------------------
-      # 构建 unsigned HAP（release 模式）
-      #   signingConfigs 已剥离 → hvigor 产出 unsigned HAP，签发由后续 hap-sign-tool 步骤完成
-      #   pack.info（.app 打包清单）会同步生成在 outputs/default/ 下
+      # 构建 unsigned APP（release 模式，signingConfigs 已剥离）
+      #   assembleApp = 工程级打包，.app = zip(pac.json + pack.info + HAP)，全部由 hvigor 生成
+      #   签名配置为空时 hvigor 跳过签名产出 unsigned.app（"No signingConfig" WARN 可忽略）
+      #   签发由后续 hap-sign-tool 完成（hvigor 直接签名需 DevEco 本机加密密码，CI 报 00303116）
       # --------------------------------------------------------
-      - name: 构建 HAP（release）
+      - name: 构建 APP（release）
         run: |
           set -euo pipefail
-          "$HVIGORW" assembleHap --mode module \
-            -p product=default \
-            -p buildMode=release \
-            --no-daemon 2>&1 | tail -40
+          "$HVIGORW" assembleApp -p product=default -p buildMode=release --no-daemon 2>&1 | tail -40
 
-          OUTDIR="entry/build/default/outputs/default"
+          OUTDIR="build/outputs/default"
           echo "--- 构建产物 ($OUTDIR) ---"
           ls -lh "$OUTDIR" || { echo "错误: 产物目录不存在，构建失败"; exit 1; }
 
       # --------------------------------------------------------
-      # 定位 unsigned HAP（不同 SDK 版本命名略有差异）
+      # 定位 unsigned APP
       # --------------------------------------------------------
-      - name: 定位 unsigned HAP
+      - name: 定位 unsigned APP
         id: find_unsigned
         run: |
           set -euo pipefail
-          OUTDIR="entry/build/default/outputs/default"
-          HAP=""
-          for f in "$OUTDIR/entry-default-unsigned.hap" "$OUTDIR/entry-default.hap"; do
-            [ -f "$f" ] && HAP="$f" && break
-          done
-          if [ -z "$HAP" ]; then
-            echo "未找到 unsigned HAP，目录下所有文件:"
-            ls -la "$OUTDIR"
+          APP="$(find build/outputs -name '*-unsigned.app' -type f 2>/dev/null | head -n1)"
+          if [ -z "$APP" ]; then
+            echo "错误: 未找到 unsigned .app，产物文件:"
+            find build/outputs -type f 2>/dev/null | head
             exit 1
           fi
-          echo "unsigned_hap=$HAP" >> "$GITHUB_OUTPUT"
-          echo "找到 unsigned HAP: $HAP"
-          ls -lh "$HAP"
+          echo "unsigned_app=$APP" >> "$GITHUB_OUTPUT"
+          echo "找到 unsigned APP: $APP"
+          ls -lh "$APP"
 
       # --------------------------------------------------------
       # 提取签名证书指纹（SHA-256，与 App 运行时 signatureInfo.fingerprint 同源）
@@ -419,9 +414,10 @@ jobs:
           echo "找到签名工具: $JAR"
 
       # --------------------------------------------------------
-      # 重签名（mode=localSign，SHA256withECDSA —— HarmonyOS 要求；hap-sign-tool 用明文密码）
+      # 重签名：从 unsigned.app 解出 HAP → hap-sign-tool 重签 → 覆盖回 stage
+      #   （mode=localSign，SHA256withECDSA —— HarmonyOS 要求；hap-sign-tool 用明文密码）
       # --------------------------------------------------------
-      - name: HAP 重签名（release 证书）
+      - name: 解包并重签名（release 证书）
         id: sign
         env:
           SIGN_STORE_PASSWORD: ${{ secrets.SIGN_STORE_PASSWORD }}
@@ -437,9 +433,18 @@ jobs:
               exit 1
             fi
           done
-          UNSIGNED="${{ steps.find_unsigned.outputs.unsigned_hap }}"
-          SIGNED="$HOME/entry-release-signed.hap"
+          UNSIGNED_APP="${{ steps.find_unsigned.outputs.unsigned_app }}"
           JAR="${{ steps.find_jarsigner.outputs.hap_sign_tool_jar }}"
+
+          # 1. 解包 unsigned.app（内含 pac.json / pack.info / entry-default.hap）
+          STAGE="$HOME/app_stage"
+          rm -rf "$STAGE" && mkdir -p "$STAGE"
+          unzip -q "$UNSIGNED_APP" -d "$STAGE"
+          echo "--- .app 内容 ---"
+          ls -lh "$STAGE"
+          [ -f "$STAGE/entry-default.hap" ] || { echo "错误: .app 内未找到 entry-default.hap"; exit 1; }
+
+          # 2. 签名 HAP（inFile = 解包出的 HAP）
           echo "执行签名命令（敏感参数已屏蔽显示）:"
           echo "  java -jar $JAR sign-app -mode localSign -keyAlias *** -signAlg SHA256withECDSA ..."
           java -jar "$JAR" sign-app \
@@ -451,41 +456,34 @@ jobs:
             -keyPwd        "$SIGN_KEY_PASSWORD" \
             -appCertFile   "$MATERIAL_DIR/release.cer" \
             -profileFile   "$MATERIAL_DIR/release.p7b" \
-            -inFile        "$UNSIGNED" \
-            -outFile       "$SIGNED"
-          if [ ! -f "$SIGNED" ]; then echo "错误: 签名失败，未生成 $SIGNED"; exit 1; fi
+            -inFile        "$STAGE/entry-default.hap" \
+            -outFile       "$STAGE/entry-default-signed.hap"
+          if [ ! -f "$STAGE/entry-default-signed.hap" ]; then echo "错误: 签名失败，未生成签名产物"; exit 1; fi
+
+          # 3. 用签名后的 HAP 覆盖 stage 内同名文件（供后续 zip 回 .app）
+          mv "$STAGE/entry-default-signed.hap" "$STAGE/entry-default.hap"
           echo "--- 签名完成 ---"
-          ls -lh "$SIGNED"
-          echo "signed_hap=$SIGNED" >> "$GITHUB_OUTPUT"
+          ls -lh "$STAGE"
+          echo "stage_dir=$STAGE" >> "$GITHUB_OUTPUT"
 
       # --------------------------------------------------------
-      # 重命名产物 + 打包 .app + 计算 SHA256
+      # 重命名产物 + 重打包 .app + 计算 SHA256
       #   .hap → GitHub Release（hdc install 安装）
       #   .app → AGC 上传（软件包管理/上架/测试要求 .app 包）
-      #   .app 结构 = zip(pac.json + pack.info + 签名 HAP)，与 hvigor PackageApp 产物一致，
-      #   已实测 AGC 接受手工打包的 .app（app-package-info 登记成功）
+      #   .app = zip(pac.json + pack.info + 签名 HAP)，三者均由 hvigor 生成、签名后原样回填，
+      #   结构与 hvigor PackageApp 签名产物一致，已实测 AGC 接受
       # --------------------------------------------------------
-      - name: 重命名产物 + 打包 .app + 计算 SHA256
+      - name: 重命名产物 + 重打包 .app + 计算 SHA256
         id: sha
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
           BASENAME="timelynotify-${VERSION}-signed"
-          SIGNED="${{ steps.sign.outputs.signed_hap }}"
+          STAGE="${{ steps.sign.outputs.stage_dir }}"
 
           HAP_OUT="$HOME/$BASENAME.hap"
-          cp "$SIGNED" "$HAP_OUT"
-
-          # ---- 打包 .app（AGC 格式）----
-          PACK_INFO="entry/build/default/outputs/default/pack.info"
-          [ -f "$PACK_INFO" ] || { echo "错误: 未找到 pack.info（hvigor 构建产物缺失）"; exit 1; }
-          STAGE="$(mktemp -d)"
-          # HAP 在 .app 内的规范名 = <module>-<product>.hap，与 hvigor 打包一致
-          cp "$SIGNED" "$STAGE/entry-default.hap"
-          # pac.json = 特殊 API 声明（项目无特殊 API，空声明即可，与 DevEco 产物一致）
-          echo '{"dataProcess":[],"specialAPIs":[]}' > "$STAGE/pac.json"
-          cp "$PACK_INFO" "$STAGE/pack.info"
           APP_OUT="$HOME/$BASENAME.app"
+          cp "$STAGE/entry-default.hap" "$HAP_OUT"
           (cd "$STAGE" && zip -X -q "$APP_OUT" pac.json pack.info entry-default.hap)
           rm -rf "$STAGE"
 
