@@ -181,7 +181,7 @@ export struct NotifyView {
       .systemMaterial(getSystemMaterial('card'))
       .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleDeleteClicked();
+        this.handleMultiSelectClicked();
       });
     } else {
       Row() {
@@ -198,7 +198,7 @@ export struct NotifyView {
       .backgroundBlurStyle(resolveBlurStyle('card')!)
       .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleDeleteClicked();
+        this.handleMultiSelectClicked();
       });
     }
   }
@@ -223,7 +223,7 @@ export struct NotifyView {
       .systemMaterial(getSystemMaterial('card'))
       .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleDeleteClicked();
+        this.handleMultiSelectClicked();
       });
     } else {
       Row() {
@@ -242,7 +242,7 @@ export struct NotifyView {
       .backgroundBlurStyle(resolveBlurStyle('card')!)
       .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleDeleteClicked();
+        this.handleMultiSelectClicked();
       });
     }
   }
@@ -736,7 +736,7 @@ export struct NotifyView {
 
   // 顶栏「多选」按钮与删除图标共用的点击逻辑：非编辑态进入多选；
   // 编辑态有选中时清空选择，无选中时退出编辑
-  private handleDeleteClicked(): void {
+  private handleMultiSelectClicked(): void {
     if (this.isEditing) {
       // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
       if (this.selectedIds.length === this.messages.length) {
