@@ -166,13 +166,13 @@ export struct NotifyView {
     }
   }
 
-  // 「多选」胶囊按钮：沉浸光感材质（API 26+，card 表面）+ 半透明底色 + 高亮描边；
-  // 低版本降级为毛玻璃模糊，点击逻辑与删除按钮共用
+  // 「多选/取消」胶囊按钮：未编辑态显示「多选」进入选择；编辑态显示「取消」清空/退出；
+  // 沉浸光感材质（API 26+，card 表面）+ 半透明底色 + 高亮描边，低版本降级为毛玻璃模糊
   @Builder
   multiSelectPill() {
     if (this.materialReady) {
       Row() {
-        Text('多选')
+        Text(this.isEditing ? '取消' : '多选')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary_color'))
@@ -189,7 +189,7 @@ export struct NotifyView {
       });
     } else {
       Row() {
-        Text('多选')
+        Text(this.isEditing ? '取消' : '多选')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.text_primary_color'))
