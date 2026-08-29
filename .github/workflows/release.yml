@@ -132,12 +132,14 @@ jobs:
           echo "========================================"
 
 # ============================================================
-# Job 2 · build-sign —— assembleApp 构建 unsigned.app → 解包 → hap-sign-tool 重签 HAP → 回填打包
-#   （hvigor 直接签名需 DevEco 本机加密密码，CI 不可行，实测报 00303116；
-#     .app 三件套 pac.json/pack.info/HAP 均由 hvigor 生成，仅 HAP 被替换为签名版）
+# Job 2 · build-sign —— assembleApp 构建 unsigned.app → hap-sign-tool 对 .app 整体重签名
+#   （HarmonyOS NEXT 签名架构：签名块附加在 .app(zip) 尾部，包内 HAP 不含签名条目——
+#     实测 hvigor 原生产物：signed.app = unsigned.app + ~15KB 尾部签名块；
+#     hap-sign-tool 只有 sign-app/verify-app，无 HAP 签名子命令；
+#     不可拆包单签 HAP 再回填，AGC 会报 991 非法软件包）
 # ============================================================
   build-sign:
-    name: Build · Sign HAP + APP
+    name: Build · Sign APP
     needs: prepare
     runs-on: ${{ needs.prepare.outputs.runner_pool }}
     timeout-minutes: 30
@@ -414,10 +416,11 @@ jobs:
           echo "找到签名工具: $JAR"
 
       # --------------------------------------------------------
-      # 重签名：从 unsigned.app 解出 HAP → hap-sign-tool 重签 → 覆盖回 stage
+      # .app 整体重签名（release 证书）
+      #   sign-app 的签名对象是 .app 整体：签名块附加在 zip 尾部（hvigor SignApp 同款原理）
       #   （mode=localSign，SHA256withECDSA —— HarmonyOS 要求；hap-sign-tool 用明文密码）
       # --------------------------------------------------------
-      - name: 解包并重签名（release 证书）
+      - name: .app 重签名（release 证书）
         id: sign
         env:
           SIGN_STORE_PASSWORD: ${{ secrets.SIGN_STORE_PASSWORD }}
@@ -434,19 +437,10 @@ jobs:
             fi
           done
           UNSIGNED_APP="${{ steps.find_unsigned.outputs.unsigned_app }}"
+          SIGNED_APP="$HOME/app-signed.tmp"
           JAR="${{ steps.find_jarsigner.outputs.hap_sign_tool_jar }}"
 
-          # 1. 解包 unsigned.app（内含 pac.json / pack.info / entry-default.hap）
-          STAGE="$HOME/app_stage"
-          rm -rf "$STAGE" && mkdir -p "$STAGE"
-          unzip -q "$UNSIGNED_APP" -d "$STAGE"
-          echo "--- .app 内容 ---"
-          ls -lh "$STAGE"
-          [ -f "$STAGE/entry-default.hap" ] || { echo "错误: .app 内未找到 entry-default.hap"; exit 1; }
-
-          # 2. 签名 HAP（inFile = 解包出的 HAP）
-          echo "执行签名命令（敏感参数已屏蔽显示）:"
-          echo "  java -jar $JAR sign-app -mode localSign -keyAlias *** -signAlg SHA256withECDSA ..."
+          echo "执行 .app 整体签名（敏感参数已屏蔽显示）:"
           java -jar "$JAR" sign-app \
             -mode          localSign \
             -keyAlias      "$SIGN_KEY_ALIAS" \
@@ -456,51 +450,53 @@ jobs:
             -keyPwd        "$SIGN_KEY_PASSWORD" \
             -appCertFile   "$MATERIAL_DIR/release.cer" \
             -profileFile   "$MATERIAL_DIR/release.p7b" \
-            -inFile        "$STAGE/entry-default.hap" \
-            -outFile       "$STAGE/entry-default-signed.hap"
-          if [ ! -f "$STAGE/entry-default-signed.hap" ]; then echo "错误: 签名失败，未生成签名产物"; exit 1; fi
+            -inFile        "$UNSIGNED_APP" \
+            -outFile       "$SIGNED_APP"
+          if [ ! -f "$SIGNED_APP" ]; then echo "错误: 签名失败，未生成签名产物"; exit 1; fi
 
-          # 3. 用签名后的 HAP 覆盖 stage 内同名文件（供后续 zip 回 .app）
-          mv "$STAGE/entry-default-signed.hap" "$STAGE/entry-default.hap"
+          # 自检 1：zip 结构完整
+          unzip -t "$SIGNED_APP" > /dev/null || { echo "错误: 签名产物 zip 结构损坏"; exit 1; }
+          # 自检 2：EOCD 之后必须存在尾部签名附加块（未签名的 .app 没有）
+          python3 - "$SIGNED_APP" <<'PY'
+          import sys
+          data = open(sys.argv[1], 'rb').read()
+          eocd = data.rfind(b'PK\x05\x06')
+          assert eocd != -1, 'zip EOCD 缺失'
+          tail = len(data) - (eocd + 22)
+          assert tail > 100, f'尾部无签名块（仅 {tail} 字节）——签名未生效'
+          print(f'签名块自检通过：EOCD 后附加 {tail} 字节签名数据')
+          PY
           echo "--- 签名完成 ---"
-          ls -lh "$STAGE"
-          echo "stage_dir=$STAGE" >> "$GITHUB_OUTPUT"
+          ls -lh "$SIGNED_APP"
+          echo "signed_app=$SIGNED_APP" >> "$GITHUB_OUTPUT"
 
       # --------------------------------------------------------
-      # 重命名产物 + 重打包 .app + 计算 SHA256
-      #   .hap → GitHub Release（hdc install 安装）
-      #   .app → AGC 上传（软件包管理/上架/测试要求 .app 包）
-      #   .app = zip(pac.json + pack.info + 签名 HAP)，三者均由 hvigor 生成、签名后原样回填，
-      #   结构与 hvigor PackageApp 签名产物一致，已实测 AGC 接受
+      # 重命名产物 + 计算 SHA256
+      #   .app → AGC 上传 + GitHub Release（AGC 唯一合法发布形态）
+      #   注：不再单独产出 .hap —— HAP 级签名仅 hvigor（DevEco 本机材料）可完成，
+      #   hap-sign-tool 无 HAP 签名子命令；安装请走 AGC 测试/上架渠道
       # --------------------------------------------------------
-      - name: 重命名产物 + 重打包 .app + 计算 SHA256
+      - name: 重命名产物 + 计算 SHA256
         id: sha
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
           BASENAME="timelynotify-${VERSION}-signed"
-          STAGE="${{ steps.sign.outputs.stage_dir }}"
-
-          HAP_OUT="$HOME/$BASENAME.hap"
           APP_OUT="$HOME/$BASENAME.app"
-          cp "$STAGE/entry-default.hap" "$HAP_OUT"
-          (cd "$STAGE" && zip -X -q "$APP_OUT" pac.json pack.info entry-default.hap)
-          rm -rf "$STAGE"
+          cp "${{ steps.sign.outputs.signed_app }}" "$APP_OUT"
 
-          HAP_SHA="$(sha256sum "$HAP_OUT" | awk '{print $1}')"
           APP_SHA="$(sha256sum "$APP_OUT" | awk '{print $1}')"
-          echo "$HAP_SHA  $BASENAME.hap" > "$HOME/$BASENAME.hap.sha256"
-          cat "$HOME/$BASENAME.hap.sha256"
+          echo "$APP_SHA  $BASENAME.app" > "$HOME/$BASENAME.app.sha256"
+          cat "$HOME/$BASENAME.app.sha256"
           # 证书指纹文件随 artifact 上传并挂到 Release（用户防伪比对用）
-          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/$BASENAME.hap-cert-fingerprint.txt"
+          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/$BASENAME.app-cert-fingerprint.txt"
 
           {
-            echo "hap_out=$HAP_OUT" >> "$GITHUB_OUTPUT"
             echo "app_out=$APP_OUT" >> "$GITHUB_OUTPUT"
-            echo "sha256=$HAP_SHA" >> "$GITHUB_OUTPUT"
+            echo "sha256=$APP_SHA" >> "$GITHUB_OUTPUT"
           }
           echo "--- 最终产物 ---"
-          ls -lh "$HAP_OUT" "$APP_OUT"
+          ls -lh "$APP_OUT"
 
       # --------------------------------------------------------
       # Artifact Attestation（GitHub 官方密钥签名的构建溯源证明，SLSA provenance）
@@ -508,11 +504,6 @@ jobs:
       #   gh attestation verify <文件> -R <owner>/<repo>
       # 公开仓库免费支持；私有仓库需 Enterprise Cloud
       # --------------------------------------------------------
-      - name: 生成构建溯源证明（HAP）
-        uses: actions/attest-build-provenance@v1
-        with:
-          subject-path: ${{ steps.sha.outputs.hap_out }}
-
       - name: 生成构建溯源证明（APP）
         uses: actions/attest-build-provenance@v1
         with:
@@ -521,17 +512,16 @@ jobs:
       - name: 生成构建溯源证明（SHA256）
         uses: actions/attest-build-provenance@v1
         with:
-          subject-path: ${{ steps.sha.outputs.hap_out }}.sha256
+          subject-path: ${{ steps.sha.outputs.app_out }}.sha256
 
-      - name: 上传 Artifact（HAP + APP）
+      - name: 上传 Artifact（APP）
         uses: actions/upload-artifact@v4
         with:
           name: timelynotify-${{ needs.prepare.outputs.version }}-packages
           path: |
-            ${{ steps.sha.outputs.hap_out }}
-            ${{ steps.sha.outputs.hap_out }}.sha256
-            ${{ steps.sha.outputs.hap_out }}-cert-fingerprint.txt
             ${{ steps.sha.outputs.app_out }}
+            ${{ steps.sha.outputs.app_out }}.sha256
+            ${{ steps.sha.outputs.app_out }}-cert-fingerprint.txt
           if-no-files-found: error
           retention-days: 90
 
@@ -554,7 +544,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: 下载 artifact（HAP + APP）
+      - name: 下载 artifact（APP）
         uses: actions/download-artifact@v4
         with:
           name: timelynotify-${{ needs.prepare.outputs.version }}-packages
@@ -641,7 +631,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
 # ============================================================
-# Job 4 · github-release —— 创建 GitHub Release 并挂载 HAP / APP
+# Job 4 · github-release —— 创建 GitHub Release 并挂载 APP / 溯源文件
 # ============================================================
   github-release:
     name: GitHub Release
@@ -651,7 +641,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: 下载 artifact（HAP + APP）
+      - name: 下载 artifact（APP）
         uses: actions/download-artifact@v4
         with:
           name: timelynotify-${{ needs.prepare.outputs.version }}-packages
@@ -696,26 +686,26 @@ jobs:
             2. **文件完整性**（下载后校验，被篡改的包会失配）：
 
                ```sh
-               shasum -a 256 -c timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
+               shasum -a 256 -c timelynotify-${{ needs.prepare.outputs.version }}-signed.app.sha256
                ```
+
+               注：`.app.zip` 解压出的 `.app` 才是被校验对象（`.sha256` 对应解压后的 `.app`）
 
             3. **构建溯源证明**（技术用户可选，GitHub 官方密钥签名）：
 
                ```sh
-               gh attestation verify timelynotify-${{ needs.prepare.outputs.version }}-signed.hap -R ${{ github.repository }}
+               gh attestation verify timelynotify-${{ needs.prepare.outputs.version }}-signed.app -R ${{ github.repository }}
                ```
 
             ### 附件说明
 
-            - `timelynotify-${{ needs.prepare.outputs.version }}-signed.hap` — HarmonyOS 安装包（release 签名），可用 `hdc install` 安装
-            - `timelynotify-${{ needs.prepare.outputs.version }}-signed.app.zip` — 应用包（release 签名，AGC 上架/测试格式，GitHub 附件禁用 .app 后缀故打包为 zip），已随 CI 上传 AGC 软件包管理
-            - `*.sha256` — SHA256 校验和
+            - `timelynotify-${{ needs.prepare.outputs.version }}-signed.app.zip` — 应用包（release 签名，AGC 上架/测试格式；GitHub 附件禁用 .app 后缀故打包为 zip），解压出的 `.app` 可用于校验/上架，已随 CI 上传 AGC 软件包管理
+            - `*.sha256` — SHA256 校验和（对应解压后的 .app）
             - `*-cert-fingerprint.txt` — 签名证书指纹（纯文本）
           files: |
-            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap
-            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
-            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap-cert-fingerprint.txt
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.app.zip
+            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.app.sha256
+            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.app-cert-fingerprint.txt
           fail_on_unmatched_files: true
           make_latest: true
           generate_release_notes: false
