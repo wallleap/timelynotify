@@ -41,16 +41,16 @@ RUN echo "$CLT_SHA256  /tmp/clt.zip" | sha256sum -c - \
 
 # 解包布局：/opt/harmonyos-tools/command-line-tools/{bin, sdk/default, tool/node, ...}
 #   bin/          → hvigorw / ohpm / hdc 等可执行
-#   sdk/default   → HarmonyOS SDK（DEVECO_SDK_HOME）
+#   sdk/          → DEVECO_SDK_HOME 必须指向这里（其下才有 default/，指向 default 本身会报 00303168 SDK component missing）
 #   tool/node     → hvigor 依赖的 Node.js（NODE_HOME）
 
 # ---- 工具链环境变量（与 app 流水线 release.yml 中的路径约定一致）----
 ENV COMMANDLINE_TOOL_DIR=/opt/harmonyos-tools
-ENV DEVECO_SDK_HOME="$COMMANDLINE_TOOL_DIR/command-line-tools/sdk/default"
+ENV DEVECO_SDK_HOME="$COMMANDLINE_TOOL_DIR/command-line-tools/sdk"
 ENV NODE_HOME="$COMMANDLINE_TOOL_DIR/command-line-tools/tool/node"
 ENV HVIGORW="$COMMANDLINE_TOOL_DIR/command-line-tools/bin/hvigorw"
 ENV OHPM="$COMMANDLINE_TOOL_DIR/command-line-tools/bin/ohpm"
-ENV HDC_HOME="$DEVECO_SDK_HOME/openharmony/toolchains"
+ENV HDC_HOME="$DEVECO_SDK_HOME/default/openharmony/toolchains"
 ENV PATH="$COMMANDLINE_TOOL_DIR/command-line-tools/bin:$NODE_HOME/bin:$PATH"
 
 # ---- 构建自检：关键工具必须可用（在镜像构建期就暴露问题，而不是 app 构建期）----

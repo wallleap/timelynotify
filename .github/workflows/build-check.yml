@@ -72,7 +72,7 @@ jobs:
           for p in "$CLT_ROOT/sdk/default" "$CLT_ROOT/tool/node" "$CLT_ROOT/bin/hvigorw" "$CLT_ROOT/bin/ohpm"; do
             [ -e "$p" ] || { echo "错误: CI 镜像内缺少 $p"; echo "镜像版本与预期不符？可用仓库 Variable CI_IMAGE 指定其他镜像"; exit 1; }
           done
-          echo "DEVECO_SDK_HOME=$CLT_ROOT/sdk/default" >> "$GITHUB_ENV"
+          echo "DEVECO_SDK_HOME=$CLT_ROOT/sdk" >> "$GITHUB_ENV"
           echo "NODE_HOME=$CLT_ROOT/tool/node"        >> "$GITHUB_ENV"
           echo "HVIGORW=$CLT_ROOT/bin/hvigorw"        >> "$GITHUB_ENV"
           echo "OHPM=$CLT_ROOT/bin/ohpm"              >> "$GITHUB_ENV"
