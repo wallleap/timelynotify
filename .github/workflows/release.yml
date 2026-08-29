@@ -480,7 +480,8 @@ jobs:
           echo "$SHA  $BASENAME" > "$HOME/$BASENAME.sha256"
           cat "$HOME/$BASENAME.sha256"
           # 证书指纹文件复制到同目录，随后一并挂到 Release（用户防伪比对用）
-          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/timelynotify-${{ needs.prepare.outputs.version }}-cert-fingerprint.txt"
+          # 命名 = $BASENAME-cert-fingerprint.txt，与 artifact 上传路径及 Release files 严格一致
+          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/$BASENAME-cert-fingerprint.txt"
           echo "renamed_hap=$RENAMED"           >> "$GITHUB_OUTPUT"
           echo "renamed_basename=$BASENAME"     >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA"                    >> "$GITHUB_OUTPUT"
@@ -582,7 +583,7 @@ jobs:
             echo "通过包名查询 appId ..."
             APP_ID_JSON="$(agc-cli publish app-id -p "$BUNDLE_NAME")"
             echo "$APP_ID_JSON" | jq . 2>/dev/null || echo "$APP_ID_JSON"
-            APP_ID="$(echo "$APP_ID_JSON" | jq -r '.appId // .ret.appId // empty' 2>/dev/null || true)"
+            APP_ID="$(echo "$APP_ID_JSON" | jq -r '(first(.appids[]?.value) // .appId // .ret.appId // empty)' 2>/dev/null || true)"
             if [ -z "$APP_ID" ]; then
               # 回退：输出全量 JSON，方便排查
               echo "未能从响应解析 appId。上面是完整响应，请确认包名 $BUNDLE_NAME 是否在 AGC 创建了应用。"
