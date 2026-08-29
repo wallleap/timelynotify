@@ -131,6 +131,15 @@ jobs:
     needs: prepare
     runs-on: ${{ needs.prepare.outputs.runner_pool }}
     timeout-minutes: 30
+    # attest-build-provenance 需要 OIDC token + attestations 写权限（GitHub 官方签名密钥签发构建溯源证明）
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    outputs:
+      cert_fingerprint: ${{ steps.cert_fp.outputs.fingerprint }}
+      commit_sha: ${{ steps.buildinfo.outputs.commit_sha }}
+      build_time: ${{ steps.buildinfo.outputs.build_time }}
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
       VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
@@ -280,6 +289,41 @@ jobs:
           cat AppScope/app.json5
 
       # --------------------------------------------------------
+      # 生成 BuildInfo.ets（构建溯源信息，App「关于 → 构建信息」展示 + 防伪比对依据）
+      #   RUN_ID/RUN_NUMBER 由 GitHub 注入，伪造包无法在官方仓库创建对应 run 记录
+      # --------------------------------------------------------
+      - name: 生成 BuildInfo.ets（构建溯源信息）
+        id: buildinfo
+        run: |
+          set -euo pipefail
+          # tag push 场景下 github.sha 可能指向 tag 对象，用 git rev-parse HEAD 拿真实 commit 更可靠
+          COMMIT_SHA="$(git rev-parse HEAD)"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          mkdir -p entry/src/main/ets/generated
+          cat > entry/src/main/ets/generated/BuildInfo.ets <<EOF
+          /**
+           * 构建溯源信息（自动生成文件 —— 请勿手动修改）
+           * 由 GitHub Actions release.yml 生成
+           */
+          export class BuildInfo {
+            /** 构建来源：github-actions / local */
+            static readonly BUILD_HOST: string = 'github-actions';
+            /** GitHub Actions Run ID（云端构建记录页 /actions/runs/{RUN_ID}）；本地构建为空串 */
+            static readonly RUN_ID: string = '${{ github.run_id }}';
+            /** GitHub Actions Run 编号（页面展示用） */
+            static readonly RUN_NUMBER: string = '${{ github.run_number }}';
+            /** 构建对应的 commit SHA（完整 40 位） */
+            static readonly COMMIT_SHA: string = '$COMMIT_SHA';
+            /** 构建时间（UTC，ISO 8601 格式） */
+            static readonly BUILD_TIME: string = '$BUILD_TIME';
+          }
+          EOF
+          echo "--- BuildInfo.ets ---"
+          cat entry/src/main/ets/generated/BuildInfo.ets
+          echo "commit_sha=$COMMIT_SHA"   >> "$GITHUB_OUTPUT"
+          echo "build_time=$BUILD_TIME"   >> "$GITHUB_OUTPUT"
+
+      # --------------------------------------------------------
       # 构建 unsigned HAP（release 模式）
       #   说明：CI 不直接使用 build-profile.json5 的签名配置（路径/加密密码只对本机 DevEco 有效），
       #         而是先产出 unsigned，下阶段用 hap-sign-tool.jar + 发布证书重签名。
@@ -359,7 +403,28 @@ jobs:
           echo "MATERIAL_DIR=$MATERIAL_DIR" >> "$GITHUB_ENV"
 
       # --------------------------------------------------------
-      # 定位 hap-sign-tool.jar（SDK toolchains/lib 下）
+      # 提取签名证书指纹（SHA-256，与 App 运行时 signatureInfo.fingerprint 同源）
+      # 公布到 Release notes，用户与手机「关于 → 构建信息」中尾 8 位比对即可防伪
+      # --------------------------------------------------------
+      - name: 提取签名证书指纹（SHA-256）
+        id: cert_fp
+        run: |
+          set -euo pipefail
+          RAW="$(keytool -printcert -file "$MATERIAL_DIR/release.cer" 2>/dev/null | grep -m1 'SHA256:')"
+          if [ -z "$RAW" ]; then
+            echo "错误: 未能从 release.cer 提取 SHA-256 指纹"
+            keytool -printcert -file "$MATERIAL_DIR/release.cer" || true
+            exit 1
+          fi
+          # 去掉冒号/空格、统一小写，得到 64 位十六进制串（与 signatureInfo.fingerprint 一致）
+          FP="$(echo "$RAW" | sed 's/.*SHA256: *//' | tr -d ': ' | tr 'A-F' 'a-f')"
+          echo "签名证书指纹: $FP"
+          echo "fingerprint=$FP" >> "$GITHUB_OUTPUT"
+          # 指纹文件随 artifact 上传并挂到 Release
+          echo "$FP" > "$HOME/sign_material/cert_fingerprint.txt"
+
+      # --------------------------------------------------------
+      # 定位签名工具 hap-sign-tool.jar（SDK toolchains/lib 下）
       # --------------------------------------------------------
       - name: 定位签名工具 hap-sign-tool.jar
         id: find_jarsigner
@@ -442,9 +507,27 @@ jobs:
           cp "$SIGNED" "$RENAMED"
           echo "$SHA  $BASENAME" > "$HOME/$BASENAME.sha256"
           cat "$HOME/$BASENAME.sha256"
+          # 证书指纹文件复制到同目录，随后一并挂到 Release（用户防伪比对用）
+          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/timelynotify-${{ needs.prepare.outputs.version }}-cert-fingerprint.txt"
           echo "renamed_hap=$RENAMED"           >> "$GITHUB_OUTPUT"
           echo "renamed_basename=$BASENAME"     >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA"                    >> "$GITHUB_OUTPUT"
+
+      # --------------------------------------------------------
+      # Artifact Attestation（GitHub 官方密钥签名的构建溯源证明，SLSA provenance）
+      # 技术用户可用一条命令验证包由本仓库本 workflow 构建：
+      #   gh attestation verify <文件> -R <owner>/<repo>
+      # 公开仓库免费支持；私有仓库需 Enterprise Cloud
+      # --------------------------------------------------------
+      - name: 生成构建溯源证明（HAP）
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ steps.sha.outputs.renamed_hap }}
+
+      - name: 生成构建溯源证明（SHA256）
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ steps.sha.outputs.renamed_hap }}.sha256
 
       - name: 上传 HAP Artifact
         uses: actions/upload-artifact@v4
@@ -453,6 +536,7 @@ jobs:
           path: |
             ${{ steps.sha.outputs.renamed_hap }}
             ${{ steps.sha.outputs.renamed_hap }}.sha256
+            ${{ steps.sha.outputs.renamed_hap }}-cert-fingerprint.txt
           if-no-files-found: error
           retention-days: 90
 
@@ -591,23 +675,42 @@ jobs:
           body: |
             ## TimelyNotify ${{ needs.prepare.outputs.version }}
 
-            - **versionCode**: `\${{ needs.prepare.outputs.version_code }}`
+            - **versionCode**: `${{ needs.prepare.outputs.version_code }}`
             - **versionName**: `${{ needs.prepare.outputs.version }}`
             - **包名**: `cn.oicode.timelynotify`
+            - **构建**: [Actions Run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - **commit**: `${{ needs.build-sign.outputs.commit_sha }}`
+            - **构建时间 (UTC)**: ${{ needs.build-sign.outputs.build_time }}
+
+            ### 防伪校验
+
+            1. **签名证书指纹（SHA-256，64 位）** —— 与 App「我的 → 关于 → 构建信息」中显示的指纹尾 8 位比对：
+
+               ```
+               ${{ needs.build-sign.outputs.cert_fingerprint }}
+               ```
+
+            2. **文件完整性**（下载后校验，被篡改的包会失配）：
+
+               ```sh
+               shasum -a 256 -c timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
+               ```
+
+            3. **构建溯源证明**（技术用户可选，GitHub 官方密钥签名）：
+
+               ```sh
+               gh attestation verify timelynotify-${{ needs.prepare.outputs.version }}-signed.hap -R ${{ github.repository }}
+               ```
 
             ### 附件说明
 
             - `timelynotify-${{ needs.prepare.outputs.version }}-signed.hap` — HarmonyOS 安装包（release 签名），可用 `hdc install` 安装
             - `*.sha256` — SHA256 校验和
-
-            ### 校验
-
-            ```sh
-            sha256sum -c timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
-            ```
+            - `*-cert-fingerprint.txt` — 签名证书指纹（纯文本）
           files: |
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
+            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap-cert-fingerprint.txt
           fail_on_unmatched_files: true
           make_latest: true
           generate_release_notes: false

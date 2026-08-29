@@ -13,6 +13,7 @@ import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import showToast from '../components/showToast';
 import { DOMAIN } from '../common/Constant';
+import { BuildInfo } from '../generated/BuildInfo';
 import { getSystemMaterial, resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 // 版本号兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常
@@ -57,6 +58,8 @@ export struct MineView {
   // 版本号展示（读取自 BundleInfo；异常时使用兜底常量）
   @State versionNameDisplay: string = FALLBACK_VERSION_NAME;
   @State versionCodeDisplay: number = FALLBACK_VERSION_CODE;
+  // 签名证书指纹尾 8 位（运行时读取；完整指纹发布在 README / GitHub Release 供比对）
+  @State certFingerprintTail: string = '';
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
   private tokenDialogController: CustomDialogController = new CustomDialogController({
@@ -76,6 +79,7 @@ export struct MineView {
     this.refreshDeviceToken();
     this.refreshNotifyEnabled();
     this.refreshAppVersion();
+    this.refreshCertFingerprint();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.refreshSummary();
     };
@@ -350,6 +354,30 @@ export struct MineView {
                     .fontColor($r('app.color.text_tertiary_color'));
                 }.width('100%').padding(16).onClick(() => {
                   this.copyVersionInfo();
+                });
+
+                Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+                // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
+                Row() {
+                  Column({ space: 2 }) {
+                    Text('构建信息')
+                      .fontSize(16)
+                      .fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.text_primary_color'));
+                    Text(this.buildBuildInfoDisplay())
+                      .fontSize(12)
+                      .fontColor($r('app.color.text_quinary_color'))
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis });
+                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+                  // 云端构建才有对应记录页，本地构建不显示箭头
+                  if (this.hasCloudBuild()) {
+                    this.arrowRightIcon();
+                  }
+                }.width('100%').padding(16).onClick(() => {
+                  this.openBuildInfo();
                 });
 
                 Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
@@ -718,7 +746,20 @@ export struct MineView {
 
   // 点击关于板块：复制完整版本信息到剪贴板
   private async copyVersionInfo(): Promise<void> {
-    const text: string = `TimelyNotify ${this.versionNameDisplay} (${this.versionCodeDisplay})`;
+    // 组装版本 + 构建溯源信息（便于反馈问题时一次性提供完整证据链）
+    const lines: string[] = [`TimelyNotify ${this.versionNameDisplay} (${this.versionCodeDisplay})`];
+    if (this.hasCloudBuild()) {
+      lines.push(`构建：GitHub Actions Run #${BuildInfo.RUN_NUMBER} (${BuildInfo.RUN_ID})`);
+    } else {
+      lines.push('构建：本地构建');
+    }
+    if (BuildInfo.COMMIT_SHA.length > 0) {
+      lines.push(`commit：${BuildInfo.COMMIT_SHA}`);
+    }
+    if (this.certFingerprintTail.length > 0) {
+      lines.push(`签名指纹尾 8 位：${this.certFingerprintTail}`);
+    }
+    const text: string = lines.join('\n');
     try {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
       const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
@@ -728,6 +769,63 @@ export struct MineView {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '版本信息复制失败：%{public}s', msg);
       showToast(this.getUIContext(), text, 1500);
+    }
+  }
+
+  // 是否为云端构建（GitHub Actions 产物才有可跳转的构建记录页）
+  private hasCloudBuild(): boolean {
+    return BuildInfo.RUN_ID.length > 0;
+  }
+
+  // 构建信息副标题：云端构建显示 Build 编号 · commit 前 7 位 · 指纹尾 8 位；本地构建显示"本地构建"前缀
+  private buildBuildInfoDisplay(): string {
+    const parts: string[] = [];
+    if (BuildInfo.COMMIT_SHA.length >= 7) {
+      parts.push(BuildInfo.COMMIT_SHA.substring(0, 7));
+    }
+    if (this.certFingerprintTail.length > 0) {
+      parts.push(`指纹…${this.certFingerprintTail}`);
+    }
+    if (this.hasCloudBuild()) {
+      return `Build #${BuildInfo.RUN_NUMBER} · ${parts.join(' · ')}`;
+    }
+    // 本地构建：指纹仍有效（对应调试证书），但与 README 公布的发布指纹不同属正常
+    return `本地构建${parts.length > 0 ? ' · ' + parts.join(' · ') : ''}`;
+  }
+
+  // 点击构建信息行：打开云端构建记录页（伪造包无法在官方仓库创建对应 run 记录，以此验证包来源）
+  private async openBuildInfo(): Promise<void> {
+    if (!this.hasCloudBuild()) {
+      showToast(this.getUIContext(), '本地构建，无云端构建记录', 2000);
+      return;
+    }
+    const runUrl: string = `${SOURCE_CODE_URL}/actions/runs/${BuildInfo.RUN_ID}`;
+    try {
+      await this.getUIContext().getRouter().pushUrl({
+        url: 'pages/SharePage', params: { url: runUrl, title: '构建信息' }
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '跳转构建记录页失败：%{public}s', msg);
+      showToast(this.getUIContext(), '无法打开页面');
+    }
+  }
+
+  // 运行时读取签名证书指纹（SHA-256，官方接口无需权限）：
+  // 伪造包必然更换签名证书 → 指纹必变；与 README/Release 公布的指纹比对即可识别
+  private async refreshCertFingerprint(): Promise<void> {
+    try {
+      const flags: number = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_SIGNATURE_INFO;
+      const info: bundleManager.BundleInfo = await bundleManager.getBundleInfoForSelf(flags);
+      const sig: bundleManager.SignatureInfo | undefined = info.signatureInfo;
+      const fp: string = sig ? sig.fingerprint : '';
+      if (fp.length >= 8) {
+        this.certFingerprintTail = fp.substring(fp.length - 8);
+      }
+      hilog.info(DOMAIN, TAG, '签名指纹读取成功，尾 8 位：%{public}s', this.certFingerprintTail);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '签名指纹读取失败：%{public}s', msg); // 失败时留空，构建信息行降级为只显示 commit
     }
   }
 
