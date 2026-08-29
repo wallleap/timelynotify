@@ -151,11 +151,7 @@ export struct MineView {
                   .fontColor($r('app.color.text_primary_color'))
                   .layoutWeight(1);
 
-                Image($r('app.media.arrow_right'))
-                  .width(24)
-                  .height(24)
-                  .objectFit(ImageFit.Contain)
-                  .fillColor($r('app.color.text_quinary_color'));
+                this.arrowRightIcon();
               }.width('100%').padding(16).onClick(() => {
                 this.openNotifySettings();
               });
@@ -181,11 +177,7 @@ export struct MineView {
                     .height(24)
                     .color($r('app.color.text_accent_color'));
                 } else {
-                  Image($r('app.media.arrow_right'))
-                    .width(24)
-                    .height(24)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.text_quinary_color'));
+                  this.arrowRightIcon();
                 }
               }.width('100%').padding(16).onClick(() => {
                 this.exportMessages();
@@ -231,12 +223,7 @@ export struct MineView {
 
                   Row() {
                     Text(`共 ${this.serverCount} 个`).fontSize(12).fontColor($r('app.color.text_quinary_color'));
-                    Image($r('app.media.arrow_right'))
-                      .width(32)
-                      .height(32)
-                      .objectFit(ImageFit.Contain)
-                      .fillColor($r('app.color.text_quinary_color'))
-                      .padding(4)
+                    this.arrowRightIcon()
                   }
                 }
                 .width('100%')
@@ -266,12 +253,7 @@ export struct MineView {
                       .textOverflow({ overflow: TextOverflow.Ellipsis });
                   }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
-                  Image($r('app.media.arrow_right'))
-                    .width(32)
-                    .height(32)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.text_quinary_color'))
-                    .padding(4)
+                  this.arrowRightIcon()
                 }
                 .width('100%')
                 .padding(16)
@@ -350,11 +332,7 @@ export struct MineView {
                     .fontWeight(FontWeight.Medium)
                     .fontColor($r('app.color.text_primary_color'))
                     .layoutWeight(1);
-                  Image($r('app.media.arrow_right'))
-                    .width(24)
-                    .height(24)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.text_quinary_color'));
+                  this.arrowRightIcon();
                 }.width('100%').padding(16).onClick(() => {
                   this.openSourceLink();
                 });
@@ -368,11 +346,7 @@ export struct MineView {
                     .fontWeight(FontWeight.Medium)
                     .fontColor($r('app.color.text_primary_color'))
                     .layoutWeight(1);
-                  Image($r('app.media.arrow_right'))
-                    .width(24)
-                    .height(24)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.text_quinary_color'));
+                  this.arrowRightIcon();
                 }.width('100%').padding(16).onClick(() => {
                   this.openDocs();
                 });
@@ -386,11 +360,7 @@ export struct MineView {
                     .fontWeight(FontWeight.Medium)
                     .fontColor($r('app.color.text_primary_color'))
                     .layoutWeight(1);
-                  Image($r('app.media.arrow_right'))
-                    .width(24)
-                    .height(24)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.text_quinary_color'));
+                  this.arrowRightIcon();
                 }.width('100%').padding(16).onClick(() => {
                   this.openPrivacy();
                 });
@@ -404,11 +374,7 @@ export struct MineView {
                     .fontWeight(FontWeight.Medium)
                     .fontColor($r('app.color.text_primary_color'))
                     .layoutWeight(1);
-                  Image($r('app.media.arrow_right'))
-                    .width(24)
-                    .height(24)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor($r('app.color.text_quinary_color'));
+                  this.arrowRightIcon();
                 }.width('100%').padding(16).onClick(() => {
                   this.sendFeedback();
                 });
@@ -437,6 +403,16 @@ export struct MineView {
       }.width('100%').layoutWeight(1);
     }.width('100%').height('100%') // 根容器铺不透明底色，body 模糊无内容可糊已移除
     .backgroundColor($r('app.color.index_page_body_background'));
+  }
+
+  // 统一的右箭头图标：列表行/卡片通用，尺寸与颜色只需在此处调整
+  @Builder
+  arrowRightIcon() {
+    Image($r('app.media.arrow_right'))
+      .width(20)
+      .height(20)
+      .objectFit(ImageFit.Contain)
+      .fillColor($r('app.color.text_quinary_color'))
   }
 
   private refreshSummary(): void {
@@ -604,7 +580,8 @@ export struct MineView {
   // 生成导出文件名时间后缀：yyyyMMdd_HHmmss
   private formatExportTime(d: Date): string {
     const p = (n: number): string => (n < 10 ? '0' + n : String(n));
-    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(
+      d.getSeconds())}`;
   }
 
   // 导出当前设备全部消息：
