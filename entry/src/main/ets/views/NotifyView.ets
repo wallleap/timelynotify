@@ -375,7 +375,7 @@ export struct NotifyView {
   @Builder
   refreshHeaderBuilder() {
     Column() {
-      Row().height(this.statusBarHeight + 64);
+      Row().height(this.statusBarHeight + 64 + 16);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
