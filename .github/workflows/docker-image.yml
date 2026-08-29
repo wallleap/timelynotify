@@ -6,11 +6,14 @@ name: CI Image — Build & Push (GHCR)
 #       供 release.yml / build-check.yml 的 job.container 使用，
 #       使托管 runner 无需在每次构建时下载 2GB SDK。
 #
+# 流程: 下载 CLT zip（actions/cache 缓存，避免重复拉 2.2GB）
+#       → SHA256 校验 → docker build（context=docker/ci，Dockerfile COPY clt.zip）
+#       → 推送 ghcr.io/<owner>/harmonyos-ci:latest（+ 可选附加 tag）
+#
 # 触发:
 #   1. workflow_dispatch 手动触发（可自定义 CLT 下载源/校验和/附加 tag）
 #   2. 修改 docker/ci/** 或本文件时自动构建（使用内置默认源）
 #
-# 产物: ghcr.io/<owner>/harmonyos-ci:latest（+ 可选附加 tag）
 # 注意: 首次推送后 GHCR 包默认是 private，建议到
 #       GitHub → Packages → harmonyos-ci → Package settings → Change visibility → Public
 #       （保持 private 也能用，release.yml 已声明 packages:read 权限）
@@ -28,7 +31,7 @@ on:
         required: false
         default: ''
       image_tag:
-        description: '附加镜像 tag（如 clt-6.1.1.280；latest 总是会推送）'
+        description: '附加镜像 tag（如 clt-26.0.0.621；latest 总是会推送）'
         required: false
         default: ''
   push:
@@ -44,7 +47,7 @@ permissions:
   contents: read
   packages: write
 
-# 内置默认下载源（与 Dockerfile 默认一致；官方 CLT 26.0.0.621 的自托管转存，SHA256 已固定）
+# 内置默认下载源（官方 CLT 26.0.0.621 的自托管转存，SHA256 已固定；与 Dockerfile 默认一致）
 env:
   CLT_URL_DEFAULT: https://static.oicode.cn/temp/ctl/commandline-tools-linux-x64-26.0.0.621.zip
   CLT_SHA256_DEFAULT: 0cea7ad6cc1af98ac701b9c61b7c9aae2d0f2104749a80ae84c1f6ca0fc17555
@@ -53,7 +56,8 @@ jobs:
   build-push:
     name: Build & Push
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 首次构建需下载 2.2GB（源站限速时可能较慢），给足余量；缓存命中时全程约 10 分钟
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,6 +88,28 @@ jobs:
           echo "sha256=$SHA"      >> "$GITHUB_OUTPUT"
           echo "CLT_URL=$URL"
           echo "CLT_SHA256=$SHA"
+
+      # ---- 下载 CLT zip：GHA 缓存命中则跳过下载（key 绑定 SHA256，换版本自动失效） ----
+      - name: 缓存 CLT zip
+        uses: actions/cache@v4
+        with:
+          path: docker/ci/clt.zip
+          key: clt-zip-${{ steps.clt.outputs.sha256 }}
+
+      - name: 下载并校验 CLT zip
+        env:
+          URL: ${{ steps.clt.outputs.url }}
+          SHA: ${{ steps.clt.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          # 缓存命中且校验通过 → 跳过下载
+          if [ -f docker/ci/clt.zip ] && echo "$SHA  docker/ci/clt.zip" | sha256sum -c - >/dev/null 2>&1; then
+            echo "缓存命中且 SHA256 校验通过，跳过下载"
+            exit 0
+          fi
+          echo "开始下载 CLT（2.2GB，断点续传 + 失败重试）..."
+          curl -fL --retry 5 --retry-delay 10 --retry-all-errors -C - -o docker/ci/clt.zip "$URL"
+          echo "$SHA  docker/ci/clt.zip" | sha256sum -c -
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -116,18 +142,16 @@ jobs:
       - name: Build & Push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          # context 即 docker/ci（含 clt.zip），避免把整个仓库送进构建 context
+          context: docker/ci
           file: docker/ci/Dockerfile
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
-            CLT_URL=${{ steps.clt.outputs.url }}
             CLT_SHA256=${{ steps.clt.outputs.sha256 }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.description=HarmonyOS CI image: DevEco Command Line Tools (Linux) + JDK 17
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: 写入构建摘要
         run: |

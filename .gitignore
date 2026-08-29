@@ -12,3 +12,6 @@
 /.appanalyzer
 
 /.codegenie
+
+# CLT zip 仅存在于构建环境（2.2GB，由 docker-image.yml 下载/缓存），严禁入库
+docker/ci/clt.zip
