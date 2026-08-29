@@ -181,6 +181,8 @@ jobs:
         if: needs.prepare.outputs.runner_pool == 'ubuntu-latest'
         run: |
           set -euo pipefail
+          # 容器内当前用户(root)与宿主 checkout 属主(runner)不一致，git 会报 dubious ownership 拒绝操作
+          git config --global --add safe.directory "${GITHUB_WORKSPACE:-$(pwd)}"
           CLT_ROOT="/opt/harmonyos-tools/command-line-tools"
           for p in "$CLT_ROOT/sdk/default" "$CLT_ROOT/tool/node" "$CLT_ROOT/bin/hvigorw" "$CLT_ROOT/bin/ohpm"; do
             [ -e "$p" ] || { echo "错误: CI 镜像内缺少 $p"; echo "镜像版本与预期不符？可用仓库 Variable CI_IMAGE 指定其他镜像"; exit 1; }

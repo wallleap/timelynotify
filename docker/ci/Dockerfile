@@ -60,5 +60,9 @@ RUN node -v \
     && [ -x "$HVIGORW" ] && echo "hvigorw OK: $HVIGORW" \
     && [ -d "$DEVECO_SDK_HOME" ] && echo "SDK OK: $DEVECO_SDK_HOME"
 
+# ---- git 安全策略：容器内用户(通常 root)与挂载仓库属主不一致时，git 会以
+#      dubious ownership 拒绝操作仓库；系统级信任任意目录，流水线无需逐 step 配置 ----
+RUN git config --system --add safe.directory '*'
+
 WORKDIR /workspace
 CMD ["bash"]
