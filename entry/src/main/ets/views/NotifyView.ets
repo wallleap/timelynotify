@@ -97,26 +97,11 @@ export struct NotifyView {
           this.handleMoreClicked();
         });
 
-        Image($r('app.media.delete'))
-          .width(32)
-          .height(32)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_primary_color'))
-          .padding(4)
-          .onClick(() => {
-            if (this.isEditing) {
-              // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
-              if (this.selectedIds.length === this.messages.length) {
-                this.selectedIds = [];
-              } else if (this.selectedIds.length > 0) {
-                this.selectedIds = [];
-              } else {
-                this.exitEditMode();
-              }
-            } else {
-              this.enterEditMode();
-            }
-          });
+        // 多选胶囊按钮：与删除按钮功能一致（进入/退出多选模式、清空选中）
+        this.multiSelectPill()
+
+        // 删除胶囊按钮
+        this.deletePill()
       }
       .width('100%')
       // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
@@ -157,26 +142,11 @@ export struct NotifyView {
           this.handleMoreClicked();
         });
 
-        Image($r('app.media.delete'))
-          .width(32)
-          .height(32)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_primary_color'))
-          .padding(4)
-          .onClick(() => {
-            if (this.isEditing) {
-              // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
-              if (this.selectedIds.length === this.messages.length) {
-                this.selectedIds = [];
-              } else if (this.selectedIds.length > 0) {
-                this.selectedIds = [];
-              } else {
-                this.exitEditMode();
-              }
-            } else {
-              this.enterEditMode();
-            }
-          });
+        // 多选胶囊按钮：与删除按钮功能一致（进入/退出多选模式、清空选中）
+        this.multiSelectPill()
+
+        // 删除胶囊按钮
+        this.deletePill()
       }
       .width('100%')
       // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
@@ -189,6 +159,91 @@ export struct NotifyView {
       .alignItems(VerticalAlign.Center)
       .backgroundBlurStyle(resolveBlurStyle('bar')!)
       .backgroundColor($r('app.color.index_page_top_glass_background'));
+    }
+  }
+
+  // 「多选」胶囊按钮：沉浸光感材质（API 26+，card 表面）+ 半透明底色 + 高亮描边；
+  // 低版本降级为毛玻璃模糊，点击逻辑与删除按钮共用
+  @Builder
+  multiSelectPill() {
+    if (this.materialReady) {
+      Row() {
+        Text('多选')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary_color'))
+      }
+      .height(38)
+      .padding({ left: 14, right: 14 })
+      .borderRadius(38)
+      .alignItems(VerticalAlign.Center)
+      .border({ width: 1, color: $r('app.color.glass_button_border') })
+      .systemMaterial(getSystemMaterial('card'))
+      .backgroundColor($r('app.color.glass_button_background'))
+      .onClick(() => {
+        this.handleDeleteClicked();
+      });
+    } else {
+      Row() {
+        Text('多选')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary_color'))
+      }
+      .height(38)
+      .padding({ left: 14, right: 14 })
+      .borderRadius(38)
+      .alignItems(VerticalAlign.Center)
+      .border({ width: 1, color: $r('app.color.glass_button_border') })
+      .backgroundBlurStyle(resolveBlurStyle('card')!)
+      .backgroundColor($r('app.color.glass_button_background'))
+      .onClick(() => {
+        this.handleDeleteClicked();
+      });
+    }
+  }
+
+  // 删除胶囊按钮：样式与「多选」一致，内部为删除图标
+  @Builder
+  deletePill() {
+    if (this.materialReady) {
+      Row() {
+        Image($r('app.media.delete'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.text_primary_color'))
+      }
+      .height(38)
+      .width(38)
+      .borderRadius(38)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
+      .border({ width: 1, color: $r('app.color.glass_button_border') })
+      .systemMaterial(getSystemMaterial('card'))
+      .backgroundColor($r('app.color.glass_button_background'))
+      .onClick(() => {
+        this.handleDeleteClicked();
+      });
+    } else {
+      Row() {
+        Image($r('app.media.delete'))
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.text_primary_color'))
+      }
+      .height(38)
+      .width(38)
+      .borderRadius(38)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
+      .border({ width: 1, color: $r('app.color.glass_button_border') })
+      .backgroundBlurStyle(resolveBlurStyle('card')!)
+      .backgroundColor($r('app.color.glass_button_background'))
+      .onClick(() => {
+        this.handleDeleteClicked();
+      });
     }
   }
 
@@ -677,6 +732,23 @@ export struct NotifyView {
   private exitEditMode(): void {
     this.isEditing = false;
     this.selectedIds = [];
+  }
+
+  // 顶栏「多选」按钮与删除图标共用的点击逻辑：非编辑态进入多选；
+  // 编辑态有选中时清空选择，无选中时退出编辑
+  private handleDeleteClicked(): void {
+    if (this.isEditing) {
+      // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
+      if (this.selectedIds.length === this.messages.length) {
+        this.selectedIds = [];
+      } else if (this.selectedIds.length > 0) {
+        this.selectedIds = [];
+      } else {
+        this.exitEditMode();
+      }
+    } else {
+      this.enterEditMode();
+    }
   }
 
   private isSelected(id: number): boolean {

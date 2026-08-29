@@ -37,6 +37,14 @@
       "value": "#99ffffff"
     },
     {
+      "name": "glass_button_background",
+      "value": "#59ffffff"
+    },
+    {
+      "name": "glass_button_border",
+      "value": "#33272e3b"
+    },
+    {
       "name": "divider_color",
       "value": "#F0F0F0"
     },
