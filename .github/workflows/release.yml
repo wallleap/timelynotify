@@ -660,6 +660,16 @@ jobs:
       - name: 列出 artifact 文件
         run: ls -lh ./artifact/
 
+      # GitHub Release 附件禁止 .app 后缀（macOS bundle 黑名单），改挂 .app.zip
+      - name: 重命名 .app → .app.zip
+        run: |
+          set -euo pipefail
+          for f in ./artifact/*.app; do
+            [ -e "$f" ] || { echo "错误: 未找到 .app artifact"; exit 1; }
+            mv "$f" "$f.zip"
+          done
+          ls -lh ./artifact/
+
       - name: 创建/更新 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -698,14 +708,14 @@ jobs:
             ### 附件说明
 
             - `timelynotify-${{ needs.prepare.outputs.version }}-signed.hap` — HarmonyOS 安装包（release 签名），可用 `hdc install` 安装
-            - `timelynotify-${{ needs.prepare.outputs.version }}-signed.app` — 应用包（release 签名，AGC 上架/测试格式），已随 CI 上传 AGC 软件包管理
+            - `timelynotify-${{ needs.prepare.outputs.version }}-signed.app.zip` — 应用包（release 签名，AGC 上架/测试格式，GitHub 附件禁用 .app 后缀故打包为 zip），已随 CI 上传 AGC 软件包管理
             - `*.sha256` — SHA256 校验和
             - `*-cert-fingerprint.txt` — 签名证书指纹（纯文本）
           files: |
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap-cert-fingerprint.txt
-            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.app
+            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.app.zip
           fail_on_unmatched_files: true
           make_latest: true
           generate_release_notes: false
