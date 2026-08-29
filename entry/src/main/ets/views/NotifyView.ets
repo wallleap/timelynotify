@@ -101,7 +101,7 @@ export struct NotifyView {
           this.handleMoreClicked();
         });
 
-        // 多选胶囊按钮：与删除按钮功能一致（进入/退出多选模式、清空选中）
+        // 多选胶囊按钮：非编辑态进入多选；编辑态退出并清空选中
         this.multiSelectPill()
 
         // 删除胶囊按钮
@@ -146,7 +146,7 @@ export struct NotifyView {
           this.handleMoreClicked();
         });
 
-        // 多选胶囊按钮：与删除按钮功能一致（进入/退出多选模式、清空选中）
+        // 多选胶囊按钮：非编辑态进入多选；编辑态退出并清空选中
         this.multiSelectPill()
 
         // 删除胶囊按钮
@@ -207,7 +207,8 @@ export struct NotifyView {
     }
   }
 
-  // 删除胶囊按钮：样式与「多选」一致，内部为删除图标
+  // 删除胶囊按钮：样式与「多选」一致，内部为删除图标；
+  // 非编辑态点击走清空全部（二次确认并重点提示不可恢复），编辑态点击删除选中消息
   @Builder
   deletePill() {
     if (this.materialReady) {
@@ -227,7 +228,7 @@ export struct NotifyView {
       .systemMaterial(getSystemMaterial('card'))
       .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleMultiSelectClicked();
+        this.handleDeletePillClicked();
       });
     } else {
       Row() {
@@ -246,7 +247,7 @@ export struct NotifyView {
       .backgroundBlurStyle(resolveBlurStyle('card')!)
       .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleMultiSelectClicked();
+        this.handleDeletePillClicked();
       });
     }
   }
@@ -749,7 +750,7 @@ export struct NotifyView {
     this.selectedIds = [];
   }
 
-  // 顶栏「多选」按钮与删除图标共用的点击逻辑：非编辑态进入多选；
+  // 顶栏「多选」按钮的点击逻辑：非编辑态进入多选；
   // 编辑态有选中时清空选择，无选中时退出编辑
   private handleMultiSelectClicked(): void {
     if (this.isEditing) {
@@ -763,6 +764,18 @@ export struct NotifyView {
       }
     } else {
       this.enterEditMode();
+    }
+  }
+
+  // 顶栏删除胶囊按钮的点击逻辑：非编辑态清空全部消息（二次确认）；
+  // 编辑态删除选中消息（有选中才触发，与底部「删除(N)」按钮一致）
+  private handleDeletePillClicked(): void {
+    if (this.isEditing) {
+      if (this.selectedIds.length > 0) {
+        this.confirmDeleteSelected();
+      }
+    } else {
+      this.confirmDeleteAll();
     }
   }
 
@@ -855,6 +868,38 @@ export struct NotifyView {
       } else {
         showToast(uiCtx, `已删除 ${ids.length} 条`);
       }
+    });
+  }
+
+  // 清空全部消息：弹窗二次确认并重点提示不可恢复，确认后调用服务端删除全部消息接口
+  private confirmDeleteAll(): void {
+    const uiCtx: UIContext = this.getUIContext();
+    // 本地无消息时无需调用清空接口
+    if (this.messages.length === 0) {
+      showToast(uiCtx, '暂无可删除的消息');
+      return;
+    }
+    uiCtx.getPromptAction().showDialog({
+      title: '清空全部消息',
+      message: `将删除当前设备的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！`,
+      buttons: [
+        { text: '取消', color: '#666666' },
+        { text: '全部删除', color: '#F53F3F' },
+      ],
+    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
+      if (err || result.index !== 1) {
+        return;
+      }
+      const svc = NotifyMessageService.getInstance();
+      const errMsg: string = await svc.deleteAllMessages();
+      if (errMsg.length > 0) {
+        showToast(uiCtx, errMsg);
+        return;
+      }
+      // 清空成功：移除本地列表并退出多选模式
+      this.exitEditMode();
+      this.messages = [];
+      showToast(uiCtx, '已清空全部消息');
     });
   }
 
