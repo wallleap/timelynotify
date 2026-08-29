@@ -83,6 +83,18 @@ push 链接同时发送到 iOS 和 HarmonyOS。
     └─ notify_enabled                通知开关
 ```
 
+## 发版
+
+版本号唯一来源是 git tag，构建时（CI/CD）自动注入 `AppScope/app.json5`，仓库文件保持占位值不变。
+
+| 脚本 | 用法 | 说明 |
+|---|---|---|
+| `bin/release` | `bin/release [-y] [[v]x.y.z]` | 发版：自动切到 main 并同步 → 确定版本号（倒退/冲突校验）→ 交互确认 → 打 annotated tag 并推送，触发 CI 构建 → 签名 → 上传 AGC |
+
+- 自动模式：最近 tag 的 minor +1、patch 清零（如 1.2.3 → 1.3.0，minor 满千进位到 major）
+- versionCode = `x*1000000 + y*1000 + z`，必须大于上一个版本（AGC 要求单调递增）
+- 发版流程：PR 合并进 main → 任意分支执行 `bin/release`（结束后自动切回原分支）
+
 ## color 色值
 
 在 `color.json` 中定义半透明色值，需要使用 `ARGB` 格式（`#AARRGGBB`），其中前两位 `AA` 为透明度通道，取值范围 `00`（完全透明）到
