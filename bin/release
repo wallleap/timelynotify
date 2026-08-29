@@ -3,8 +3,12 @@
 # 版本号唯一来源是 git tag：CI 构建时从 tag 注入 AppScope/app.json5（本地构建用 bin/build 同理）
 # 仓库设置了分支保护（不允许直接 push main），本脚本不产生任何 commit，只推送 tag
 #
-# 用法: bin/release [-y]              自动发版：最近一个版本 tag 的 minor +1、patch 清零（1.2.3 -> 1.3.0）
-#       bin/release [-y] <[v]x.y.z>   指定版本号发版（v 前缀可选：1.2.3 或 v1.2.3）
+# 用法: bin/release [-y] [--dry-run]              自动发版：最近版本 tag 的 minor +1、patch 清零；无 tag 时发 1.0.0
+#       bin/release [-y] [--dry-run] <[v]x.y.z>   指定版本号发版（v 前缀可选：1.2.3 或 v1.2.3）
+#
+# 参数:
+#   -y          跳过交互确认（自动化场景）
+#   --dry-run   预览发版流程（版本号计算/各项校验/发布信息），不切分支、不打 tag、不推送
 #
 # 版本号规则:
 #   tag          = v{x.y.z}（annotated，含作者/时间/说明）
@@ -15,18 +19,27 @@ set -euo pipefail
 RELEASE_BRANCH="${RELEASE_BRANCH:-main}"
 
 # ---------- 1. 参数解析 ----------
-# -y: 跳过交互确认（自动化场景使用）
 ASSUME_YES=0
-if [ "${1:-}" = "-y" ]; then
-  ASSUME_YES=1
-  shift
-fi
-if [ $# -gt 1 ]; then
-  echo "用法: bin/release [-y] [[v]x.y.z]"
-  exit 1
-fi
+DRY_RUN=0
+VERSION_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    -y) ASSUME_YES=1 ;;
+    --dry-run) DRY_RUN=1 ;;
+    v[0-9]*|[0-9]*)
+      if [ -n "$VERSION_ARG" ]; then
+        echo "错误: 版本号参数重复: $arg"
+        exit 1
+      fi
+      VERSION_ARG="$arg" ;;
+    *)
+      echo "错误: 未知参数: $arg"
+      echo "用法: bin/release [-y] [--dry-run] [[v]x.y.z]"
+      exit 1 ;;
+  esac
+done
 
-# ---------- 2. 切换到发版分支并同步 ----------
+# ---------- 2. 同步仓库状态 ----------
 cd "$(git rev-parse --show-toplevel)"
 
 # 工作区必须干净：防止跨分支切换携带/冲突未提交改动
@@ -40,46 +53,56 @@ git fetch origin "$RELEASE_BRANCH" --tags --quiet
 
 BRANCH="$(git branch --show-current)"
 ORIG_BRANCH="$BRANCH"   # 记录发版前分支，结束后切回
-if [ "$BRANCH" != "$RELEASE_BRANCH" ]; then
-  # 当前分支的提交若尚未合并进发版分支，提前提示（避免发版内容与预期不符）
-  if [ -n "$BRANCH" ] && ! git merge-base --is-ancestor "$BRANCH" "origin/$RELEASE_BRANCH" 2>/dev/null; then
-    echo "提示: 当前分支 $BRANCH 的提交尚未合并进 ${RELEASE_BRANCH}，本次发版不包含这些改动"
-  fi
-  echo "当前分支: ${BRANCH:-detached HEAD}，自动切换到 $RELEASE_BRANCH"
-  git switch "$RELEASE_BRANCH"
-fi
 
-# 快进同步本地发版分支到远程最新（--ff-only 保证不产生意外合并）
-git pull --ff-only origin "$RELEASE_BRANCH" --quiet
+if [ "$DRY_RUN" -eq 1 ]; then
+  # 预览模式：不切换分支，基于远程发版分支的最新 commit 展示
+  if [ "$BRANCH" != "$RELEASE_BRANCH" ]; then
+    echo "dry-run: 当前在 ${BRANCH:-detached HEAD}，正式发版时会自动切换到 $RELEASE_BRANCH"
+  fi
+  HEAD_INFO="$(git log -1 --format='%h %s' "origin/$RELEASE_BRANCH")"
+else
+  if [ "$BRANCH" != "$RELEASE_BRANCH" ]; then
+    # 当前分支的提交若尚未合并进发版分支，提前提示（避免发版内容与预期不符）
+    if [ -n "$BRANCH" ] && ! git merge-base --is-ancestor "$BRANCH" "origin/$RELEASE_BRANCH" 2>/dev/null; then
+      echo "提示: 当前分支 $BRANCH 的提交尚未合并进 ${RELEASE_BRANCH}，本次发版不包含这些改动"
+    fi
+    echo "当前分支: ${BRANCH:-detached HEAD}，自动切换到 $RELEASE_BRANCH"
+    git switch "$RELEASE_BRANCH"
+  fi
+  # 快进同步本地发版分支到远程最新（--ff-only 保证不产生意外合并）
+  git pull --ff-only origin "$RELEASE_BRANCH" --quiet
+  HEAD_INFO="$(git log -1 --format='%h %s' HEAD)"
+fi
 
 # ---------- 3. 确定版本号 ----------
 # 版本号最高的 v tag（按版本排序取最大，而非最近创建；首次发版时为空）
 LATEST_TAG="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
 
-if [ $# -eq 0 ]; then
-  # 自动模式：最近 tag 的 minor +1、patch 清零（minor 满千进位到 major）
+if [ -z "$VERSION_ARG" ]; then
+  # 自动模式：最近 tag 的 minor +1、patch 清零；无历史 tag 时首次发版默认 1.0.0
   if [ -z "$LATEST_TAG" ]; then
-    echo "错误: 仓库还没有版本 tag，首次发版请手动指定，如: bin/release v1.1.0"
-    exit 1
+    VERSION="1.0.0"
+    echo "首次发版，无历史 tag，使用默认版本 1.0.0"
+  else
+    CURRENT="${LATEST_TAG#v}"
+    if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo "错误: 最近版本 tag '$CURRENT' 不是有效的版本号，请手动指定 [v]x.y.z"
+      exit 1
+    fi
+    MAJOR="${CURRENT%%.*}"
+    REST="${CURRENT#*.}"
+    MINOR=$(( ${REST%%.*} + 1 ))
+    PATCH=0
+    if [ "$MINOR" -ge 1000 ]; then
+      MAJOR=$((MAJOR + 1))
+      MINOR=0
+    fi
+    VERSION="$MAJOR.$MINOR.$PATCH"
+    echo "自动发版: $CURRENT -> $VERSION"
   fi
-  CURRENT="${LATEST_TAG#v}"
-  if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "错误: 最近版本 tag '$CURRENT' 不是有效的版本号，请手动指定 [v]x.y.z"
-    exit 1
-  fi
-  MAJOR="${CURRENT%%.*}"
-  REST="${CURRENT#*.}"
-  MINOR=$(( ${REST%%.*} + 1 ))
-  PATCH=0
-  if [ "$MINOR" -ge 1000 ]; then
-    MAJOR=$((MAJOR + 1))
-    MINOR=0
-  fi
-  VERSION="$MAJOR.$MINOR.$PATCH"
-  echo "自动发版: $CURRENT -> $VERSION"
 else
   # 手动模式：使用传入的版本号（剥掉可选的 v 前缀，v1.2.3 与 1.2.3 等价）
-  VERSION="${1#v}"
+  VERSION="${VERSION_ARG#v}"
 fi
 
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -118,11 +141,17 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   exit 1
 fi
 
-COMMIT_SHORT="$(git rev-parse --short HEAD)"
-COMMIT_SUBJECT="$(git log -1 --format=%s HEAD)"
 echo ""
 echo "待发布: $TAG (versionName=$VERSION, versionCode=$VERSION_CODE)"
-echo "基于:   $RELEASE_BRANCH@$COMMIT_SHORT $COMMIT_SUBJECT"
+echo "基于:   $RELEASE_BRANCH@$HEAD_INFO"
+echo "动作:   git tag -a $TAG && git push origin $TAG"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo ""
+  echo "dry-run 预览完成，未执行任何变更（未切分支、未打 tag、未推送）"
+  exit 0
+fi
+
 if [ "$ASSUME_YES" -ne 1 ]; then
   # 交互确认：防止误触发发版（非交互环境下 read 得到空值，默认取消）
   printf '确认发版? [y/N] '
