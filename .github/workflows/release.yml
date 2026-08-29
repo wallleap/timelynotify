@@ -132,10 +132,10 @@ jobs:
           echo "========================================"
 
 # ============================================================
-# Job 2 · build-sign —— 构建 unsigned HAP → 用 hap-sign-tool 重签名
+# Job 2 · build-sign —— 注入 release 签名配置 → hvigor 直接构建签名 APP + HAP
 # ============================================================
   build-sign:
-    name: Build · Sign HAP
+    name: Build · Sign HAP + APP
     needs: prepare
     runs-on: ${{ needs.prepare.outputs.runner_pool }}
     timeout-minutes: 30
@@ -264,13 +264,97 @@ jobs:
             s/\"versionCode\"\s*:\s*\d+/\"versionCode\": $VERSION_CODE/;
             s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$VERSION\"/;
           " AppScope/app.json5
-          # 剥离工程内调试签名（material 是 Mac 本机加密材料，CI 容器无法解析，hvigor SignHap 会报 00303107）
-          # → 让 hvigor 产出 entry-default-unsigned.hap，由后续 hap-sign-tool 步骤用 release 证书重签名
-          perl -0pi -e 's/\n\s*"signingConfig":\s*"default",//' build-profile.json5
-          perl -0pi -e 's/"signingConfigs":\s*\[.*?\]/"signingConfigs": []/s' build-profile.json5
-          echo "--- build-profile.json5 调试签名已剥离 ---"
           echo "--- 注入结果 ---"
           cat AppScope/app.json5
+
+      # --------------------------------------------------------
+      # 解码签名材料（发布版 .p12 / .cer / .p7b，从 secrets 的 base64 写回文件）
+      # 注意：需在构建前完成，hvigor assembleApp/assembleHap 直接用注入的签名配置出签名包
+      # --------------------------------------------------------
+      - name: 解码签名材料
+        env:
+          SIGN_STORE_P12: ${{ secrets.SIGN_STORE_P12 }}
+          SIGN_CERT_CER:  ${{ secrets.SIGN_CERT_CER }}
+          SIGN_PROFILE_P7B: ${{ secrets.SIGN_PROFILE_P7B }}
+        run: |
+          set -euo pipefail
+          MATERIAL_DIR="$HOME/sign_material"
+          mkdir -p "$MATERIAL_DIR"
+          # 必填项校验
+          for v in SIGN_STORE_P12 SIGN_CERT_CER SIGN_PROFILE_P7B; do
+            VAL="${!v}"
+            if [ -z "$VAL" ]; then
+              echo "错误: secret $v 为空。请在仓库 Settings → Secrets 中配置发布签名材料。"
+              echo "  - SIGN_STORE_P12  = base64(发布密钥库 .p12)"
+              echo "  - SIGN_CERT_CER   = base64(发布证书 .cer)"
+              echo "  - SIGN_PROFILE_P7B= base64(发布 Profile .p7b)"
+              exit 1
+            fi
+          done
+          echo "$SIGN_STORE_P12"   | base64 -d > "$MATERIAL_DIR/release.p12"
+          echo "$SIGN_CERT_CER"    | base64 -d > "$MATERIAL_DIR/release.cer"
+          echo "$SIGN_PROFILE_P7B" | base64 -d > "$MATERIAL_DIR/release.p7b"
+          ls -lh "$MATERIAL_DIR"
+          # SHA256 指纹（便于人工比对 AGC 控制台）
+          echo "--- 证书指纹 ---"
+          keytool -printcert -file "$MATERIAL_DIR/release.cer" 2>/dev/null | grep -E "SHA256|指纹" || true
+          echo "MATERIAL_DIR=$MATERIAL_DIR" >> "$GITHUB_ENV"
+
+      # --------------------------------------------------------
+      # 注入 release 签名配置到 build-profile.json5
+      #   工程内的 signingConfigs.material 指向 Mac 本机加密材料（CI 无法解析，hvigor 会报 00303107），
+      #   这里整体替换为 runner 上解码的 release 证书，hvigor 直接产出签名包
+      # --------------------------------------------------------
+      - name: 注入 release 签名配置
+        env:
+          SIGN_STORE_PASSWORD: ${{ secrets.SIGN_STORE_PASSWORD }}
+          SIGN_KEY_PASSWORD:   ${{ secrets.SIGN_KEY_PASSWORD }}
+          SIGN_KEY_ALIAS:      ${{ secrets.SIGN_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          # 必填密码/别名校验
+          for v in SIGN_STORE_PASSWORD SIGN_KEY_PASSWORD SIGN_KEY_ALIAS; do
+            VAL="${!v}"
+            if [ -z "$VAL" ]; then
+              echo "错误: secret $v 未配置（SIGN_STORE_PASSWORD / SIGN_KEY_PASSWORD / SIGN_KEY_ALIAS）"
+              exit 1
+            fi
+          done
+          python3 - <<'PYEOF'
+          import re, os
+          src = open('build-profile.json5').read()
+          cfg = (
+              '"signingConfigs": ['
+              '{'
+              '"name": "default",'
+              '"type": "HarmonyOS",'
+              '"material": {'
+              '"certpath": "%s/release.cer",'
+              '"keyAlias": "%s",'
+              '"keyPassword": "%s",'
+              '"profile": "%s/release.p7b",'
+              '"signAlg": "SHA256withECDSA",'
+              '"storeFile": "%s/release.p12",'
+              '"storePassword": "%s"'
+              '}'
+              '}'
+              ']'
+          ) % (
+              os.environ['MATERIAL_DIR'],
+              os.environ['SIGN_KEY_ALIAS'],
+              os.environ['SIGN_KEY_PASSWORD'],
+              os.environ['MATERIAL_DIR'],
+              os.environ['MATERIAL_DIR'],
+              os.environ['SIGN_STORE_PASSWORD'],
+          )
+          new_src, n = re.subn(r'"signingConfigs":\s*\[.*?\]', cfg, src, flags=re.S)
+          if n != 1:
+              raise SystemExit(f"错误: signingConfigs 替换了 {n} 处（预期 1 处），请检查 build-profile.json5 结构")
+          open('build-profile.json5', 'w').write(new_src)
+          print("signingConfigs 已替换为 release 证书")
+          PYEOF
+          # 确认 products 引用的 signingConfig 名仍为 default（工程默认即如此）
+          grep -n '"signingConfig"' build-profile.json5 || true
 
       # --------------------------------------------------------
       # 生成 BuildInfo.ets（构建溯源信息，App「关于 → 构建信息」展示 + 防伪比对依据）
@@ -308,82 +392,36 @@ jobs:
           echo "build_time=$BUILD_TIME"   >> "$GITHUB_OUTPUT"
 
       # --------------------------------------------------------
-      # 构建 unsigned HAP（release 模式）
-      #   说明：CI 不直接使用 build-profile.json5 的签名配置（路径/加密密码只对本机 DevEco 有效），
-      #         而是先产出 unsigned，下阶段用 hap-sign-tool.jar + 发布证书重签名。
+      # 构建（release 模式，签名配置已注入，hvigor 直接产出签名包）
+      #   assembleApp  → 工程级打包：build/outputs/default/<app>-<product>-signed.app（AGC 上架/测试要求 .app 包）
+      #   assembleHap  → 模块级打包：entry/build/default/outputs/default/entry-default-signed.hap（安装用）
+      #   两者共享构建缓存，第二条命令增量执行很快
       # --------------------------------------------------------
-      - name: 构建 HAP（release）
+      - name: 构建 APP + HAP（release）
         run: |
           set -euo pipefail
-          # 构建参数说明：
-          #   --mode module           模块级构建（HAP）
-          #   -p product=default      与 build-profile.json5 products.name 对应
-          #   -p buildMode=release    触发 release 构建（走 entry/build-profile.json5 中 release 配置，含代码混淆配置）
-          #   --no-daemon             CI 环境禁用 daemon
-          "$HVIGORW" assembleHap --mode module \
-            -p product=default \
-            -p buildMode=release \
-            --no-daemon 2>&1 | tail -80
+          "$HVIGORW" assembleApp -p product=default -p buildMode=release --no-daemon 2>&1 | tail -40
+          "$HVIGORW" assembleHap --mode module -p product=default -p buildMode=release --no-daemon 2>&1 | tail -20
 
-          # 列出生成产物
-          OUTDIR="entry/build/default/outputs/default"
-          echo "--- 构建产物 ($OUTDIR) ---"
-          ls -lh "$OUTDIR" || { echo "错误: 产物目录不存在，构建失败"; exit 1; }
+          echo "--- 构建产物 ---"
+          find build/outputs entry/build/default/outputs -name '*.app' -o -name '*.hap' 2>/dev/null | xargs ls -lh 2>/dev/null || true
 
       # --------------------------------------------------------
-      # 确认 unsigned HAP 路径（不同 SDK 版本命名略有差异）
+      # 定位签名产物（.app 上传 AGC；.hap 挂 GitHub Release 供 hdc install）
       # --------------------------------------------------------
-      - name: 定位 unsigned HAP
-        id: find_unsigned
-        run: |
-          OUTDIR="entry/build/default/outputs/default"
-          CANDIDATES=(
-            "$OUTDIR/entry-default-unsigned.hap"
-            "$OUTDIR/entry-default.hap"
-          )
-          HAP=""
-          for f in "${CANDIDATES[@]}"; do [ -f "$f" ] && HAP="$f" && break; done
-          if [ -z "$HAP" ]; then
-            echo "未找到 unsigned HAP，目录下所有文件:"
-            ls -la "$OUTDIR"
-            exit 1
-          fi
-          echo "unsigned_hap=$HAP" >> "$GITHUB_OUTPUT"
-          echo "找到 unsigned HAP: $HAP"
-          ls -lh "$HAP"
-
-      # --------------------------------------------------------
-      # 解码签名材料（发布版 .p12 / .cer / .p7b，从 secrets 的 base64 写回文件）
-      # --------------------------------------------------------
-      - name: 解码签名材料
-        env:
-          SIGN_STORE_P12: ${{ secrets.SIGN_STORE_P12 }}
-          SIGN_CERT_CER:  ${{ secrets.SIGN_CERT_CER }}
-          SIGN_PROFILE_P7B: ${{ secrets.SIGN_PROFILE_P7B }}
+      - name: 定位签名产物
+        id: find_artifacts
         run: |
           set -euo pipefail
-          MATERIAL_DIR="$HOME/sign_material"
-          mkdir -p "$MATERIAL_DIR"
-          # 必填项校验
-          for v in SIGN_STORE_P12 SIGN_CERT_CER SIGN_PROFILE_P7B; do
-            VAL="${!v}"
-            if [ -z "$VAL" ]; then
-              echo "错误: secret $v 为空。请在仓库 Settings → Secrets 中配置发布签名材料。"
-              echo "  - SIGN_STORE_P12  = base64(发布密钥库 .p12)"
-              echo "  - SIGN_CERT_CER   = base64(发布证书 .cer)"
-              echo "  - SIGN_PROFILE_P7B= base64(发布 Profile .p7b)"
-              exit 1
-            fi
-          done
-          echo "$SIGN_STORE_P12"   | base64 -d > "$MATERIAL_DIR/release.p12"
-          echo "$SIGN_CERT_CER"    | base64 -d > "$MATERIAL_DIR/release.cer"
-          echo "$SIGN_PROFILE_P7B" | base64 -d > "$MATERIAL_DIR/release.p7b"
-          # 校验文件（file 命令容器内没有，keytool 校验足够）
-          ls -lh "$MATERIAL_DIR"
-          # SHA256 指纹（便于人工比对 AGC 控制台）
-          echo "--- 证书指纹 ---"
-          keytool -printcert -file "$MATERIAL_DIR/release.cer" 2>/dev/null | grep -E "SHA256|指纹" || true
-          echo "MATERIAL_DIR=$MATERIAL_DIR" >> "$GITHUB_ENV"
+          # .app：工程级产物 build/outputs/default/<name>-<product>-signed.app
+          APP="$(find build/outputs -name '*-signed.app' -type f 2>/dev/null | head -n1)"
+          [ -n "$APP" ] || { echo "错误: 未找到 signed .app，产物目录:"; find build/outputs -type f 2>/dev/null | head; exit 1; }
+          # .hap：模块级产物，signed 优先，unsigned 兜底报错
+          HAP="$(find entry/build/default/outputs -name '*-signed.hap' -type f 2>/dev/null | head -n1)"
+          [ -n "$HAP" ] || { echo "错误: 未找到 signed .hap，产物目录:"; find entry/build/default/outputs -type f 2>/dev/null | head; exit 1; }
+          echo "app_file=$APP" >> "$GITHUB_OUTPUT"
+          echo "hap_file=$HAP" >> "$GITHUB_OUTPUT"
+          ls -lh "$APP" "$HAP"
 
       # --------------------------------------------------------
       # 提取签名证书指纹（SHA-256，与 App 运行时 signatureInfo.fingerprint 同源）
@@ -407,84 +445,40 @@ jobs:
           echo "$FP" > "$HOME/sign_material/cert_fingerprint.txt"
 
       # --------------------------------------------------------
-      # 定位签名工具 hap-sign-tool.jar（SDK toolchains/lib 下）
+      # 重命名产物 + 计算 SHA256 / 上传 artifacts
+      #   .hap → GitHub Release（hdc install 安装）
+      #   .app → AGC 上传（软件包管理/上架/测试要求 .app 包）
       # --------------------------------------------------------
-      - name: 定位签名工具 hap-sign-tool.jar
-        id: find_jarsigner
-        run: |
-          set -euo pipefail
-          JAR="$(find "$DEVECO_SDK_HOME" -name 'hap-sign-tool.jar' -type f 2>/dev/null | head -n1)"
-          if [ -z "$JAR" ]; then
-            echo "错误: 在 DEVECO_SDK_HOME=$DEVECO_SDK_HOME 下找不到 hap-sign-tool.jar"
-            find "$DEVECO_SDK_HOME" -name '*.jar' 2>/dev/null | head -20 || true
-            exit 1
-          fi
-          echo "hap_sign_tool_jar=$JAR" >> "$GITHUB_OUTPUT"
-          echo "找到签名工具: $JAR"
-
-      # --------------------------------------------------------
-      # 重签名（mode=localSign，算法 SHA256withECDSA —— HarmonyOS 要求）
-      # --------------------------------------------------------
-      - name: HAP 重签名（release 证书）
-        id: sign
-        env:
-          SIGN_STORE_PASSWORD: ${{ secrets.SIGN_STORE_PASSWORD }}
-          SIGN_KEY_PASSWORD:   ${{ secrets.SIGN_KEY_PASSWORD }}
-          SIGN_KEY_ALIAS:      ${{ secrets.SIGN_KEY_ALIAS }}
-        run: |
-          set -euo pipefail
-          # 必填密码/别名校验
-          for v in SIGN_STORE_PASSWORD SIGN_KEY_PASSWORD SIGN_KEY_ALIAS; do
-            VAL="${!v}"
-            if [ -z "$VAL" ]; then
-              echo "错误: secret $v 未配置（SIGN_STORE_PASSWORD / SIGN_KEY_PASSWORD / SIGN_KEY_ALIAS）"
-              exit 1
-            fi
-          done
-          UNSIGNED="${{ steps.find_unsigned.outputs.unsigned_hap }}"
-          SIGNED="$HOME/entry-release-signed.hap"
-          JAR="${{ steps.find_jarsigner.outputs.hap_sign_tool_jar }}"
-          echo "执行签名命令（敏感参数已屏蔽显示）:"
-          echo "  java -jar $JAR sign-app -mode localSign -keyAlias *** -signAlg SHA256withECDSA ..."
-          set +u
-          java -jar "$JAR" sign-app \
-            -mode          localSign \
-            -keyAlias      "$SIGN_KEY_ALIAS" \
-            -signAlg       SHA256withECDSA \
-            -keystoreFile  "$MATERIAL_DIR/release.p12" \
-            -keystorePwd   "$SIGN_STORE_PASSWORD" \
-            -keyPwd        "$SIGN_KEY_PASSWORD" \
-            -appCertFile   "$MATERIAL_DIR/release.cer" \
-            -profileFile   "$MATERIAL_DIR/release.p7b" \
-            -inFile        "$UNSIGNED" \
-            -outFile       "$SIGNED"
-          set -u
-          if [ ! -f "$SIGNED" ]; then echo "错误: 签名失败，未生成 $SIGNED"; exit 1; fi
-          echo "--- 签名完成 ---"
-          ls -lh "$SIGNED"
-          echo "signed_hap=$SIGNED"           >> "$GITHUB_OUTPUT"
-          echo "signed_hap_size=$(stat -c%s "$SIGNED" 2>/dev/null || stat -f%z "$SIGNED")" >> "$GITHUB_OUTPUT"
-
-      # --------------------------------------------------------
-      # 计算 SHA256 / 上传 artifacts
-      # --------------------------------------------------------
-      - name: 计算 SHA256 校验和
+      - name: 重命名产物并计算 SHA256
         id: sha
         run: |
-          SIGNED="${{ steps.sign.outputs.signed_hap }}"
-          SHA="$(sha256sum "$SIGNED" | awk '{print $1}')"
-          BASENAME="timelynotify-${{ needs.prepare.outputs.version }}-signed.hap"
-          # 重命名成带版本号的文件名（便于 artifact / Release 附件辨识）
-          RENAMED="$HOME/$BASENAME"
-          cp "$SIGNED" "$RENAMED"
-          echo "$SHA  $BASENAME" > "$HOME/$BASENAME.sha256"
-          cat "$HOME/$BASENAME.sha256"
-          # 证书指纹文件复制到同目录，随后一并挂到 Release（用户防伪比对用）
-          # 命名 = $BASENAME-cert-fingerprint.txt，与 artifact 上传路径及 Release files 严格一致
-          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/$BASENAME-cert-fingerprint.txt"
-          echo "renamed_hap=$RENAMED"           >> "$GITHUB_OUTPUT"
-          echo "renamed_basename=$BASENAME"     >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA"                    >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.version }}"
+          BASENAME="timelynotify-${VERSION}-signed"
+          HAP="${{ steps.find_artifacts.outputs.hap_file }}"
+          APP="${{ steps.find_artifacts.outputs.app_file }}"
+
+          HAP_OUT="$HOME/$BASENAME.hap"
+          APP_OUT="$HOME/$BASENAME.app"
+          cp "$HAP" "$HAP_OUT"
+          cp "$APP" "$APP_OUT"
+
+          HAP_SHA="$(sha256sum "$HAP_OUT" | awk '{print $1}')"
+          APP_SHA="$(sha256sum "$APP_OUT" | awk '{print $1}')"
+          echo "$HAP_SHA  $BASENAME.hap" > "$HOME/$BASENAME.hap.sha256"
+          cat "$HOME/$BASENAME.hap.sha256"
+          # 证书指纹文件随 artifact 上传并挂到 Release（用户防伪比对用）
+          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/$BASENAME.hap-cert-fingerprint.txt"
+
+          {
+            echo "hap_out=$HAP_OUT" >> "$GITHUB_OUTPUT"
+            echo "app_out=$APP_OUT" >> "$GITHUB_OUTPUT"
+            echo "hap_basename=$BASENAME.hap" >> "$GITHUB_OUTPUT"
+            echo "app_basename=$BASENAME.app" >> "$GITHUB_OUTPUT"
+            echo "sha256=$HAP_SHA" >> "$GITHUB_OUTPUT"
+          }
+          echo "--- 最终产物 ---"
+          ls -lh "$HAP_OUT" "$APP_OUT"
 
       # --------------------------------------------------------
       # Artifact Attestation（GitHub 官方密钥签名的构建溯源证明，SLSA provenance）
@@ -495,26 +489,39 @@ jobs:
       - name: 生成构建溯源证明（HAP）
         uses: actions/attest-build-provenance@v1
         with:
-          subject-path: ${{ steps.sha.outputs.renamed_hap }}
+          subject-path: ${{ steps.sha.outputs.hap_out }}
+
+      - name: 生成构建溯源证明（APP）
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ steps.sha.outputs.app_out }}
 
       - name: 生成构建溯源证明（SHA256）
         uses: actions/attest-build-provenance@v1
         with:
-          subject-path: ${{ steps.sha.outputs.renamed_hap }}.sha256
+          subject-path: ${{ steps.sha.outputs.hap_out }}.sha256
 
-      - name: 上传 HAP Artifact
+      - name: 上传 Artifact（HAP + APP）
         uses: actions/upload-artifact@v4
         with:
-          name: timelynotify-${{ needs.prepare.outputs.version }}-hap
+          name: timelynotify-${{ needs.prepare.outputs.version }}-packages
           path: |
-            ${{ steps.sha.outputs.renamed_hap }}
-            ${{ steps.sha.outputs.renamed_hap }}.sha256
-            ${{ steps.sha.outputs.renamed_hap }}-cert-fingerprint.txt
+            ${{ steps.sha.outputs.hap_out }}
+            ${{ steps.sha.outputs.hap_out }}.sha256
+            ${{ steps.sha.outputs.hap_out }}-cert-fingerprint.txt
+            ${{ steps.sha.outputs.app_out }}
           if-no-files-found: error
           retention-days: 90
 
 # ============================================================
-# Job 3 · upload-agc —— 上传到 AppGallery Connect（通过 agc-api-cli）
+# Job 3 · upload-agc —— 纯 curl 调 AGC Publish API 上传软件包
+#   流程（官方文档: Publishing API指南 + Upload Management API）:
+#     1. POST /api/oauth2/v1/token                （JSON body，client_credentials）
+#     2. GET  /api/publish/v2/upload-url/for-obs  （必须带 Content-Type: application/json，
+#                                                  否则网关报 205524993 "client token auth failed"）
+#     3. PUT  <OBS url>                           （headers 原样透传，curl 自动补 Content-Length 参与签名）
+#     4. PUT  /api/publish/v3/app-package-info    （登记包信息后软件包管理才可见；v2 为 404）
+#   说明: 仅上传+登记，不提交发布/测试 —— 提交动作由开发者在 AGC 控制台手动完成
 # ============================================================
   upload-agc:
     name: Upload to AGC
@@ -525,87 +532,77 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Setup Node.js 20 LTS
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: 下载 signed HAP artifact
+      - name: 下载 artifact（HAP + APP）
         uses: actions/download-artifact@v4
         with:
-          name: timelynotify-${{ needs.prepare.outputs.version }}-hap
+          name: timelynotify-${{ needs.prepare.outputs.version }}-packages
           path: ./artifact
 
-      - name: 安装 agc-api-cli
-        run: |
-          npm install -g agc-api-cli@latest 2>&1 | tail -5
-          agc-cli --version
-
-      - name: 配置 AGC 凭证并上传
+      - name: 上传 .app 到 AGC
         env:
           AGC_CLIENT_ID:     ${{ secrets.AGC_CLIENT_ID }}
           AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
-          AGC_DOMAIN:        ${{ vars.AGC_DOMAIN }}
           AGC_APP_ID:        ${{ secrets.AGC_APP_ID }}
           RELEASE_TYPE:      ${{ needs.prepare.outputs.release_type }}
           VERSION:           ${{ needs.prepare.outputs.version }}
           BUNDLE_NAME:       cn.oicode.timelynotify
         run: |
           set -euo pipefail
-          # ---- 1. 凭证校验 ----
-          if [ -z "$AGC_CLIENT_ID" ] || [ -z "$AGC_CLIENT_SECRET" ]; then
-            echo "错误: secret AGC_CLIENT_ID 或 AGC_CLIENT_SECRET 未配置"
-            echo "创建入口: AGC 控制台 → 用户与访问 → API 客户端（项目域务必选择 N/A，否则 403）"
-            exit 1
-          fi
-          HAP_FILE="$(ls ./artifact/*.hap | head -n1)"
-          SHA_FILE="$(ls ./artifact/*.sha256 | head -n1)"
-          [ -f "$HAP_FILE" ] || { echo "错误: 未找到 HAP artifact"; exit 1; }
-          echo "待上传: $HAP_FILE ($(du -h "$HAP_FILE" | cut -f1))"
-          echo "SHA256 : $(cat "$SHA_FILE")"
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+          API="https://connect-api.cloud.huawei.com"
 
-          # ---- 2. 登录（client_credentials 模式，agc-cli 默认） ----
-          # 使用 .env 方式（避免命令行参数暴露明文）
-          cat > .env <<EOF
-          AGC_AUTH_MODE=client_credentials
-          AGC_CLIENT_ID=$AGC_CLIENT_ID
-          AGC_CLIENT_SECRET=$AGC_CLIENT_SECRET
-          EOF
-          [ -n "$AGC_DOMAIN" ] && echo "AGC_DOMAIN=$AGC_DOMAIN" >> .env || true
-          agc-cli auth status || agc-cli auth login
+          # ---- 0. 凭证与输入校验 ----
+          for v in AGC_CLIENT_ID AGC_CLIENT_SECRET AGC_APP_ID; do
+            [ -n "${!v}" ] || { echo "错误: secret $v 未配置"; exit 1; }
+          done
+          APP_FILE="$(ls ./artifact/*.app | head -n1)"
+          [ -f "$APP_FILE" ] || { echo "错误: 未找到 .app artifact"; ls -la ./artifact; exit 1; }
+          FILE_NAME="$(basename "$APP_FILE")"
+          CONTENT_LENGTH="$(stat -c%s "$APP_FILE" 2>/dev/null || stat -f%z "$APP_FILE")"
+          SHA256_HEX="$(sha256sum "$APP_FILE" | awk '{print $1}')"
+          echo "待上传: $FILE_NAME ($(du -h "$APP_FILE" | cut -f1))"
+          echo "SHA256 : $SHA256_HEX"
+          echo "AGC App ID = $AGC_APP_ID"
 
-          # ---- 3. 查询 appId（secret AGC_APP_ID 有值时跳过） ----
-          if [ -n "$AGC_APP_ID" ]; then
-            APP_ID="$AGC_APP_ID"
-            echo "使用 secret 中的 AGC_APP_ID=$APP_ID"
-          else
-            echo "通过包名查询 appId ..."
-            APP_ID_JSON="$(agc-cli publish app-id -p "$BUNDLE_NAME")"
-            echo "$APP_ID_JSON" | jq . 2>/dev/null || echo "$APP_ID_JSON"
-            APP_ID="$(echo "$APP_ID_JSON" | jq -r '(first(.appids[]?.value) // .appId // .ret.appId // empty)' 2>/dev/null || true)"
-            if [ -z "$APP_ID" ]; then
-              # 回退：输出全量 JSON，方便排查
-              echo "未能从响应解析 appId。上面是完整响应，请确认包名 $BUNDLE_NAME 是否在 AGC 创建了应用。"
-              exit 1
-            fi
-          fi
-          echo "AGC App ID = $APP_ID"
+          # ---- 1. 获取 access_token（JSON body；form 编码会报空错误） ----
+          TOKEN_RESP="$(curl -sS -X POST "$API/api/oauth2/v1/token" \
+            -H "User-Agent: $UA" -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"client_credentials\",\"client_id\":\"$AGC_CLIENT_ID\",\"client_secret\":\"$AGC_CLIENT_SECRET\"}")"
+          TOKEN="$(echo "$TOKEN_RESP" | jq -r '.access_token // empty')"
+          [ -n "$TOKEN" ] || { echo "❌ 获取 token 失败:"; echo "$TOKEN_RESP"; exit 1; }
+          echo "1/4 access_token 获取成功"
 
-          # ---- 4. 上传 ----
-          # release_type: 1=全量, 6=HarmonyOS 测试
-          echo "开始上传 HAP（releaseType=$RELEASE_TYPE）..."
-          UPLOAD_JSON="$(agc-cli upload file -a "$APP_ID" -f "$HAP_FILE" -r "$RELEASE_TYPE" 2>&1)"
-          echo "upload 响应:"
-          echo "$UPLOAD_JSON" | jq . 2>/dev/null || echo "$UPLOAD_JSON"
-          # 提取返回码/URL（agc-api-cli 不同版本输出结构略有差异，这里容错）
-          RET_CODE="$(echo "$UPLOAD_JSON" | jq -r '.code // .ret.code // 0' 2>/dev/null || echo 0)"
-          if [ "$RET_CODE" = "0" ] || [ "$RET_CODE" = "null" ]; then
-            echo "✅ AGC 上传成功（版本 $VERSION · 发布类型 $RELEASE_TYPE）"
-          else
-            echo "❌ AGC 上传失败（code=$RET_CODE），详情见上方 JSON"
-            exit 1
-          fi
+          # ---- 2. 获取文件上传地址（Content-Type: application/json 必带） ----
+          URL_RESP="$(curl -sS -G "$API/api/publish/v2/upload-url/for-obs" \
+            -H "User-Agent: $UA" -H "client_id: $AGC_CLIENT_ID" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            --data-urlencode "appId=$AGC_APP_ID" \
+            --data-urlencode "fileName=$FILE_NAME" \
+            --data-urlencode "sha256=$SHA256_HEX" \
+            --data-urlencode "contentLength=$CONTENT_LENGTH" \
+            --data-urlencode "releaseType=$RELEASE_TYPE")"
+          RET_CODE="$(echo "$URL_RESP" | jq -r '.ret.code // .code // empty')"
+          [ "$RET_CODE" = "0" ] || { echo "❌ 获取上传地址失败 (ret.code=$RET_CODE):"; echo "$URL_RESP"; exit 1; }
+          UPLOAD_URL="$(echo "$URL_RESP" | jq -r '.urlInfo.url')"
+          OBJECT_ID="$(echo "$URL_RESP" | jq -r '.urlInfo.objectId')"
+          echo "2/4 上传地址获取成功 (objectId: $OBJECT_ID)"
+
+          # ---- 3. PUT 文件到 OBS（headers 原样透传；Content-Length 由 curl 自动补全并参与签名） ----
+          mapfile -t HDRS < <(echo "$URL_RESP" | jq -r '.urlInfo.headers | to_entries[] | "-H", "\(.key): \(.value)"')
+          HTTP_CODE="$(curl -sS -o /tmp/obs_put_resp.txt -w '%{http_code}' -X PUT "$UPLOAD_URL" "${HDRS[@]}" --data-binary "@$APP_FILE")"
+          [ "$HTTP_CODE" = "200" ] || { echo "❌ 文件上传失败 (HTTP $HTTP_CODE):"; cat /tmp/obs_put_resp.txt; exit 1; }
+          echo "3/4 文件上传成功 (HTTP 200)"
+
+          # ---- 4. 登记软件包信息（v3；成功后软件包管理可见，异步解析约 2 分钟） ----
+          PKG_RESP="$(curl -sS -X PUT "$API/api/publish/v3/app-package-info?appId=$AGC_APP_ID" \
+            -H "User-Agent: $UA" -H "client_id: $AGC_CLIENT_ID" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"fileName\":\"$FILE_NAME\",\"objectId\":\"$OBJECT_ID\"}")"
+          RET_CODE="$(echo "$PKG_RESP" | jq -r '.ret.code // empty')"
+          [ "$RET_CODE" = "0" ] || { echo "❌ 登记软件包失败 (ret.code=$RET_CODE):"; echo "$PKG_RESP"; exit 1; }
+          PACKAGE_ID="$(echo "$PKG_RESP" | jq -r '.packageId // empty')"
+          echo "4/4 软件包登记成功 (packageId: $PACKAGE_ID)"
+          echo "✅ AGC 上传完成（约 2 分钟后可在 软件包管理 看到解析结果；提交发布/测试请在 AGC 控制台手动操作）"
 
           # ---- 5. 写入 summary ----
           {
@@ -614,14 +611,15 @@ jobs:
             echo "| 项目 | 值 |"
             echo "| --- | --- |"
             echo "| 包名 | \`$BUNDLE_NAME\` |"
-            echo "| AGC App ID | \`$APP_ID\` |"
+            echo "| AGC App ID | \`$AGC_APP_ID\` |"
             echo "| 版本 | $VERSION (releaseType=$RELEASE_TYPE) |"
-            echo "| 文件 | \`$(basename "$HAP_FILE")\` |"
-            echo "| SHA256 | \`$(cat "$SHA_FILE" | awk '{print $1}')\` |"
+            echo "| 文件 | \`$FILE_NAME\` |"
+            echo "| SHA256 | \`$SHA256_HEX\` |"
+            echo "| packageId | \`$PACKAGE_ID\` |"
           } >> "$GITHUB_STEP_SUMMARY"
 
 # ============================================================
-# Job 4 · github-release —— 创建 GitHub Release 并挂载 HAP
+# Job 4 · github-release —— 创建 GitHub Release 并挂载 HAP / APP
 # ============================================================
   github-release:
     name: GitHub Release
@@ -631,10 +629,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: 下载 signed HAP artifact
+      - name: 下载 artifact（HAP + APP）
         uses: actions/download-artifact@v4
         with:
-          name: timelynotify-${{ needs.prepare.outputs.version }}-hap
+          name: timelynotify-${{ needs.prepare.outputs.version }}-packages
           path: ./artifact
 
       - name: 列出 artifact 文件
@@ -678,12 +676,14 @@ jobs:
             ### 附件说明
 
             - `timelynotify-${{ needs.prepare.outputs.version }}-signed.hap` — HarmonyOS 安装包（release 签名），可用 `hdc install` 安装
+            - `timelynotify-${{ needs.prepare.outputs.version }}-signed.app` — 应用包（release 签名，AGC 上架/测试格式），已随 CI 上传 AGC 软件包管理
             - `*.sha256` — SHA256 校验和
             - `*-cert-fingerprint.txt` — 签名证书指纹（纯文本）
           files: |
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap.sha256
             ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.hap-cert-fingerprint.txt
+            ./artifact/timelynotify-${{ needs.prepare.outputs.version }}-signed.app
           fail_on_unmatched_files: true
           make_latest: true
           generate_release_notes: false
