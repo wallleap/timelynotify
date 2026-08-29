@@ -43,6 +43,10 @@ export class MessageListResult {
   ok: boolean = false;
   messages: NotifyMessage[] = [];
   errorMsg: string = '';
+  // 服务端流式导出是否被截断（paging.error 非空，数据可能不完整）
+  truncated: boolean = false;
+  // 服务端原始消息数组（保留全部字段，无损导出用；仅全量导出时填充）
+  rawMessages: Object[] = [];
 }
 
 function resolveContext(ctx: common.Context | null): common.Context | null {
@@ -220,6 +224,77 @@ export class NotifyMessageService {
     result.messages = NotifyMessageService.extractMessages(resp.result as Object);
     result.ok = true;
     hilog.info(DOMAIN, TAG, '拉取成功，共 %{public}d 条', String(result.messages.length));
+    return result;
+  }
+
+  // 全量导出消息：GET /{device_key}/message?limit=-1
+  // 服务端分块流式返回该设备全部现存消息（信封 {paging, messages}；messages 数组在前、paging 补在末尾，
+  // 对 JSON 解析无影响）。成功时 rawMessages 为服务端原始消息数组（无损导出），truncated=true 表示流中途异常被截断。
+  async exportAllMessages(context: common.Context | null = null): Promise<MessageListResult> {
+    const result = new MessageListResult();
+    const ctx: common.Context | null = resolveContext(context);
+
+    await ServerManager.getInstance().ensureLoaded();
+    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
+    if (!deviceKey || deviceKey.length === 0) {
+      result.errorMsg = '设备未注册';
+      return result;
+    }
+
+    const clientToken: string = await this.getEffectiveClientToken(ctx);
+    if (!clientToken || clientToken.length === 0) {
+      result.errorMsg = '未配置客户端 Token';
+      return result;
+    }
+
+    const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message?limit=-1`);
+    const headers: Record<string, string> = {
+      'X-Gotify-Key': clientToken,
+    };
+    hilog.info(DOMAIN, TAG, '全量导出：GET %{public}s', fullURL);
+
+    // 全量导出为流式响应，耗时随消息量增长，读超时放宽到 60s
+    const resp: HttpResponse<GotifyMessageResponse> =
+      await HttpUtil.get<GotifyMessageResponse>(fullURL, headers, 60000);
+
+    if (resp.code === 401) {
+      result.errorMsg = '客户端 Token 无效或已过期';
+      return result;
+    }
+    if (resp.code === 404) {
+      result.errorMsg = '设备不存在';
+      return result;
+    }
+    if (resp.code < 200 || resp.code >= 300) {
+      result.errorMsg = `请求失败（HTTP ${resp.code}）`;
+      return result;
+    }
+    if (!resp.result) {
+      result.errorMsg = '响应为空';
+      return result;
+    }
+
+    // 提取 messages 原始数组（无损保留服务端全部字段，供 JSON 序列化导出）
+    // 经 Object 中转避免 Record 直接转换的编译器类型重叠检查报错
+    const raw = resp.result as Object as Record<string, Object>;
+    const messagesVal: Object | undefined = raw['messages'];
+    if (messagesVal instanceof Array) {
+      result.rawMessages = messagesVal as Object[];
+    }
+
+    // paging.error 非空（如 'stream truncated'）→ 流式传输被截断，数据可能不完整
+    const pagingVal: Object | undefined = raw['paging'];
+    if (pagingVal && typeof pagingVal === 'object') {
+      const paging = pagingVal as Record<string, Object>;
+      const errVal: Object | undefined = paging['error'];
+      if (typeof errVal === 'string' && errVal.length > 0) {
+        result.truncated = true;
+        hilog.warn(DOMAIN, TAG, '全量导出流被截断：paging.error=%{public}s', errVal);
+      }
+    }
+
+    result.ok = true;
+    hilog.info(DOMAIN, TAG, '全量导出成功，共 %{public}d 条', String(result.rawMessages.length));
     return result;
   }
 

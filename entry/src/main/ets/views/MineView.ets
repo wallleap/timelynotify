@@ -3,6 +3,7 @@ import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit';
 import { bundleManager, common } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
+import { fileIo, picker } from '@kit.CoreFileKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { extractHost } from '../components/ServerSettingsContent';
@@ -49,6 +50,8 @@ export struct MineView {
   @State deviceTokenDisplay: string = '';
   // 通知授权开关状态（系统级，应用无法直接关闭，只能引导用户去系统设置）
   @State notifyEnabled: boolean = false;
+  // 是否正在执行消息导出（拉取 + 保存全程置 true，防止重复触发）
+  @State exporting: boolean = false;
   // 版本号展示（读取自 BundleInfo；异常时使用兜底常量）
   @State versionNameDisplay: string = FALLBACK_VERSION_NAME;
   @State versionCodeDisplay: number = FALLBACK_VERSION_CODE;
@@ -155,6 +158,37 @@ export struct MineView {
                   .fillColor($r('app.color.text_quinary_color'));
               }.width('100%').padding(16).onClick(() => {
                 this.openNotifySettings();
+              });
+
+              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+              // 导出消息行（点击导出当前设备全部消息为 txt 文件，内容为 JSON 数组）
+              Row() {
+                Column({ space: 2 }) {
+                  Text('导出消息')
+                    .fontSize(16)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor($r('app.color.text_primary_color'));
+                  Text(this.exporting ? '正在导出…' : '导出当前设备全部消息为 txt 文件')
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_quinary_color'));
+                }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+                // 导出中显示加载指示器，否则显示箭头
+                if (this.exporting) {
+                  LoadingProgress()
+                    .width(24)
+                    .height(24)
+                    .color($r('app.color.text_accent_color'));
+                } else {
+                  Image($r('app.media.arrow_right'))
+                    .width(24)
+                    .height(24)
+                    .objectFit(ImageFit.Contain)
+                    .fillColor($r('app.color.text_quinary_color'));
+                }
+              }.width('100%').padding(16).onClick(() => {
+                this.exportMessages();
               });
             }
             .width('100%')
@@ -564,6 +598,71 @@ export struct MineView {
       const e: BusinessError = err as BusinessError;
       hilog.warn(DOMAIN, TAG, 'openNotificationSettings 失败：code=%{public}d msg=%{public}s', e.code, e.message);
       showToast(this.getUIContext(), '无法打开通知设置');
+    }
+  }
+
+  // 生成导出文件名时间后缀：yyyyMMdd_HHmmss
+  private formatExportTime(d: Date): string {
+    const p = (n: number): string => (n < 10 ? '0' + n : String(n));
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  }
+
+  // 导出当前设备全部消息：
+  // 1. GET /{device_key}/message?limit=-1 全量拉取（服务端流式返回）
+  // 2. 序列化为 JSON 数组文本（2 空格缩进）
+  // 3. DocumentViewPicker 拉起系统保存对话框（无需权限），用户选择位置后写入 txt
+  private async exportMessages(): Promise<void> {
+    if (this.exporting) {
+      return; // 防重复触发
+    }
+    const uiCtx: UIContext = this.getUIContext();
+    this.exporting = true;
+    try {
+      const result = await NotifyMessageService.getInstance().exportAllMessages(null);
+      if (!result.ok) {
+        showToast(uiCtx, result.errorMsg.length > 0 ? result.errorMsg : '导出失败');
+        return;
+      }
+      // 纯 JSON 数组文本（2 空格缩进便于阅读，整体仍是合法 JSON）
+      const text: string = JSON.stringify(result.rawMessages, null, 2);
+
+      // 系统保存对话框：预设文件名 + txt 过滤；Picker 保存无需申请权限
+      const saveOptions = new picker.DocumentSaveOptions();
+      saveOptions.newFileNames = [`timelynotify_export_${this.formatExportTime(new Date())}.txt`];
+      saveOptions.fileSuffixChoices = ['文档|.txt'];
+      const abilityCtx = this.getAbilityContext();
+      if (!abilityCtx) {
+        showToast(uiCtx, '上下文获取失败');
+        return;
+      }
+      const docPicker = new picker.DocumentViewPicker(abilityCtx);
+      const uris: string[] = await docPicker.save(saveOptions);
+      if (uris.length === 0) {
+        return; // 用户取消保存，静默结束
+      }
+
+      // Picker 返回的 URI 需以 READ_WRITE 模式打开后写入
+      const file = fileIo.openSync(uris[0], fileIo.OpenMode.READ_WRITE);
+      try {
+        fileIo.writeSync(file.fd, text);
+      } finally {
+        fileIo.closeSync(file);
+      }
+
+      // 成功提示；流被截断时额外说明数据可能不完整
+      const count: number = result.rawMessages.length;
+      if (result.truncated) {
+        showToast(uiCtx, `导出完成（流中断，可能不完整），共 ${count} 条`, 3000);
+      } else {
+        showToast(uiCtx, `已导出 ${count} 条消息`, 1500);
+      }
+      hilog.info(DOMAIN, TAG, '消息导出完成：count=%{public}d truncated=%{public}s', count, String(result.truncated));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '导出消息失败：%{public}s', msg);
+      showToast(uiCtx, '导出失败');
+    } finally {
+      this.exporting = false;
     }
   }
 

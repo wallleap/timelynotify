@@ -54,12 +54,13 @@ export class HttpUtil {
     return HttpUtil.request<T>(fullURL, http.RequestMethod.POST, headers, JSON.stringify(body));
   }
 
-  // GET 请求（无 body）
+  // GET 请求（无 body）；readTimeoutMs 可自定义读超时（全量导出等长耗时请求需要放宽，默认 10s）
   static async get<T extends Object>(
     fullURL: string,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    readTimeoutMs: number = HttpUtil.TIMEOUT_MS
   ): Promise<HttpResponse<T>> {
-    return HttpUtil.request<T>(fullURL, http.RequestMethod.GET, headers, undefined);
+    return HttpUtil.request<T>(fullURL, http.RequestMethod.GET, headers, undefined, readTimeoutMs);
   }
 
   // DELETE 请求（无 body）
@@ -74,7 +75,8 @@ export class HttpUtil {
     fullURL: string,
     method: http.RequestMethod,
     headers?: Record<string, string>,
-    body?: string
+    body?: string,
+    readTimeoutMs: number = HttpUtil.TIMEOUT_MS
   ): Promise<HttpResponse<T>> {
     const httpRequest = http.createHttp();
     const url: string = fullURL;
@@ -97,7 +99,7 @@ export class HttpUtil {
       method: method,
       header: mergedHeaders,
       connectTimeout: HttpUtil.TIMEOUT_MS,
-      readTimeout: HttpUtil.TIMEOUT_MS,
+      readTimeout: readTimeoutMs,
     };
     if (body !== undefined && body !== null) {
       mergedHeaders['Content-Type'] = 'application/json';
