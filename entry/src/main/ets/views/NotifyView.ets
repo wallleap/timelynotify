@@ -1,6 +1,8 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { common } from '@kit.AbilityKit';
+import { fileIo, picker } from '@kit.CoreFileKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
@@ -30,6 +32,8 @@ export struct NotifyView {
   // 多选模式状态
   @State isEditing: boolean = false;
   @State selectedIds: number[] = [];
+  // 导出选中消息：防重复触发
+  @State exportingSelected: boolean = false;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   // 状态栏高度（vp），详情模态标题栏顶部避让用；EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
@@ -564,6 +568,17 @@ export struct NotifyView {
             this.selectedIds = all;
           }
         });
+      // 导出选中：有选中时启用；导出中显示加载文案
+      Text(this.exportingSelected ? `导出中…` : `导出(${this.selectedIds.length})`)
+        .fontSize(15)
+        .fontColor(this.selectedIds.length > 0 && !this.exportingSelected ? $r('app.color.text_accent_color') :
+          $r('app.color.text_quinary_color'))
+        .padding({ right: 16 })
+        .onClick(() => {
+          if (this.selectedIds.length > 0 && !this.exportingSelected) {
+            this.exportSelectedMessages();
+          }
+        });
       Text(`删除(${this.selectedIds.length})`)
         .fontSize(15)
         .fontColor(this.selectedIds.length > 0 ? $r('app.color.text_error_color') : $r('app.color.text_quinary_color'))
@@ -962,6 +977,119 @@ export struct NotifyView {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'dialog open 失败：%{public}s', msg);
       showToast(this.getUIContext(), '弹窗无法打开');
+    }
+  }
+
+  // 获取 UIAbilityContext（DocumentViewPicker 需要）
+  private getAbilityContext(): common.UIAbilityContext | null {
+    try {
+      const ctx = this.getUIContext().getHostContext();
+      return ctx as common.UIAbilityContext;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'getHostContext 失败：%{public}s', msg);
+      return null;
+    }
+  }
+
+  // 生成导出文件名时间后缀：yyyyMMdd_HHmmss
+  private formatExportTime(d: Date): string {
+    const p = (n: number): string => (n < 10 ? '0' + n : String(n));
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(
+      d.getSeconds())}`;
+  }
+
+  // 将 NotifyMessage 转为可 JSON 序列化的原始对象（严格匹配服务端全量导出格式）
+  // 字段：id, appid, title, message, priority, extras{device_key, subtitle?}, date
+  private messageToRaw(m: NotifyMessage, deviceKey: string): Object {
+    const raw: Record<string, Object> = {
+      'id': m.id,
+      'appid': m.appid,
+      'title': m.title,
+      'message': m.body,
+      'priority': m.priority,
+      'date': m.date.length > 0 ? m.date : (m.createdAt.length > 0 ? m.createdAt : ''),
+    };
+    // extras：固定放 device_key（与服务端一致）；有 subtitle 时也补在 extras 下
+    const extras: Record<string, Object> = { 'device_key': deviceKey };
+    if (m.subtitle && m.subtitle.length > 0) {
+      extras['subtitle'] = m.subtitle;
+    }
+    raw['extras'] = extras as Object;
+    return raw as Object;
+  }
+
+  // 导出当前选中的消息：
+  // 1. 读取当前 device_key（放入 extras，与服务端全量导出格式一致）
+  // 2. 从 this.messages 按 selectedIds 过滤
+  // 3. 转为与全量导出同结构的 JSON 数组文本（2 空格缩进）
+  // 4. DocumentViewPicker 拉起系统保存对话框（无需权限），用户选择位置后写入 txt
+  private async exportSelectedMessages(): Promise<void> {
+    if (this.exportingSelected || this.selectedIds.length === 0) {
+      return; // 防重复触发
+    }
+    const uiCtx: UIContext = this.getUIContext();
+    this.exportingSelected = true;
+    try {
+      // 预先加载 device_key：ServerManager 可能还在初始化，先 ensureLoaded
+      await ServerManager.getInstance().ensureLoaded();
+      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      if (!deviceKey || deviceKey.length === 0) {
+        showToast(uiCtx, '设备未注册，无法导出');
+        return;
+      }
+
+      // 按 selectedIds 过滤当前列表中的消息（保持列表原有展示顺序：新→旧）
+      const idSet: Set<number> = new Set<number>(this.selectedIds);
+      const selected: NotifyMessage[] = [];
+      for (let i = 0; i < this.messages.length; i++) {
+        if (idSet.has(this.messages[i].id)) {
+          selected.push(this.messages[i]);
+        }
+      }
+      if (selected.length === 0) {
+        showToast(uiCtx, '没有可导出的消息');
+        return;
+      }
+
+      // 转成原始对象数组后 JSON 序列化（字段与服务端全量导出一致）
+      const rawArr: Object[] = [];
+      for (let i = 0; i < selected.length; i++) {
+        rawArr.push(this.messageToRaw(selected[i], deviceKey));
+      }
+      const text: string = JSON.stringify(rawArr, null, 2);
+
+      // 系统保存对话框：预设文件名 + txt 过滤；Picker 保存无需申请权限
+      const saveOptions = new picker.DocumentSaveOptions();
+      saveOptions.newFileNames = [`timelynotify_selected_${this.formatExportTime(new Date())}.txt`];
+      saveOptions.fileSuffixChoices = ['文档|.txt'];
+      const abilityCtx = this.getAbilityContext();
+      if (!abilityCtx) {
+        showToast(uiCtx, '上下文获取失败');
+        return;
+      }
+      const docPicker = new picker.DocumentViewPicker(abilityCtx);
+      const uris: string[] = await docPicker.save(saveOptions);
+      if (uris.length === 0) {
+        return; // 用户取消保存，静默结束
+      }
+
+      // Picker 返回的 URI 需以 READ_WRITE 模式打开后写入
+      const file = fileIo.openSync(uris[0], fileIo.OpenMode.READ_WRITE);
+      try {
+        fileIo.writeSync(file.fd, text);
+      } finally {
+        fileIo.closeSync(file);
+      }
+
+      showToast(uiCtx, `已导出 ${selected.length} 条消息`, 1500);
+      hilog.info(DOMAIN, TAG, '选中消息导出完成：count=%{public}d', String(selected.length));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '导出选中消息失败：%{public}s', msg);
+      showToast(uiCtx, '导出失败');
+    } finally {
+      this.exportingSelected = false;
     }
   }
 }
