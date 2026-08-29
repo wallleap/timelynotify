@@ -45,6 +45,11 @@ env:
   BUNDLE_NAME: cn.oicode.timelynotify
   OHPM_REGISTRY: ${{ vars.OHPM_REGISTRY }}
 
+# 统一用 bash 跑 run 步骤：容器内默认 sh(dash) 不支持 set -o pipefail
+defaults:
+  run:
+    shell: bash
+
 # ============================================================
 # Job 1 · prepare —— 解析版本号，输出到下游 jobs
 # ============================================================

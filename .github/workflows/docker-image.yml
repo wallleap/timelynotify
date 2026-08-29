@@ -52,6 +52,11 @@ env:
   CLT_URL_DEFAULT: https://static.oicode.cn/temp/ctl/commandline-tools-linux-x64-26.0.0.621.zip
   CLT_SHA256_DEFAULT: 0cea7ad6cc1af98ac701b9c61b7c9aae2d0f2104749a80ae84c1f6ca0fc17555
 
+# 统一用 bash 跑 run 步骤（与容器内兼容性保持一致）
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-push:
     name: Build & Push
