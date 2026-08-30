@@ -18,13 +18,13 @@
         "name": "release",
         "type": "HarmonyOS",
         "material": {
-          "storeFile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/release.p12",
+          "storeFile": "./signature/release.p12",
           "storePassword": "0000001B8DF311BC09837039C3D7809A6BE2A454ED6A5D7223459303FEDAD4DDBC81FDDF786D95DAC65403",
           "keyAlias": "tn9",
           "keyPassword": "0000001B2D981EE91EB3C85503FAC926EDF9D4F2DBB4695D90CBB2CAB1C906C23C4C8BD1528FFCC47ADE58",
           "signAlg": "SHA256withECDSA",
-          "profile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/release.p7b",
-          "certpath": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/release.cer"
+          "profile": "./signature/release.p7b",
+          "certpath": "./signature/release.cer"
         }
       }
     ],
