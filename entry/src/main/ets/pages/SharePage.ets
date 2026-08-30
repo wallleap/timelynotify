@@ -5,7 +5,7 @@ import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { SOURCE_CODE_URL } from '../views/MineView';
-import { getSystemMaterial, resolveBlurStyle } from '../utils/ImmersiveUtil';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'SharePage';
@@ -17,8 +17,6 @@ struct SharePage {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 24;
-  // 沉浸光感材质就绪信号：uiMaterial 模块（API 26+）动态加载成功后置 true，触发重渲染切换到材质分支
-  @StorageProp('immersiveMaterialReady') materialReady: boolean = false;
   @State loadingProgress: number = 0;
   @State pageTitle: string = '开源代码';
   @State targetUrl: string = SOURCE_CODE_URL;
@@ -75,33 +73,18 @@ struct SharePage {
 
   @Builder
   titleBar() {
-    if (this.materialReady) {
-      Row() {
-        this.topBarContent();
-      }
-      .width('100%')
-      .padding({
-        left: 8,
-        right: 8,
-        top: 12 + this.statusBarHeight,
-        bottom: 12
-      })
-      .systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Row() {
-        this.topBarContent();
-      }
-      .width('100%')
-      .padding({
-        left: 8,
-        right: 8,
-        top: 12 + this.statusBarHeight,
-        bottom: 12
-      })
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
+    Row() {
+      this.topBarContent();
     }
+    .width('100%')
+    .padding({
+      left: 8,
+      right: 8,
+      top: 12 + this.statusBarHeight,
+      bottom: 12
+    })
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
   // 自定义刷新指示器：仅在下拉/刷新过程中显示（Inactive 隐藏）；
@@ -189,7 +172,7 @@ struct SharePage {
       .width('100%')
       .height('100%')
 
-      // 顶栏层（上层）：systemMaterial 沉浸光感，糊住下层 WebView 内容
+      // 顶栏层（上层）：毛玻璃模糊，糊住下层 WebView 内容
       this.titleBar()
     }
     .width('100%')

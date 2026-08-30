@@ -7,7 +7,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
-import { ensureImmersiveMaterial, KEY_NAV_BAR_HEIGHT, KEY_STATUS_BAR_HEIGHT } from '../utils/ImmersiveUtil';
+import { KEY_NAV_BAR_HEIGHT, KEY_STATUS_BAR_HEIGHT } from '../utils/ImmersiveUtil';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'EntryAbility';
@@ -27,8 +27,6 @@ export default class EntryAbility extends UIAbility {
     // 最早拿到 UIAbilityContext 的时机，注入全局存储，之后组件/dialog/持久化都可以用
     AppContextStore.getInstance().setContext(this.context);
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
-    // 预加载 uiMaterial 沉浸光感材质模块（API 26+ 生效；API 23 无此模块，内部静默降级 blur）
-    ensureImmersiveMaterial();
     // 立刻触发 ServerManager 异步加载（与页面渲染/窗口创建并行），
     // 但任何消费 currentId/baseURL 的路径都必须先 await ensureLoaded()
     this.bootstrapServerManager();

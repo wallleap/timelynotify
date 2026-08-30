@@ -14,7 +14,7 @@ import { PreferencesUtil } from '../utils/PreferencesUtil';
 import showToast from '../components/showToast';
 import { DOMAIN } from '../common/Constant';
 import { BuildInfo } from '../generated/BuildInfo';
-import { getSystemMaterial, resolveBlurStyle } from '../utils/ImmersiveUtil';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 // 版本号兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常
 const FALLBACK_VERSION_NAME: string = '1.0.0';
@@ -38,8 +38,6 @@ export struct MineView {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  // 沉浸光感材质就绪信号：uiMaterial 模块（API 26+）动态加载成功后置 true，触发重渲染切换到材质分支
-  @StorageProp('immersiveMaterialReady') materialReady: boolean = false;
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
@@ -94,28 +92,16 @@ export struct MineView {
 
   @Builder
   titleBar() {
-    if (this.materialReady) {
-      Row() {
-        Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
-      }.width('100%').padding({
-        left: 16,
-        right: 16,
-        top: 16 + this.statusBarHeight,
-        bottom: 16
-      }).systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Row() {
-        Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
-      }.width('100%').padding({
-        left: 16,
-        right: 16,
-        top: 16 + this.statusBarHeight,
-        bottom: 16
-      })
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    }
+    Row() {
+      Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
+    }.width('100%').padding({
+      left: 16,
+      right: 16,
+      top: 16 + this.statusBarHeight,
+      bottom: 16
+    })
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
   build() {

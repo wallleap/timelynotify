@@ -8,7 +8,7 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
-import { getSystemMaterial, resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 import { DOMAIN } from '../common/Constant';
 import showToast from '../components/showToast';
 
@@ -39,8 +39,6 @@ export struct NotifyView {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   // 底部导航条高度（vp），编辑操作栏与列表底部占位避让用
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  // 沉浸光感材质就绪信号：uiMaterial 模块（API 26+）动态加载成功后置 true，触发重渲染切换到材质分支
-  @StorageProp('immersiveMaterialReady') materialReady: boolean = false;
   // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
@@ -73,53 +71,7 @@ export struct NotifyView {
 
   @Builder
   titleBar() {
-    if (this.materialReady) {
-      Row({ space: 8 }) {
-        Row({ space: 2 }) {
-          Text(this.title)
-            .fontSize(24)
-            .fontColor($r('app.color.text_primary_color'))
-            .fontWeight(FontWeight.Bold)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-
-          Image($r('app.media.select_more'))
-            .width(24)
-            .height(24)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_primary_color'))
-            .flexShrink(0)
-            .onClick(() => {
-              this.handleMoreClicked();
-            });
-        }
-        .layoutWeight(1)
-        .width(0)
-        .padding({ right: 48 })
-        .alignItems(VerticalAlign.Center)
-        .onClick(() => {
-          this.handleMoreClicked();
-        });
-
-        // 多选胶囊按钮：非编辑态进入多选；编辑态退出并清空选中
-        this.multiSelectPill()
-
-        // 删除胶囊按钮
-        this.deletePill()
-      }
-      .width('100%')
-      // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
-      .padding({
-        left: 16,
-        right: 16,
-        top: 16 + this.statusBarHeight,
-        bottom: 16
-      })
-      .alignItems(VerticalAlign.Center)
-      .systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Row({ space: 8 }) {
+    Row({ space: 8 }) {
         Row({ space: 2 }) {
           Text(this.title)
             .fontSize(24)
@@ -163,93 +115,52 @@ export struct NotifyView {
       .alignItems(VerticalAlign.Center)
       .backgroundBlurStyle(resolveBlurStyle('bar')!)
       .backgroundColor($r('app.color.index_page_top_glass_background'));
-    }
   }
 
   // 「多选/取消」胶囊按钮：未编辑态显示「多选」进入选择；编辑态显示「取消」清空/退出；
-  // 沉浸光感材质（API 26+，card 表面）+ 半透明底色 + 高亮描边，低版本降级为毛玻璃模糊
+  // 毛玻璃模糊 + 半透明底色 + 高亮描边
   @Builder
   multiSelectPill() {
-    if (this.materialReady) {
-      Row() {
-        Text(this.isEditing ? '取消' : '多选')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary_color'))
-      }
-      .height(38)
-      .padding({ left: 14, right: 14 })
-      .borderRadius(38)
-      .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .systemMaterial(getSystemMaterial('card'))
-      .backgroundColor($r('app.color.glass_button_background'))
-      .onClick(() => {
-        this.handleMultiSelectClicked();
-      });
-    } else {
-      Row() {
-        Text(this.isEditing ? '取消' : '多选')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary_color'))
-      }
-      .height(38)
-      .padding({ left: 14, right: 14 })
-      .borderRadius(38)
-      .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .backgroundBlurStyle(resolveBlurStyle('card')!)
-      .backgroundColor($r('app.color.glass_button_background'))
-      .onClick(() => {
-        this.handleMultiSelectClicked();
-      });
+    Row() {
+      Text(this.isEditing ? '取消' : '多选')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary_color'))
     }
+    .height(38)
+    .padding({ left: 14, right: 14 })
+    .borderRadius(38)
+    .alignItems(VerticalAlign.Center)
+    .border({ width: 1, color: $r('app.color.glass_button_border') })
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .backgroundColor($r('app.color.glass_button_background'))
+    .onClick(() => {
+      this.handleMultiSelectClicked();
+    });
   }
 
   // 删除胶囊按钮：样式与「多选」一致，内部为删除图标；
   // 非编辑态点击走清空全部（二次确认并重点提示不可恢复），编辑态点击删除选中消息
   @Builder
   deletePill() {
-    if (this.materialReady) {
-      Row() {
-        Image($r('app.media.delete'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_primary_color'))
-      }
-      .height(38)
-      .width(38)
-      .borderRadius(38)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .systemMaterial(getSystemMaterial('card'))
-      .backgroundColor($r('app.color.glass_button_background'))
-      .onClick(() => {
-        this.handleDeletePillClicked();
-      });
-    } else {
-      Row() {
-        Image($r('app.media.delete'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_primary_color'))
-      }
-      .height(38)
-      .width(38)
-      .borderRadius(38)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .backgroundBlurStyle(resolveBlurStyle('card')!)
-      .backgroundColor($r('app.color.glass_button_background'))
-      .onClick(() => {
-        this.handleDeletePillClicked();
-      });
+    Row() {
+      Image($r('app.media.delete'))
+        .width(24)
+        .height(24)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.text_primary_color'))
     }
+    .height(38)
+    .width(38)
+    .borderRadius(38)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .border({ width: 1, color: $r('app.color.glass_button_border') })
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .backgroundColor($r('app.color.glass_button_background'))
+    .onClick(() => {
+      this.handleDeletePillClicked();
+    });
   }
 
   build() {
@@ -449,7 +360,7 @@ export struct NotifyView {
       ListItem() {
         Row()
           .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL ? this.navBarHeight + 72 : this.navBarHeight + 64);
+          .height(this.navBarHeight + 64);
       }
     }
     .width('100%')
@@ -595,7 +506,7 @@ export struct NotifyView {
       left: 16,
       right: 16,
       top: 12,
-      bottom: SUPPORTS_IMMERSIVE_MATERIAL ? this.navBarHeight + 72 : this.navBarHeight + 64
+      bottom: this.navBarHeight + 64
     })
     .backgroundBlurStyle(resolveBlurStyle('bar')!)
     .backgroundColor($r('app.color.index_page_top_glass_background'));
@@ -603,59 +514,31 @@ export struct NotifyView {
 
   @Builder
   detailTitleBar() {
-    if (this.materialReady) {
-      Column() {
-        Row() {
-          Text('消息详情')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary_color'))
-            .layoutWeight(1);
-          Image($r('app.media.close'))
-            .width(28)
-            .height(28)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_tertiary_color'))
-            .padding(2)
-            .onClick(() => {
-              this.showDetail = false;
-            });
-        }
-        .width('100%')
-        .padding(16)
-        .alignItems(VerticalAlign.Center);
+    Column() {
+      Row() {
+        Text('消息详情')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary_color'))
+          .layoutWeight(1);
+        Image($r('app.media.close'))
+          .width(28)
+          .height(28)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.text_tertiary_color'))
+          .padding(2)
+          .onClick(() => {
+            this.showDetail = false;
+          });
       }
       .width('100%')
-      .padding({ top: this.statusBarHeight })
-      .systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Column() {
-        Row() {
-          Text('消息详情')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary_color'))
-            .layoutWeight(1);
-          Image($r('app.media.close'))
-            .width(28)
-            .height(28)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_tertiary_color'))
-            .padding(2)
-            .onClick(() => {
-              this.showDetail = false;
-            });
-        }
-        .width('100%')
-        .padding(16)
-        .alignItems(VerticalAlign.Center);
-      }
-      .width('100%')
-      .padding({ top: this.statusBarHeight })
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
+      .padding(16)
+      .alignItems(VerticalAlign.Center);
     }
+    .width('100%')
+    .padding({ top: this.statusBarHeight })
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
   // 消息详情全屏模态视图：完整展示标题/副标题/正文/时间，不截断

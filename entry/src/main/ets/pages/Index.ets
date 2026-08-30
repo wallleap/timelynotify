@@ -1,7 +1,6 @@
 import { NotifyView } from '../views/NotifyView';
 import { MineView } from '../views/MineView';
-import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
-import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
+import { resolveBlurStyle } from '../utils/ImmersiveUtil';
 
 // 底部 Tab 项定义
 interface TabItem {
@@ -15,7 +14,6 @@ interface TabItem {
 struct Index {
   @StorageProp('navBarHeight') navBarHeight: number = 0;
   @State currentIndex: number = 0;
-  private hdsController: HdsTabsController = new HdsTabsController();
   // Tab 数据
   private tabs: TabItem[] = [
     {
@@ -62,47 +60,26 @@ struct Index {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL) {
-      // ─── API 26+: HdsTabs 悬浮胶囊 + systemMaterialEffect 沉浸光感 ───
-      Column() {
-        HdsTabs({ controller: this.hdsController }) {
-          this.tabsContent();
-        }
-        .barOverlap(true)
-        .barPosition(BarPosition.End)
-        .barFloatingStyle({
-          barBottomMargin: this.navBarHeight,
-          systemMaterialEffect: {
-            materialType: hdsMaterial.MaterialType.ADAPTIVE,
-            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-          }
-        })
-        .onChange((index: number) => {
-          this.currentIndex = index;
-        })
+    // ─── 标准 Tabs：底部导航 + barBackgroundBlurStyle 毛玻璃底栏 ───
+    // （历史说明：曾有 API 26+ HdsTabs 悬浮胶囊 + systemMaterialEffect 分支，
+    //   因 AGC 拒绝 beta API 已移除，可检出 git tag `api26-beta-material` 恢复）
+    Column() {
+      Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
+        this.tabsContent();
       }
-      .width('100%')
-      .height('100%')
-    } else {
-      // ─── API < 26: 标准 Tabs + 自定义顶栏（barBackgroundBlurStyle 降级）───
-      Column() {
-        Tabs({ barPosition: BarPosition.End, index: this.currentIndex }) {
-          this.tabsContent();
-        }
-        .barMode(BarMode.Fixed)
-        .barWidth('100%')
-        .barHeight(56 + this.navBarHeight)
-        .animationDuration(300)
-        .barOverlap(true)
-        .barBackgroundBlurStyle(resolveBlurStyle('bar')!)
-        .barBackgroundColor($r('app.color.index_page_bottom_glass_background'))
-        .onChange((index: number) => {
-          this.currentIndex = index
-        })
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor($r('app.color.index_page_top_solid'))
+      .barMode(BarMode.Fixed)
+      .barWidth('100%')
+      .barHeight(56 + this.navBarHeight)
+      .animationDuration(300)
+      .barOverlap(true)
+      .barBackgroundBlurStyle(resolveBlurStyle('bar')!)
+      .barBackgroundColor($r('app.color.index_page_bottom_glass_background'))
+      .onChange((index: number) => {
+        this.currentIndex = index
+      })
     }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('app.color.index_page_top_solid'))
   }
 }
