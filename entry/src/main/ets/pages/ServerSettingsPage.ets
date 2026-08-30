@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ServerSettingsContent } from '../components/ServerSettingsContent';
-import { resolveBlurStyle } from '../utils/ImmersiveUtil';
+import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'ServerSettingsPage';
@@ -38,45 +39,75 @@ struct ServerSettingsPage {
   }
 
   build() {
-    // ─── Stack + 自定义顶栏（barBackgroundBlurStyle 毛玻璃）───
-    // （历史说明：曾有 API 26+ HdsNavigation 沉浸光感分支，因 AGC 拒绝 beta API 已移除）
-    Stack({ alignContent: Alignment.Top }) {
-      Scroll() {
-        Column() {
-          Row()
-            .width('100%')
-            .height(this.statusBarHeight + 72);
+    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+      // ─── API 26+: HdsNavigation 沉浸光感 ───
+      HdsNavigation() {
+        Scroll() {
+          Column() {
+            ServerSettingsContent();
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, bottom: 16 + this.navBarHeight });
+        }
+        .width('100%')
+        .height('100%')
+        .edgeEffect(EdgeEffect.Spring)
+        .align(Alignment.Top);
+      }
+      .titleBar({
+        enableComponentSafeArea: true,
+        content: { title: { mainTitle: '服务器设置' } },
+        style: {
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            materialLevel: hdsMaterial.MaterialLevel.EXQUISITE
+          },
+        }
+      })
+      .hideBackButton(false)
+      .titleMode(HdsNavigationTitleMode.MINI)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
+      .padding({ top: this.statusBarHeight })
+    } else {
+      // ─── API < 26: Stack + 自定义顶栏（barBackgroundBlurStyle 降级）───
+      Stack({ alignContent: Alignment.Top }) {
+        Scroll() {
+          Column() {
+            Row()
+              .width('100%')
+              .height(this.statusBarHeight + 72);
 
-          ServerSettingsContent();
+            ServerSettingsContent();
+          }
+          .width('100%')
+          .padding({
+            left: 16,
+            right: 16,
+            bottom: 16 + this.navBarHeight
+          });
+        }
+        .width('100%')
+        .height('100%')
+        .edgeEffect(EdgeEffect.Spring)
+        .align(Alignment.Top);
+
+        Row() {
+          this.topBarContent();
         }
         .width('100%')
         .padding({
-          left: 16,
-          right: 16,
-          bottom: 16 + this.navBarHeight
-        });
+          left: 8,
+          right: 8,
+          top: 16 + this.statusBarHeight,
+          bottom: 12
+        })
+        .backgroundBlurStyle(resolveBlurStyle('bar')!, { scale: 1.0 })
+        .backgroundColor($r('app.color.index_page_top_glass_background'));
       }
       .width('100%')
       .height('100%')
-      .edgeEffect(EdgeEffect.Spring)
-      .align(Alignment.Top);
-
-      Row() {
-        this.topBarContent();
-      }
-      .width('100%')
-      .padding({
-        left: 8,
-        right: 8,
-        top: 16 + this.statusBarHeight,
-        bottom: 12
-      })
-      .backgroundBlurStyle(resolveBlurStyle('bar')!, { scale: 1.0 })
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
+      .backgroundColor($r('app.color.index_page_body_background'));
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.index_page_body_background'));
   }
 
   private handleBack(): void {
