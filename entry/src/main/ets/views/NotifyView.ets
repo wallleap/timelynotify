@@ -99,6 +99,12 @@ export struct NotifyView {
       .onClick(() => {
         this.handleMoreClicked();
       });
+
+      // 多选胶囊按钮：非编辑态进入多选；编辑态退出并清空选中
+      this.multiSelectPill();
+
+      // 删除胶囊按钮
+      this.deletePill();
     }
     .width('100%')
     .padding({
@@ -113,9 +119,58 @@ export struct NotifyView {
     .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
+  // 降级分支「多选/取消」胶囊按钮：未编辑态显示「多选」进入选择；编辑态显示「取消」清空/退出；
+  // 毛玻璃模糊 + 半透明底色 + 高亮描边（与 HDS 分支系统 menu 槽位的两个按钮行为一致）
+  @Builder
+  multiSelectPill() {
+    Row() {
+      Text(this.isEditing ? '取消' : '多选')
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary_color'))
+    }
+    .height(38)
+    .padding({ left: 14, right: 14 })
+    .borderRadius(38)
+    .alignItems(VerticalAlign.Center)
+    .border({ width: 1, color: $r('app.color.glass_button_border') })
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .backgroundColor($r('app.color.glass_button_background'))
+    .onClick(() => {
+      this.handleMultiSelectClicked();
+    });
+  }
+
+  // 降级分支删除胶囊按钮：样式与「多选」一致，内部为删除图标；
+  // 非编辑态点击走清空全部（二次确认并重点提示不可恢复），编辑态点击删除选中消息
+  @Builder
+  deletePill() {
+    Row() {
+      Image($r('app.media.delete'))
+        .width(24)
+        .height(24)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.text_primary_color'))
+    }
+    .height(38)
+    .width(38)
+    .borderRadius(38)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .border({ width: 1, color: $r('app.color.glass_button_border') })
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .backgroundColor($r('app.color.glass_button_background'))
+    .onClick(() => {
+      this.handleDeletePillClicked();
+    });
+  }
+
   // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
   // 状态栏避让由 titleBar 级 avoidLayoutSafeArea: true 负责（系统将内容整体下移 statusBarHeight）；
   // 此处 padding 只留纯视觉余量，不得再叠加 statusBarHeight（titleBar 高度固定，会溢出裁剪 → 文字消失）。
+  // ⚠️ 内层 Row 全宽叠在标题栏上，与右侧系统 menu 槽位区域重叠：必须设 hitTestBehavior(None)
+  // 让 Row 自身不参与触摸测试（默认 Default 会阻塞兄弟节点），否则点击 menu 的「多选/删除」会误触发 title 事件；
+  // None 不阻塞子节点，标题文本/图标的 onClick 仍正常生效。
   @Builder
   customTitleContent() {
     Row({ space: 8 }) {
@@ -125,7 +180,11 @@ export struct NotifyView {
           .fontColor($r('app.color.text_primary_color'))
           .fontWeight(FontWeight.Bold)
           .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          // 点击标题文本打开服务器设置弹窗（热区仅文字宽度，不会盖住右侧 menu 按钮）
+          .onClick(() => {
+            this.handleMoreClicked();
+          });
 
         Image($r('app.media.select_more'))
           .width(24)
@@ -141,9 +200,8 @@ export struct NotifyView {
       .width(0)
       .padding({ right: 48 })
       .alignItems(VerticalAlign.Center)
-      .onClick(() => {
-        this.handleMoreClicked();
-      });
+      // 自身不参与触摸测试，避免全宽 Row 拦截右侧系统 menu 槽位按钮的点击（子节点 onClick 不受影响）
+      .hitTestBehavior(HitTestMode.None);
     }
     .width('100%')
     .padding({
@@ -394,7 +452,6 @@ export struct NotifyView {
   @Builder
   listView() {
     List({ space: 10, scroller: this.scroller }) {
-      // 首占位：两分支统一加 2，配合 List space(10)，列表顶部实际间距 = 2 + 10 = 12
       // 降级分支：Stack 叠层内容从窗口顶开始，占位还需叠加 statusBarHeight + titleBar(64) 手工避让
       if (SUPPORTS_IMMERSIVE_MATERIAL) {
         ListItem() {
@@ -406,7 +463,7 @@ export struct NotifyView {
         ListItem() {
           Row()
             .width('100%')
-            .height(this.statusBarHeight + 64 + 2);
+            .height(this.statusBarHeight + 64 + 14);
         }
       }
 

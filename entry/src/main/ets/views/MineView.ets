@@ -189,7 +189,7 @@ export struct MineView {
         // 首项占位：组件级安全区（enableComponentSafeArea）已自动让内容起始于 titleBar 下方 → HDS 无需占位
         // 降级（Stack 叠层）仍需手工 statusBarHeight + titleBar(56) + 4 余量
         if (!SUPPORTS_IMMERSIVE_MATERIAL) {
-          Row().width('100%').height(this.statusBarHeight + 56 + 4);
+          Row().width('100%').height(this.statusBarHeight + 56 + 10);
         }
 
         // 通知设置卡片
