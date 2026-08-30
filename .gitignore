@@ -15,3 +15,7 @@
 
 # CLT zip 仅存在于构建环境（2.2GB，由 docker-image.yml 下载/缓存），严禁入库
 docker/ci/clt.zip
+
+# hvigor 签名密钥材料（解密 build-profile 加密串密码）：公开仓库入库=签名身份泄露，
+# CI 由 SIGN_OHOS_MATERIAL_B64 Secret 注入到 signature/material
+signature/material/

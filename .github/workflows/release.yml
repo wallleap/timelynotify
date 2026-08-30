@@ -134,8 +134,8 @@ jobs:
 # ============================================================
 # Job 2 · build-sign —— hvigor assembleApp 直接产出签名 .app（CLT 原生签名）
 #   仓库 build-profile.json5 内置 release 签名配置（相对路径 ./signature/*，
-#   密码为 DevEco 本机加密串）；加密串的解密密钥位于 ~/.ohos/config/material，
-#   由 secrets（SIGN_OHOS_MATERIAL_B64）注入 CI 后 hvigor 即可解密签名。
+#   密码为 DevEco 本机加密串）；加密串的解密密钥 material/ 由 secrets
+#   （SIGN_OHOS_MATERIAL_B64）注入到 storeFile 同级目录后 hvigor 即可解密签名。
 #   CI 构建前用 node 将 signingConfigs 收敛为 [release] 并把 product 切到 release
 #   （避开 default 调试配置指向本机不存在文件的问题）
 # ============================================================
@@ -299,10 +299,11 @@ jobs:
 
       # --------------------------------------------------------
       # 还原 hvigor 签名密钥材料（解密 build-profile 加密串密码的关键）
-      #   加密串由 DevEco 在本机用 ~/.ohos/config/material 下的密钥生成，
-      #   本地打包该目录为 Secret（SIGN_OHOS_MATERIAL_B64），CI 还原到同位置后
-      #   hvigor 即可在 Linux 上解密密码并完成签名
+      #   CI 实测：hvigor SignHap 在 storeFile 同级目录查找 material/
+      #   （报错路径 <workspace>/signature/material 印证），不读 ~/.ohos/config
       #   本地生成: tar -C ~/.ohos/config -czf - material | base64 > material.b64
+      #   注入位置: <workspace>/signature/material（与本地签名成功布局一致；
+      #   已加入 .gitignore，只经 Secret 注入，不入库）
       # --------------------------------------------------------
       - name: 还原 hvigor 签名密钥材料
         env:
@@ -315,10 +316,9 @@ jobs:
             echo "  tar -C ~/.ohos/config -czf - material | base64"
             exit 1
           fi
-          mkdir -p "$HOME/.ohos/config"
-          echo "$SIGN_OHOS_MATERIAL_B64" | base64 -d | tar -xzf - -C "$HOME/.ohos/config"
-          echo "--- hvigor 密钥材料已还原 ---"
-          find "$HOME/.ohos/config/material" -type f | head -20
+          echo "$SIGN_OHOS_MATERIAL_B64" | base64 -d | tar -xzf - -C "$GITHUB_WORKSPACE/signature"
+          echo "--- hvigor 密钥材料已还原到 signature/material ---"
+          find "$GITHUB_WORKSPACE/signature/material" -type f | head -20
 
       # --------------------------------------------------------
       # 启用 release 签名（hvigor 直接签名）
