@@ -7,24 +7,24 @@
         "material": {
           "certpath": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001B9BE7A41B98C492D54DAE16A158F7774D368E3579485B12E4E0DF13B2E92EB2ACE26B3FF2E8BD54",
+          "keyPassword": "0000001B2929F5369CE751E38F9B5C0EC872BDF712C7C21C659451C0D900CA9AD0C058D91113CCD5923CBB",
           "profile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p7b",
           "signAlg": "SHA256withECDSA",
           "storeFile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p12",
-          "storePassword": "0000001BC24021AFA7ADC40552B2604DD2077EA779E116446EA366AC96AC69FFC72DB366733298B99359DA"
+          "storePassword": "0000001B10A8D5079EA318656C1E503A1A7A39DF951AC382723F446610C1B88417A23F8CC760922297729B"
         }
       },
       {
         "name": "release",
         "type": "HarmonyOS",
         "material": {
-          "storeFile": "./signature/release.p12",
-          "storePassword": "0000001B6595C27A049DA74FBBCD75FA511758A95706A0EB4C83399CE3AB28A2E517DB21424CB7C18557E7",
+          "storeFile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/release.p12",
+          "storePassword": "0000001B8DF311BC09837039C3D7809A6BE2A454ED6A5D7223459303FEDAD4DDBC81FDDF786D95DAC65403",
           "keyAlias": "tn9",
-          "keyPassword": "0000001BEC984FAD113C9B378FA2DEE222C0235DFBEBF67969DB485711B85E6E6A8BF301B077DEA060ABF8",
+          "keyPassword": "0000001B2D981EE91EB3C85503FAC926EDF9D4F2DBB4695D90CBB2CAB1C906C23C4C8BD1528FFCC47ADE58",
           "signAlg": "SHA256withECDSA",
-          "profile": "./signature/release.p7b",
-          "certpath": "./signature/release.cer"
+          "profile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/release.p7b",
+          "certpath": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/release.cer"
         }
       }
     ],
