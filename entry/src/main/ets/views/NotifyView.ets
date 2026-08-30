@@ -10,7 +10,7 @@ import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
-import { DOMAIN } from '../common/Constant';
+import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_EDITING } from '../common/Constant';
 import showToast from '../components/showToast';
 
 const TAG: string = 'NotifyView';
@@ -30,8 +30,8 @@ export struct NotifyView {
   // 点击查看的消息详情（bindContentCover 全屏模态）
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
-  // 多选模式状态
-  @State isEditing: boolean = false;
+  // 多选模式状态：经 @StorageLink 同步到 AppStorage，Index.onBackPress 读取以拦截系统返回退出编辑
+  @StorageLink(KEY_NOTIFY_EDITING) @Watch('onIsEditingChanged') isEditing: boolean = false;
   @State selectedIds: number[] = [];
   // 导出选中消息：防重复触发
   @State exportingSelected: boolean = false;
@@ -40,6 +40,8 @@ export struct NotifyView {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   // 底部导航条高度（vp），编辑操作栏与列表底部占位避让用
   @StorageProp('navBarHeight') navBarHeight: number = 0;
+  // 主页当前选中 Tab 索引（Index 经 @StorageLink 写入）：切走「通知」Tab 时自动退出多选模式
+  @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
   // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
@@ -57,6 +59,8 @@ export struct NotifyView {
     // 否则 currentId='' 会走兜底生产 URL，显示/请求错误的地址。
     this.initAfterServerManagerReady();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
+      // 切换服务器后列表会整体刷新，selectedIds 属于旧服务器的消息 ID，继续操作会错删/报错，必须退出多选
+      this.exitEditMode();
       this.refresh();
       // 服务器切换后重新拉取消息
       this.loadMessages();
@@ -634,15 +638,20 @@ export struct NotifyView {
             this.selectedIds = all;
           }
         });
-      // 导出选中：有选中时启用；导出中显示加载文案
+      // 导出选中：有选中时启用；导出中显示加载文案；未选中时点击提示
       Text(this.exportingSelected ? `导出中…` : `导出(${this.selectedIds.length})`)
         .fontSize(15)
         .fontColor(this.selectedIds.length > 0 && !this.exportingSelected ? $r('app.color.text_accent_color') :
           $r('app.color.text_quinary_color'))
         .padding({ right: 16 })
         .onClick(() => {
-          if (this.selectedIds.length > 0 && !this.exportingSelected) {
+          if (this.exportingSelected) {
+            return; // 导出中防重复触发
+          }
+          if (this.selectedIds.length > 0) {
             this.exportSelectedMessages();
+          } else {
+            showToast(this.getUIContext(), '请先选择要导出的消息');
           }
         });
       Text(`删除(${this.selectedIds.length})`)
@@ -651,6 +660,8 @@ export struct NotifyView {
         .onClick(() => {
           if (this.selectedIds.length > 0) {
             this.confirmDeleteSelected();
+          } else {
+            showToast(this.getUIContext(), '请先选择要删除的消息');
           }
         });
     }
@@ -788,9 +799,30 @@ export struct NotifyView {
     this.selectedIds = [];
   }
 
-  // 顶栏「多选」按钮的点击逻辑：非编辑态进入多选；
-  // 编辑态有选中时清空选择，无选中时退出编辑
+  // Tab 切换监听（homeTabIndex 的 @Watch 回调）：切走「通知」Tab 后列表不可见，
+  // 多选状态保留无意义，自动退出编辑
+  private onHomeTabIndexChanged(): void {
+    if (this.isEditing) {
+      this.exitEditMode();
+    }
+  }
+
+  // 编辑态变化监听（isEditing 的 @Watch 回调）：任何来源退出编辑（自身退出/Tab 切换/
+  // Index.onBackPress 返回拦截）时，同步清空选中项，保证状态一致
+  private onIsEditingChanged(): void {
+    if (!this.isEditing && this.selectedIds.length > 0) {
+      this.selectedIds = [];
+    }
+  }
+
+  // 顶栏「多选」按钮的点击逻辑：无消息时提示不可多选；
+  // 非编辑态进入多选；编辑态有选中时清空选择，无选中时退出编辑
   private handleMultiSelectClicked(): void {
+    // 空列表无可多选，避免进入编辑态后底部操作栏不显示的"假编辑"状态
+    if (this.messages.length === 0) {
+      showToast(this.getUIContext(), '暂无可多选的消息');
+      return;
+    }
     if (this.isEditing) {
       // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
       if (this.selectedIds.length === this.messages.length) {
@@ -806,11 +838,13 @@ export struct NotifyView {
   }
 
   // 顶栏删除胶囊按钮的点击逻辑：非编辑态清空全部消息（二次确认）；
-  // 编辑态删除选中消息（有选中才触发，与底部「删除(N)」按钮一致）
+  // 编辑态删除选中消息（有选中才触发，未选中时提示，与底部「删除(N)」按钮一致）
   private handleDeletePillClicked(): void {
     if (this.isEditing) {
       if (this.selectedIds.length > 0) {
         this.confirmDeleteSelected();
+      } else {
+        showToast(this.getUIContext(), '请先选择要删除的消息');
       }
     } else {
       this.confirmDeleteAll();

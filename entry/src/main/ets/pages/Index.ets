@@ -2,6 +2,7 @@ import { NotifyView } from '../views/NotifyView';
 import { MineView } from '../views/MineView';
 import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
+import { KEY_HOME_TAB_INDEX, KEY_NOTIFY_EDITING } from '../common/Constant';
 
 // 底部 Tab 项定义
 interface TabItem {
@@ -14,7 +15,10 @@ interface TabItem {
 @Component
 struct Index {
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  @State currentIndex: number = 0;
+  // 当前选中 Tab：经 @StorageLink 双向同步到 AppStorage，NotifyView 通过 @Watch 监听以在切走时退出多选模式
+  @StorageLink(KEY_HOME_TAB_INDEX) currentIndex: number = 0;
+  // 通知页多选编辑态（NotifyView 经 @StorageLink 写入）：onBackPress 据此拦截系统返回
+  @StorageLink(KEY_NOTIFY_EDITING) notifyIsEditing: boolean = false;
   private hdsController: HdsTabsController = new HdsTabsController();
   // Tab 数据
   private tabs: TabItem[] = [
@@ -59,6 +63,17 @@ struct Index {
       MineView()
     }
     .tabBar(this.tabBuilder(this.tabs[1], 1))
+  }
+
+  // 系统返回拦截：通知页多选编辑态时，返回键/侧滑先退出多选而不是离开页面；
+  // 返回 true 表示事件已消费，false 走默认返回行为（退出应用）
+  onBackPress(): boolean {
+    if (this.currentIndex === 0 && this.notifyIsEditing) {
+      // 置 false 后经 @StorageLink 同步回 NotifyView，等价于 exitEditMode
+      this.notifyIsEditing = false;
+      return true;
+    }
+    return false;
   }
 
   build() {
