@@ -7,18 +7,31 @@
         "material": {
           "certpath": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001AEAA0796DD49A067ADFCB28117859989127763A37384AA9CF0F0B11CEA8C68423365FFCD027FF",
+          "keyPassword": "0000001B9BE7A41B98C492D54DAE16A158F7774D368E3579485B12E4E0DF13B2E92EB2ACE26B3FF2E8BD54",
           "profile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p7b",
           "signAlg": "SHA256withECDSA",
           "storeFile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p12",
-          "storePassword": "0000001A9061605AAE77E99244D2FC422BE105365D5A7F268F50D30D2D953C6865E7760D56421D60F8F9"
+          "storePassword": "0000001BC24021AFA7ADC40552B2604DD2077EA779E116446EA366AC96AC69FFC72DB366733298B99359DA"
+        }
+      },
+      {
+        "name": "release",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "./signature/release.p12",
+          "storePassword": "0000001B6595C27A049DA74FBBCD75FA511758A95706A0EB4C83399CE3AB28A2E517DB21424CB7C18557E7",
+          "keyAlias": "tn9",
+          "keyPassword": "0000001BEC984FAD113C9B378FA2DEE222C0235DFBEBF67969DB485711B85E6E6A8BF301B077DEA060ABF8",
+          "signAlg": "SHA256withECDSA",
+          "profile": "./signature/release.p7b",
+          "certpath": "./signature/release.cer"
         }
       }
     ],
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
+        "signingConfig": "release",
         "targetSdkVersion": "26.0.0",
         "compatibleSdkVersion": "6.1.0(23)",
         "runtimeOS": "HarmonyOS",

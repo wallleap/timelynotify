@@ -132,11 +132,12 @@ jobs:
           echo "========================================"
 
 # ============================================================
-# Job 2 · build-sign —— assembleApp 构建 unsigned.app → hap-sign-tool 对 .app 整体重签名
-#   （HarmonyOS NEXT 签名架构：签名块附加在 .app(zip) 尾部，包内 HAP 不含签名条目——
-#     实测 hvigor 原生产物：signed.app = unsigned.app + ~15KB 尾部签名块；
-#     hap-sign-tool 只有 sign-app/verify-app，无 HAP 签名子命令；
-#     不可拆包单签 HAP 再回填，AGC 会报 991 非法软件包）
+# Job 2 · build-sign —— hvigor assembleApp 直接产出签名 .app（CLT 原生签名）
+#   仓库 build-profile.json5 内置 release 签名配置（相对路径 ./signature/*，
+#   密码为 DevEco 本机加密串）；加密串的解密密钥位于 ~/.ohos/config/material，
+#   由 secrets（SIGN_OHOS_MATERIAL_B64）注入 CI 后 hvigor 即可解密签名。
+#   CI 构建前用 node 将 signingConfigs 收敛为 [release] 并把 product 切到 release
+#   （避开 default 调试配置指向本机不存在文件的问题）
 # ============================================================
   build-sign:
     name: Build · Sign APP
@@ -268,48 +269,82 @@ jobs:
             s/\"versionCode\"\s*:\s*\d+/\"versionCode\": $VERSION_CODE/;
             s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$VERSION\"/;
           " AppScope/app.json5
-          # 剥离工程内调试签名（material 是 Mac 本机加密材料，CI 容器无法解析，hvigor SignHap 会报 00303107；
-          # 且 hvigor 直接签名要求 DevEco 加密密码，明文密码报 00303116）
-          # → 让 hvigor 产出 unsigned HAP，由后续 hap-sign-tool 步骤用 release 证书重签名
-          perl -0pi -e 's/\n\s*"signingConfig":\s*"default",//' build-profile.json5
-          perl -0pi -e 's/"signingConfigs":\s*\[.*?\]/"signingConfigs": []/s' build-profile.json5
-          echo "--- build-profile.json5 调试签名已剥离 ---"
           echo "--- 注入结果 ---"
           cat AppScope/app.json5
 
       # --------------------------------------------------------
-      # 解码签名材料（发布版 .p12 / .cer / .p7b，从 secrets 的 base64 写回文件）
-      # 注意：签发动作在构建之后由 hap-sign-tool 完成（hap-sign-tool 用明文密码；
-      #       hvigor 直接签名需 DevEco 本机加密密码，CI 不可行，实测报 00303116）
+      # 签名材料校验（发布版 .p12 / .cer / .p7b 放在仓库 signature/ 目录，随 checkout 就绪；
+      # build-profile.json5 的 release 签名配置以相对路径引用它们）
       # --------------------------------------------------------
-      - name: 解码签名材料
-        env:
-          SIGN_STORE_P12: ${{ secrets.SIGN_STORE_P12 }}
-          SIGN_CERT_CER:  ${{ secrets.SIGN_CERT_CER }}
-          SIGN_PROFILE_P7B: ${{ secrets.SIGN_PROFILE_P7B }}
+      - name: 校验签名材料
         run: |
           set -euo pipefail
-          MATERIAL_DIR="$HOME/sign_material"
-          mkdir -p "$MATERIAL_DIR"
-          # 必填项校验
-          for v in SIGN_STORE_P12 SIGN_CERT_CER SIGN_PROFILE_P7B; do
-            VAL="${!v}"
-            if [ -z "$VAL" ]; then
-              echo "错误: secret $v 为空。请在仓库 Settings → Secrets 中配置发布签名材料。"
-              echo "  - SIGN_STORE_P12  = base64(发布密钥库 .p12)"
-              echo "  - SIGN_CERT_CER   = base64(发布证书 .cer)"
-              echo "  - SIGN_PROFILE_P7B= base64(发布 Profile .p7b)"
+          MATERIAL_DIR="$GITHUB_WORKSPACE/signature"
+          # 材料文件存在性校验
+          for f in release.p12 release.cer release.p7b; do
+            [ -f "$MATERIAL_DIR/$f" ] || {
+              echo "错误: 缺少签名材料 $MATERIAL_DIR/$f"
+              echo "请将发布签名材料提交到仓库 signature/ 目录："
+              echo "  - signature/release.p12  （发布密钥库）"
+              echo "  - signature/release.cer  （发布证书）"
+              echo "  - signature/release.p7b  （发布 Profile）"
               exit 1
-            fi
+            }
           done
-          echo "$SIGN_STORE_P12"   | base64 -d > "$MATERIAL_DIR/release.p12"
-          echo "$SIGN_CERT_CER"    | base64 -d > "$MATERIAL_DIR/release.cer"
-          echo "$SIGN_PROFILE_P7B" | base64 -d > "$MATERIAL_DIR/release.p7b"
           ls -lh "$MATERIAL_DIR"
           # SHA256 指纹（便于人工比对 AGC 控制台）
           echo "--- 证书指纹 ---"
           keytool -printcert -file "$MATERIAL_DIR/release.cer" 2>/dev/null | grep -E "SHA256|指纹" || true
           echo "MATERIAL_DIR=$MATERIAL_DIR" >> "$GITHUB_ENV"
+
+      # --------------------------------------------------------
+      # 还原 hvigor 签名密钥材料（解密 build-profile 加密串密码的关键）
+      #   加密串由 DevEco 在本机用 ~/.ohos/config/material 下的密钥生成，
+      #   本地打包该目录为 Secret（SIGN_OHOS_MATERIAL_B64），CI 还原到同位置后
+      #   hvigor 即可在 Linux 上解密密码并完成签名
+      #   本地生成: tar -C ~/.ohos/config -czf - material | base64 > material.b64
+      # --------------------------------------------------------
+      - name: 还原 hvigor 签名密钥材料
+        env:
+          SIGN_OHOS_MATERIAL_B64: ${{ secrets.SIGN_OHOS_MATERIAL_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGN_OHOS_MATERIAL_B64" ]; then
+            echo "错误: secret SIGN_OHOS_MATERIAL_B64 为空。"
+            echo "请在本地执行以下命令生成内容，并配置到仓库 Settings → Secrets："
+            echo "  tar -C ~/.ohos/config -czf - material | base64"
+            exit 1
+          fi
+          mkdir -p "$HOME/.ohos/config"
+          echo "$SIGN_OHOS_MATERIAL_B64" | base64 -d | tar -xzf - -C "$HOME/.ohos/config"
+          echo "--- hvigor 密钥材料已还原 ---"
+          find "$HOME/.ohos/config/material" -type f | head -20
+
+      # --------------------------------------------------------
+      # 启用 release 签名（hvigor 直接签名）
+      #   仓库 build-profile.json5 同时含 default(调试)/release 两套签名配置：
+      #   - default 指向 Mac 本机 ~/.ohos/config 下的文件，CI 上不存在
+      #   - CI 只需要 release（相对路径 ./signature/*，随 checkout 就绪）
+      #   → 用 node 把 signingConfigs 收敛为 [release]，并把 product 全部切到 release
+      # --------------------------------------------------------
+      - name: 启用 release 签名
+        run: |
+          set -euo pipefail
+          export PATH="$NODE_HOME/bin:$PATH"
+          node - <<'JS'
+          const fs = require('fs');
+          const src = fs.readFileSync('build-profile.json5', 'utf8');
+          // 当前 build-profile.json5 为 DevEco 写入的标准 JSON（无注释），可直接解析
+          const profile = JSON.parse(src);
+          const release = (profile.app.signingConfigs || []).find((c) => c.name === 'release');
+          if (!release) { console.error('错误: build-profile.json5 缺少 name=release 的签名配置'); process.exit(1); }
+          profile.app.signingConfigs = [release];
+          for (const p of profile.app.products || []) p.signingConfig = 'release';
+          fs.writeFileSync('build-profile.json5', JSON.stringify(profile, null, 2));
+          console.log('已切换: signingConfigs=[release], products[*].signingConfig=release');
+          JS
+          echo "--- 切换结果 ---"
+          grep -nE '"signingConfig"|"name": "release"' build-profile.json5
 
       # --------------------------------------------------------
       # 生成 BuildInfo.ets（构建溯源信息，App「关于 → 构建信息」展示 + 防伪比对依据）
@@ -347,12 +382,12 @@ jobs:
           echo "build_time=$BUILD_TIME"   >> "$GITHUB_OUTPUT"
 
       # --------------------------------------------------------
-      # 构建 unsigned APP（release 模式，signingConfigs 已剥离）
+      # 构建签名 APP（release 模式，hvigor 直接签名）
       #   assembleApp = 工程级打包，.app = zip(pac.json + pack.info + HAP)，全部由 hvigor 生成
-      #   签名配置为空时 hvigor 跳过签名产出 unsigned.app（"No signingConfig" WARN 可忽略）
-      #   签发由后续 hap-sign-tool 完成（hvigor 直接签名需 DevEco 本机加密密码，CI 报 00303116）
+      #   signingConfigs 已收敛为 [release]（相对路径材料 + material 密钥解密加密串密码），
+      #   hvigor 原生完成签名，产物为 *-signed.app
       # --------------------------------------------------------
-      - name: 构建 APP（release）
+      - name: 构建 APP（release，hvigor 签名）
         run: |
           set -euo pipefail
           "$HVIGORW" assembleApp -p product=default -p buildMode=release --no-daemon 2>&1 | tail -40
@@ -362,20 +397,34 @@ jobs:
           ls -lh "$OUTDIR" || { echo "错误: 产物目录不存在，构建失败"; exit 1; }
 
       # --------------------------------------------------------
-      # 定位 unsigned APP
+      # 定位签名 APP + 完整性自检
+      #   自检 1：zip 结构完整
+      #   自检 2：EOCD 之后必须存在尾部签名附加块（未签名的 .app 没有）
       # --------------------------------------------------------
-      - name: 定位 unsigned APP
-        id: find_unsigned
+      - name: 定位签名 APP
+        id: find_signed
         run: |
           set -euo pipefail
-          APP="$(find build/outputs -name '*-unsigned.app' -type f 2>/dev/null | head -n1)"
+          APP="$(find build/outputs -name '*-signed.app' -type f 2>/dev/null | head -n1)"
           if [ -z "$APP" ]; then
-            echo "错误: 未找到 unsigned .app，产物文件:"
+            echo "错误: 未找到 signed .app（hvigor 签名可能失败），产物文件:"
             find build/outputs -type f 2>/dev/null | head
             exit 1
           fi
-          echo "unsigned_app=$APP" >> "$GITHUB_OUTPUT"
-          echo "找到 unsigned APP: $APP"
+          # 自检 1：zip 结构完整
+          unzip -t "$APP" > /dev/null || { echo "错误: 签名产物 zip 结构损坏"; exit 1; }
+          # 自检 2：EOCD 之后必须存在尾部签名附加块
+          python3 - "$APP" <<'PY'
+          import sys
+          data = open(sys.argv[1], 'rb').read()
+          eocd = data.rfind(b'PK\x05\x06')
+          assert eocd != -1, 'zip EOCD 缺失'
+          tail = len(data) - (eocd + 22)
+          assert tail > 100, f'尾部无签名块（仅 {tail} 字节）——签名未生效'
+          print(f'签名块自检通过：EOCD 后附加 {tail} 字节签名数据')
+          PY
+          echo "signed_app=$APP" >> "$GITHUB_OUTPUT"
+          echo "找到签名 APP: $APP"
           ls -lh "$APP"
 
       # --------------------------------------------------------
@@ -397,84 +446,12 @@ jobs:
           echo "签名证书指纹: $FP"
           echo "fingerprint=$FP" >> "$GITHUB_OUTPUT"
           # 指纹文件随 artifact 上传并挂到 Release
-          echo "$FP" > "$HOME/sign_material/cert_fingerprint.txt"
-
-      # --------------------------------------------------------
-      # 定位签名工具 hap-sign-tool.jar（SDK toolchains/lib 下）
-      # --------------------------------------------------------
-      - name: 定位签名工具 hap-sign-tool.jar
-        id: find_jarsigner
-        run: |
-          set -euo pipefail
-          JAR="$(find "$DEVECO_SDK_HOME" -name 'hap-sign-tool.jar' -type f 2>/dev/null | head -n1)"
-          if [ -z "$JAR" ]; then
-            echo "错误: 在 DEVECO_SDK_HOME=$DEVECO_SDK_HOME 下找不到 hap-sign-tool.jar"
-            find "$DEVECO_SDK_HOME" -name '*.jar' 2>/dev/null | head -20 || true
-            exit 1
-          fi
-          echo "hap_sign_tool_jar=$JAR" >> "$GITHUB_OUTPUT"
-          echo "找到签名工具: $JAR"
-
-      # --------------------------------------------------------
-      # .app 整体重签名（release 证书）
-      #   sign-app 的签名对象是 .app 整体：签名块附加在 zip 尾部（hvigor SignApp 同款原理）
-      #   （mode=localSign，SHA256withECDSA —— HarmonyOS 要求；hap-sign-tool 用明文密码）
-      # --------------------------------------------------------
-      - name: .app 重签名（release 证书）
-        id: sign
-        env:
-          SIGN_STORE_PASSWORD: ${{ secrets.SIGN_STORE_PASSWORD }}
-          SIGN_KEY_PASSWORD:   ${{ secrets.SIGN_KEY_PASSWORD }}
-          SIGN_KEY_ALIAS:      ${{ secrets.SIGN_KEY_ALIAS }}
-        run: |
-          set -euo pipefail
-          # 必填密码/别名校验
-          for v in SIGN_STORE_PASSWORD SIGN_KEY_PASSWORD SIGN_KEY_ALIAS; do
-            VAL="${!v}"
-            if [ -z "$VAL" ]; then
-              echo "错误: secret $v 未配置（SIGN_STORE_PASSWORD / SIGN_KEY_PASSWORD / SIGN_KEY_ALIAS）"
-              exit 1
-            fi
-          done
-          UNSIGNED_APP="${{ steps.find_unsigned.outputs.unsigned_app }}"
-          SIGNED_APP="$HOME/app-signed.tmp"
-          JAR="${{ steps.find_jarsigner.outputs.hap_sign_tool_jar }}"
-
-          echo "执行 .app 整体签名（敏感参数已屏蔽显示）:"
-          java -jar "$JAR" sign-app \
-            -mode          localSign \
-            -keyAlias      "$SIGN_KEY_ALIAS" \
-            -signAlg       SHA256withECDSA \
-            -keystoreFile  "$MATERIAL_DIR/release.p12" \
-            -keystorePwd   "$SIGN_STORE_PASSWORD" \
-            -keyPwd        "$SIGN_KEY_PASSWORD" \
-            -appCertFile   "$MATERIAL_DIR/release.cer" \
-            -profileFile   "$MATERIAL_DIR/release.p7b" \
-            -inFile        "$UNSIGNED_APP" \
-            -outFile       "$SIGNED_APP"
-          if [ ! -f "$SIGNED_APP" ]; then echo "错误: 签名失败，未生成签名产物"; exit 1; fi
-
-          # 自检 1：zip 结构完整
-          unzip -t "$SIGNED_APP" > /dev/null || { echo "错误: 签名产物 zip 结构损坏"; exit 1; }
-          # 自检 2：EOCD 之后必须存在尾部签名附加块（未签名的 .app 没有）
-          python3 - "$SIGNED_APP" <<'PY'
-          import sys
-          data = open(sys.argv[1], 'rb').read()
-          eocd = data.rfind(b'PK\x05\x06')
-          assert eocd != -1, 'zip EOCD 缺失'
-          tail = len(data) - (eocd + 22)
-          assert tail > 100, f'尾部无签名块（仅 {tail} 字节）——签名未生效'
-          print(f'签名块自检通过：EOCD 后附加 {tail} 字节签名数据')
-          PY
-          echo "--- 签名完成 ---"
-          ls -lh "$SIGNED_APP"
-          echo "signed_app=$SIGNED_APP" >> "$GITHUB_OUTPUT"
+          echo "$FP" > "$HOME/cert_fingerprint.txt"
 
       # --------------------------------------------------------
       # 重命名产物 + 计算 SHA256
-      #   .app → AGC 上传 + GitHub Release（AGC 唯一合法发布形态）
-      #   注：不再单独产出 .hap —— HAP 级签名仅 hvigor（DevEco 本机材料）可完成，
-      #   hap-sign-tool 无 HAP 签名子命令；安装请走 AGC 测试/上架渠道
+      #   .app → AGC 上传 + GitHub Release（AGC 唯一合法发布形态）；
+      #   安装请走 AGC 测试/上架渠道
       # --------------------------------------------------------
       - name: 重命名产物 + 计算 SHA256
         id: sha
@@ -483,13 +460,13 @@ jobs:
           VERSION="${{ needs.prepare.outputs.version }}"
           BASENAME="timelynotify-${VERSION}-signed"
           APP_OUT="$HOME/$BASENAME.app"
-          cp "${{ steps.sign.outputs.signed_app }}" "$APP_OUT"
+          cp "${{ steps.find_signed.outputs.signed_app }}" "$APP_OUT"
 
           APP_SHA="$(sha256sum "$APP_OUT" | awk '{print $1}')"
           echo "$APP_SHA  $BASENAME.app" > "$HOME/$BASENAME.app.sha256"
           cat "$HOME/$BASENAME.app.sha256"
           # 证书指纹文件随 artifact 上传并挂到 Release（用户防伪比对用）
-          cp "$HOME/sign_material/cert_fingerprint.txt" "$HOME/$BASENAME.app-cert-fingerprint.txt"
+          cp "$HOME/cert_fingerprint.txt" "$HOME/$BASENAME.app-cert-fingerprint.txt"
 
           {
             echo "app_out=$APP_OUT" >> "$GITHUB_OUTPUT"
