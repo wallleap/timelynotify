@@ -445,7 +445,12 @@ jobs:
           U_SIZE=$(stat -c%s "$UNSIGNED_APP"); S_SIZE=$(stat -c%s "$SIGNED_APP")
           [ "$S_SIZE" -gt "$U_SIZE" ] || { echo "错误: 签名产物(${S_SIZE}B) 未大于源包(${U_SIZE}B)，签名未生效"; exit 1; }
           # 自检 3：官方 verify-app 验签（验签名块 + 证书链 + Profile，最权威）
-          java -jar "$JAR" verify-app -inFile "$SIGNED_APP" || { echo "错误: verify-app 验签失败"; exit 1; }
+          # （outCertChain/outProfile 为其必填的验签结果输出参数）
+          java -jar "$JAR" verify-app \
+            -inFile        "$SIGNED_APP" \
+            -outCertChain  "$HOME/verify-certchain.out" \
+            -outProfile    "$HOME/verify-profile.out" || { echo "错误: verify-app 验签失败"; exit 1; }
+          echo "verify-app 验签通过（证书链/profile 已输出到 HOME）"
           echo "--- 签名完成 ---"
           ls -lh "$SIGNED_APP"
           echo "signed_app=$SIGNED_APP" >> "$GITHUB_OUTPUT"
