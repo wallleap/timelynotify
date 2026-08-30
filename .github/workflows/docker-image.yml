@@ -31,7 +31,7 @@ on:
         required: false
         default: ''
       image_tag:
-        description: '附加镜像 tag（如 clt-26.0.0.621；latest 总是会推送）'
+        description: '附加镜像 tag（如 clt-26.0.0.821；latest 总是会推送）'
         required: false
         default: ''
 
@@ -43,10 +43,10 @@ permissions:
   contents: read
   packages: write
 
-# 内置默认下载源（官方 CLT 26.0.0.621 的自托管转存，SHA256 已固定；与 Dockerfile 默认一致）
+# 内置默认下载源（官方 CLT 26.0.0.821 的自托管转存，SHA256 已固定；与 Dockerfile 默认一致）
 env:
-  CLT_URL_DEFAULT: https://static.oicode.cn/temp/ctl/commandline-tools-linux-x64-26.0.0.621.zip
-  CLT_SHA256_DEFAULT: 0cea7ad6cc1af98ac701b9c61b7c9aae2d0f2104749a80ae84c1f6ca0fc17555
+  CLT_URL_DEFAULT: https://static.oicode.cn/ctl/commandline-tools-linux-x64-26.0.0.821.zip
+  CLT_SHA256_DEFAULT: 58da7359019e9360a8bb82da0cd1d3b3b26fedc338379f257849f2162e3ac1fc
 
 # 统一用 bash 跑 run 步骤（与容器内兼容性保持一致）
 defaults:

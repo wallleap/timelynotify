@@ -20,7 +20,7 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ---- 可覆盖的构建参数：CLT zip 的 SHA256（用于构建期完整性校验） ----
-ARG CLT_SHA256=0cea7ad6cc1af98ac701b9c61b7c9aae2d0f2104749a80ae84c1f6ca0fc17555
+ARG CLT_SHA256=58da7359019e9360a8bb82da0cd1d3b3b26fedc338379f257849f2162e3ac1fc
 
 # ---- 基础工具 ----
 # unzip: 解包 CLT；zstd: docker GHA 缓存压缩所需；openjdk-17-jdk: hap-sign-tool.jar 与 hvigor 运行；jq: 流水线 JSON 解析
