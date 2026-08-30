@@ -22,6 +22,12 @@
       {
         "name": "ohos.arkui.UIMaterial.state",
         "value": "enable"
+      },
+      {
+        // 官方安全区规范：将摄像头挖孔区视为避让区，页面默认避让挖孔，
+        // 防止特殊挖孔设备上状态栏时间/电量图标与标题栏内容重叠（API 12+）
+        "name": "avoid_cutout",
+        "value": "true"
       }
     ],
     "requestPermissions": [

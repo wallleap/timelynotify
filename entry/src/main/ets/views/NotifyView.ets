@@ -8,7 +8,8 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
-import { getSystemMaterial, resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
 import showToast from '../components/showToast';
 
@@ -39,8 +40,6 @@ export struct NotifyView {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   // 底部导航条高度（vp），编辑操作栏与列表底部占位避让用
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  // 沉浸光感材质就绪信号：uiMaterial 模块（API 26+）动态加载成功后置 true，触发重渲染切换到材质分支
-  @StorageProp('immersiveMaterialReady') materialReady: boolean = false;
   // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
@@ -71,220 +70,128 @@ export struct NotifyView {
     }
   }
 
+  // 降级顶栏：低版本 SDK 手工 Stack 叠层，blurStyle + 半透明底色实现毛玻璃
   @Builder
-  titleBar() {
-    if (this.materialReady) {
-      Row({ space: 8 }) {
-        Row({ space: 2 }) {
-          Text(this.title)
-            .fontSize(24)
-            .fontColor($r('app.color.text_primary_color'))
-            .fontWeight(FontWeight.Bold)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-
-          Image($r('app.media.select_more'))
-            .width(24)
-            .height(24)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_primary_color'))
-            .flexShrink(0)
-            .onClick(() => {
-              this.handleMoreClicked();
-            });
-        }
-        .layoutWeight(1)
-        .width(0)
-        .padding({ right: 48 })
-        .alignItems(VerticalAlign.Center)
-        .onClick(() => {
-          this.handleMoreClicked();
-        });
-
-        // 多选胶囊按钮：非编辑态进入多选；编辑态退出并清空选中
-        this.multiSelectPill()
-
-        // 删除胶囊按钮
-        this.deletePill()
-      }
-      .width('100%')
-      // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
-      .padding({
-        left: 16,
-        right: 16,
-        top: 16 + this.statusBarHeight,
-        bottom: 16
-      })
-      .alignItems(VerticalAlign.Center)
-      .systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Row({ space: 8 }) {
-        Row({ space: 2 }) {
-          Text(this.title)
-            .fontSize(24)
-            .fontColor($r('app.color.text_primary_color'))
-            .fontWeight(FontWeight.Bold)
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-
-          Image($r('app.media.select_more'))
-            .width(24)
-            .height(24)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_primary_color'))
-            .flexShrink(0)
-            .onClick(() => {
-              this.handleMoreClicked();
-            });
-        }
-        .layoutWeight(1)
-        .width(0)
-        .padding({ right: 48 })
-        .alignItems(VerticalAlign.Center)
-        .onClick(() => {
-          this.handleMoreClicked();
-        });
-
-        // 多选胶囊按钮：非编辑态进入多选；编辑态退出并清空选中
-        this.multiSelectPill()
-
-        // 删除胶囊按钮
-        this.deletePill()
-      }
-      .width('100%')
-      // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
-      .padding({
-        left: 16,
-        right: 16,
-        top: 16 + this.statusBarHeight,
-        bottom: 16
-      })
-      .alignItems(VerticalAlign.Center)
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    }
-  }
-
-  // 「多选/取消」胶囊按钮：未编辑态显示「多选」进入选择；编辑态显示「取消」清空/退出；
-  // 沉浸光感材质（API 26+，card 表面）+ 半透明底色 + 高亮描边，低版本降级为毛玻璃模糊
-  @Builder
-  multiSelectPill() {
-    if (this.materialReady) {
-      Row() {
-        Text(this.isEditing ? '取消' : '多选')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
+  fallbackTitleBar() {
+    Row({ space: 8 }) {
+      Row({ space: 2 }) {
+        Text(this.title)
+          .fontSize(24)
           .fontColor($r('app.color.text_primary_color'))
-      }
-      .height(38)
-      .padding({ left: 14, right: 14 })
-      .borderRadius(38)
-      .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .systemMaterial(getSystemMaterial('card'))
-      .backgroundColor($r('app.color.glass_button_background'))
-      .onClick(() => {
-        this.handleMultiSelectClicked();
-      });
-    } else {
-      Row() {
-        Text(this.isEditing ? '取消' : '多选')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary_color'))
-      }
-      .height(38)
-      .padding({ left: 14, right: 14 })
-      .borderRadius(38)
-      .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .backgroundBlurStyle(resolveBlurStyle('card')!)
-      .backgroundColor($r('app.color.glass_button_background'))
-      .onClick(() => {
-        this.handleMultiSelectClicked();
-      });
-    }
-  }
+          .fontWeight(FontWeight.Bold)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
 
-  // 删除胶囊按钮：样式与「多选」一致，内部为删除图标；
-  // 非编辑态点击走清空全部（二次确认并重点提示不可恢复），编辑态点击删除选中消息
-  @Builder
-  deletePill() {
-    if (this.materialReady) {
-      Row() {
-        Image($r('app.media.delete'))
+        Image($r('app.media.select_more'))
           .width(24)
           .height(24)
           .objectFit(ImageFit.Contain)
           .fillColor($r('app.color.text_primary_color'))
+          .flexShrink(0)
+          .onClick(() => {
+            this.handleMoreClicked();
+          });
       }
-      .height(38)
-      .width(38)
-      .borderRadius(38)
-      .justifyContent(FlexAlign.Center)
+      .layoutWeight(1)
+      .width(0)
+      .padding({ right: 48 })
       .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .systemMaterial(getSystemMaterial('card'))
-      .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleDeletePillClicked();
+        this.handleMoreClicked();
       });
-    } else {
-      Row() {
-        Image($r('app.media.delete'))
+    }
+    .width('100%')
+    .padding({
+      left: 16,
+      right: 16,
+      top: 16 + this.statusBarHeight,
+      bottom: 16
+    })
+    .alignItems(VerticalAlign.Center)
+    // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.index_page_top_glass_background'));
+  }
+
+  // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
+  // 状态栏避让由 titleBar 级 avoidLayoutSafeArea: true 负责（系统将内容整体下移 statusBarHeight）；
+  // 此处 padding 只留纯视觉余量，不得再叠加 statusBarHeight（titleBar 高度固定，会溢出裁剪 → 文字消失）。
+  @Builder
+  customTitleContent() {
+    Row({ space: 8 }) {
+      Row({ space: 2 }) {
+        Text(this.title)
+          .fontSize(24)
+          .fontColor($r('app.color.text_primary_color'))
+          .fontWeight(FontWeight.Bold)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
+
+        Image($r('app.media.select_more'))
           .width(24)
           .height(24)
           .objectFit(ImageFit.Contain)
           .fillColor($r('app.color.text_primary_color'))
+          .flexShrink(0)
+          .onClick(() => {
+            this.handleMoreClicked();
+          });
       }
-      .height(38)
-      .width(38)
-      .borderRadius(38)
-      .justifyContent(FlexAlign.Center)
+      .layoutWeight(1)
+      .width(0)
+      .padding({ right: 48 })
       .alignItems(VerticalAlign.Center)
-      .border({ width: 1, color: $r('app.color.glass_button_border') })
-      .backgroundBlurStyle(resolveBlurStyle('card')!)
-      .backgroundColor($r('app.color.glass_button_background'))
       .onClick(() => {
-        this.handleDeletePillClicked();
+        this.handleMoreClicked();
       });
     }
+    .width('100%')
+    .padding({
+      left: 16,
+      right: 16,
+      top: 16,
+      bottom: 16
+    })
+    .alignItems(VerticalAlign.Center);
   }
 
-  build() {
+  // NotifyView Refresh 主体（含分支 view），两条渲染路径共用
+  @Builder
+  refreshContentBody() {
+    Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
+      if (this.needGuideToConfig()) {
+        this.guideView();
+      } else if (this.loading && this.messages.length === 0) {
+        this.loadingView();
+      } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
+        this.errorView();
+      } else if (this.messages.length === 0) {
+        this.emptyView();
+      } else {
+        this.listView();
+      }
+    }
+    // ⚠️ 官方 HDS 动态模糊必配：Refresh 外层也不裁剪溢出，否则穿出 titleBar 背面的内容会被 Refresh 边界裁掉
+    .clip(false)
+    .width('100%')
+    .height('100%')
+    .onStateChange((state: RefreshStatus) => {
+      // 同步刷新状态给自定义指示器，控制其显隐
+      // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
+      this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
+    })
+    .onRefreshing(() => {
+      this.refreshing = true;
+      this.loadMessages();
+    });
+  }
+
+  // NotifyView 主体（Refresh + 多选底部操作栏），两条渲染路径共用
+  @Builder
+  viewportBody() {
     Column() {
-      // Stack 层叠：列表在下、顶栏在上，滚动内容从顶栏下方穿过，毛玻璃才有内容可糊
-      Stack({ alignContent: Alignment.Top }) {
-        // 内容区域（先声明，位于下层）：铺满 Stack，滚动时消息滑入顶栏下方
-        // 刷新指示器用自定义 builder，避免默认刷新圈被顶栏毛玻璃遮挡
-        Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
-          if (this.needGuideToConfig()) {
-            this.guideView();
-          } else if (this.loading && this.messages.length === 0) {
-            this.loadingView();
-          } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
-            this.errorView();
-          } else if (this.messages.length === 0) {
-            this.emptyView();
-          } else {
-            this.listView();
-          }
-        }
-        .width('100%')
-        .height('100%')
-        .onStateChange((state: RefreshStatus) => {
-          // 同步刷新状态给自定义指示器，控制其显隐
-          // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
-          this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
-        })
-        .onRefreshing(() => {
-          this.refreshing = true;
-          this.loadMessages();
-        });
-
-        // 顶部栏（后声明，覆盖在上层）：毛玻璃 + 半透明底色，绘制延伸到状态栏
-        this.titleBar()
+      Column() {
+        this.refreshContentBody();
       }
       .width('100%')
       .layoutWeight(1);
@@ -295,15 +202,96 @@ export struct NotifyView {
       }
     }
     .width('100%')
-    .height('100%')
-    // 点击消息卡片弹出全屏详情模态（内部已做状态栏避让 + 顶部圆角）
-    .bindContentCover(this.showDetail, this.detailBuilder(), {
-      onDisappear: () => {
-        this.showDetail = false;
+    .height('100%');
+  }
+
+  build() {
+    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+      // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
+      HdsNavigation() {
+        this.viewportBody();
       }
-    })
-    // 根容器铺不透明底色，body 模糊无内容可糊已移除
-    .backgroundColor($r('app.color.index_page_body_background'));
+      .titleBar({
+        enableComponentSafeArea: true,
+        // ⚠️ stackBuilder 全自定义区域系统不做状态栏避让（系统 mainTitle 槽位才自带避让），
+        // 必须显式开启 avoidLayoutSafeArea，titleBar 内容整体下移 statusBarHeight，总高自动变为 statusBarHeight+56；
+        // stackBuilder 内部不要再手工加 statusBarHeight（titleBar 高度固定会溢出裁剪）
+        avoidLayoutSafeArea: true,
+        content: {
+          // 全自定义标题区：服务器标题 + 更多入口（胶囊按钮已迁至系统 menu 槽位获得沉浸光感）
+          stackBuilder: (): void => { this.customTitleContent(); },
+          // 系统槽位按钮：系统渲染胶囊/图标样式，自动跟随 titleBar 沉浸光感材质
+          menu: {
+            value: [
+              {
+                content: {
+                  // 文字按钮必须显式指定 TextStyleMode.NORMAL（胶囊样式），默认为图标渲染模式
+                  label: this.isEditing ? '取消' : '多选',
+                  type: TextStyleMode.NORMAL,
+                  action: (): void => { this.handleMultiSelectClicked(); }
+                }
+              },
+              {
+                content: {
+                  icon: $r('app.media.delete'),
+                  action: (): void => { this.handleDeletePillClicked(); }
+                }
+              }
+            ]
+          },
+        },
+        style: {
+          // 滚动到顶栏下方时触发 GradientBlur 渐变模糊：采样下层内容做动态光感模糊
+          scrollEffectOpts: {
+            enableScrollEffect: true,
+            scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            // 官方推荐 ADAPTIVE：系统按设备算力自适应档位，避免低端机卡顿/发热
+            //（EXQUISITE 需 getSystemMaterialTypes() 检测支持后才可硬编码）
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          },
+        }
+      })
+      .hideBackButton(true)
+      .titleMode(HdsNavigationTitleMode.MINI)
+      // 官方：绑定 List 滚动 → scrollEffectOpts 才会根据滚动偏移激活 GradientBlur 渐变模糊
+      .bindToScrollable([this.scroller])
+      .width('100%')
+      .height('100%')
+      // 点击消息卡片弹出全屏详情模态（内部已做状态栏避让 + 顶部圆角）
+      .bindContentCover(this.showDetail, this.detailBuilder(), {
+        onDisappear: () => {
+          this.showDetail = false;
+        }
+      })
+      .backgroundColor($r('app.color.index_page_body_background'));
+    } else {
+      // ─── API < 26: Stack + 手工顶栏叠层（backgroundBlurStyle 降级）───
+      Column() {
+        Stack({ alignContent: Alignment.Top }) {
+          this.refreshContentBody();
+          // 顶栏层（上层）：blurStyle + 半透明底色糊住下层滚动内容
+          this.fallbackTitleBar();
+        }
+        .width('100%')
+        .layoutWeight(1);
+
+        // 多选模式底部操作栏
+        if (this.isEditing && this.messages.length > 0) {
+          this.editActionBar();
+        }
+      }
+      .width('100%')
+      .height('100%')
+      .bindContentCover(this.showDetail, this.detailBuilder(), {
+        onDisappear: () => {
+          this.showDetail = false;
+        }
+      })
+      .backgroundColor($r('app.color.index_page_body_background'));
+    }
   }
 
   @Builder
@@ -380,7 +368,11 @@ export struct NotifyView {
   @Builder
   refreshHeaderBuilder() {
     Column() {
-      Row().height(this.statusBarHeight + 64 + 16);
+      // 顶部 spacer 让刷新圈显示在 titleBar 下方：
+      // - HDS：enableComponentSafeArea 内容区起点已在 titleBar 总高（statusBarHeight+56）下方，
+      //   spacer 仅需 16 余量；重复叠加 statusBarHeight 会导致刷新圈被双重下推（真机实证）
+      // - 降级：Stack 叠层内容从窗口顶开始，需 statusBarHeight + titleBar(64) + 16 余量
+      Row().height(SUPPORTS_IMMERSIVE_MATERIAL ? 16 : this.statusBarHeight + 64 + 16);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
@@ -396,12 +388,14 @@ export struct NotifyView {
   @Builder
   listView() {
     List({ space: 12, scroller: this.scroller }) {
-      // 顶部占位：随内容一起滚动，消息卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
-      // 顶栏总高（状态栏 + 64）+ List 子项间距 12，首项初始位置与原 top padding 一致
-      ListItem() {
-        Row()
-          .width('100%')
-          .height(this.statusBarHeight + 64 + 12);
+      // 降级：Stack 叠层手工 statusBarHeight + titleBar(64) + space(12) 占位
+      // HDS：enableComponentSafeArea 组件级安全区自动避让 titleBar → 不再需要首占位，删
+      if (!SUPPORTS_IMMERSIVE_MATERIAL) {
+        ListItem() {
+          Row()
+            .width('100%')
+            .height(this.statusBarHeight + 64 + 12);
+        }
       }
 
       ForEach(this.messages, (m: NotifyMessage) => {
@@ -445,7 +439,7 @@ export struct NotifyView {
       }
 
       // 底部占位：随内容一起滚动，末尾消息才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
-      // TabBar 总高 = 56 + 导航条高度，占位 64 保持视觉余量不变
+      // TabBar 总高 = 56 + 导航条高度，占位 64/72 保持视觉余量不变
       ListItem() {
         Row()
           .width('100%')
@@ -457,6 +451,8 @@ export struct NotifyView {
     // 顶/底避让均由首尾占位实现（可滚动穿透顶栏/TabBar）；左右仅保留边距
     .padding({ left: 16, right: 16 })
     .align(Alignment.Top)
+    // ⚠️ 官方 HDS 动态模糊必配：List 不裁剪溢出内容，这样卡片才能向上"穿出"至 titleBar 背面被材质采样
+    .clip(false)
     .onReachEnd(() => {
       // 列表按时间倒序（新→旧），末尾是最旧消息；取末尾消息 ID 作 since 加载更老的
       this.loadMore();
@@ -603,59 +599,32 @@ export struct NotifyView {
 
   @Builder
   detailTitleBar() {
-    if (this.materialReady) {
-      Column() {
-        Row() {
-          Text('消息详情')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary_color'))
-            .layoutWeight(1);
-          Image($r('app.media.close'))
-            .width(28)
-            .height(28)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_tertiary_color'))
-            .padding(2)
-            .onClick(() => {
-              this.showDetail = false;
-            });
-        }
-        .width('100%')
-        .padding(16)
-        .alignItems(VerticalAlign.Center);
+    Column() {
+      Row() {
+        Text('消息详情')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary_color'))
+          .layoutWeight(1);
+        Image($r('app.media.close'))
+          .width(28)
+          .height(28)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.text_tertiary_color'))
+          .padding(2)
+          .onClick(() => {
+            this.showDetail = false;
+          });
       }
       .width('100%')
-      .padding({ top: this.statusBarHeight })
-      .systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Column() {
-        Row() {
-          Text('消息详情')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary_color'))
-            .layoutWeight(1);
-          Image($r('app.media.close'))
-            .width(28)
-            .height(28)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.text_tertiary_color'))
-            .padding(2)
-            .onClick(() => {
-              this.showDetail = false;
-            });
-        }
-        .width('100%')
-        .padding(16)
-        .alignItems(VerticalAlign.Center);
-      }
-      .width('100%')
-      .padding({ top: this.statusBarHeight })
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
+      .padding(16)
+      .alignItems(VerticalAlign.Center);
     }
+    .width('100%')
+    .padding({ top: this.statusBarHeight })
+    // bindContentCover 模态不参与 HdsNavigation 沉浸光感，统一用 blur + 半透明底色的毛玻璃
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
   // 消息详情全屏模态视图：完整展示标题/副标题/正文/时间，不截断

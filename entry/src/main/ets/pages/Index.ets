@@ -71,7 +71,8 @@ struct Index {
         .barOverlap(true)
         .barPosition(BarPosition.End)
         .barFloatingStyle({
-          barBottomMargin: this.navBarHeight,
+          // 官方最佳实践：无手势条设备（navBarHeight=0）兜底 padding_level8，避免悬浮胶囊贴底
+          barBottomMargin: this.navBarHeight > 0 ? this.navBarHeight : $r('sys.float.padding_level8'),
           systemMaterialEffect: {
             materialType: hdsMaterial.MaterialType.ADAPTIVE,
             materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE

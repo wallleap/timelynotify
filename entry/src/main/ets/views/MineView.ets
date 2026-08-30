@@ -14,7 +14,8 @@ import { PreferencesUtil } from '../utils/PreferencesUtil';
 import showToast from '../components/showToast';
 import { DOMAIN } from '../common/Constant';
 import { BuildInfo } from '../generated/BuildInfo';
-import { getSystemMaterial, resolveBlurStyle } from '../utils/ImmersiveUtil';
+import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
 // 版本号兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常
 const FALLBACK_VERSION_NAME: string = '1.0.0';
@@ -38,8 +39,6 @@ export struct MineView {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  // 沉浸光感材质就绪信号：uiMaterial 模块（API 26+）动态加载成功后置 true，触发重渲染切换到材质分支
-  @StorageProp('immersiveMaterialReady') materialReady: boolean = false;
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
@@ -61,6 +60,8 @@ export struct MineView {
   // 签名证书指纹尾 8 位（运行时读取；完整指纹发布在 README / GitHub Release 供比对）
   @State certFingerprintTail: string = '';
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
+  // 官方结构：Scroll 绑定自己的 Scroller 实例，供 HdsNavigation.bindToScrollable 用
+  private scroller: Scroller = new Scroller();
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
   private tokenDialogController: CustomDialogController = new CustomDialogController({
     builder: ClientTokenDialog({
@@ -92,39 +93,55 @@ export struct MineView {
     }
   }
 
+  // 降级顶栏：低版本 SDK 手工 Stack 叠层，blurStyle + 半透明底色实现毛玻璃
   @Builder
-  titleBar() {
-    if (this.materialReady) {
-      Row() {
-        Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
-      }.width('100%').padding({
-        left: 16,
-        right: 16,
-        top: 16 + this.statusBarHeight,
-        bottom: 16
-      }).systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Row() {
-        Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
-      }.width('100%').padding({
-        left: 16,
-        right: 16,
-        top: 16 + this.statusBarHeight,
-        bottom: 16
-      })
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    }
+  fallbackTitleBar() {
+    Row() {
+      Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
+    }.width('100%').padding({
+      left: 16,
+      right: 16,
+      top: 16 + this.statusBarHeight,
+      bottom: 16
+    })
+    // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
-  build() {
-    Column() { // Stack 层叠：内容在下、顶栏在上，滚动内容从顶栏下方穿过，毛玻璃才有内容可糊
-      Stack({ alignContent: Alignment.Top }) {
-        Scroll() {
-          Column({ space: 16 }) { // 顶部占位：随内容一起滚动，卡片才能滑入顶栏毛玻璃下方（padding 是硬边界做不到）
-            // 占位 = 状态栏高度 + 顶栏视觉高度 56，与沉浸式布局下的顶栏总高一致
-            Row().width('100%').height(this.statusBarHeight + 56 + 8);
+  // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
+  // 状态栏避让由 titleBar 级 avoidLayoutSafeArea: true 负责（系统将内容整体下移 statusBarHeight）；
+  // 此处 padding 只留纯视觉余量，不得再叠加 statusBarHeight（titleBar 高度固定，会溢出裁剪 → 文字消失）。
+  @Builder
+  customTitleContent() {
+    Row() {
+      Text('我的')
+        .fontSize(24)
+        .fontWeight(FontWeight.Bold)
+        .width('100%')
+        .textAlign(TextAlign.Center)
+        .fontColor($r('app.color.text_primary_color'));
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .padding({
+      left: 16,
+      right: 16,
+      top: 16,
+      bottom: 16
+    });
+  }
+
+  // MineView 滚动内容主体（卡片列表），两条渲染路径共用
+  @Builder
+  scrollBody() {
+    Scroll(this.scroller) {
+      Column({ space: 16 }) {
+        // 首项占位：组件级安全区（enableComponentSafeArea）已自动让内容起始于 titleBar 下方 → HDS 删除
+        // 降级（Stack 叠层）仍需手工 statusBarHeight + titleBar(56) + 8 余量
+        if (!SUPPORTS_IMMERSIVE_MATERIAL) {
+          Row().width('100%').height(this.statusBarHeight + 56 + 8);
+        }
 
             // 通知设置卡片
             Column({ space: 0 }) { // 开启应用订阅通知（开关）
@@ -449,17 +466,63 @@ export struct MineView {
           .padding({ left: 16, right: 16 });
         }
         .align(Alignment.TopStart)
-        .height('100%')
-        .scrollBar(BarState.Off)
-        .edgeEffect(EdgeEffect.Spring)
-        .width('100%');
+    .height('100%')
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .width('100%')
+    // ⚠️ 官方 HDS 动态模糊必配：Scroll 不裁剪溢出，卡片才能向上穿出至 titleBar 背面被材质采样
+    .clip(false);
+  }
 
-        // 顶部标题栏（后声明覆盖在上层）：毛玻璃 + 半透明底色
-        // 沉浸式布局下页面从 y=0 开始布局，顶部补状态栏高度避让（视觉 padding 仍为 16）
-        this.titleBar();
-      }.width('100%').layoutWeight(1);
-    }.width('100%').height('100%') // 根容器铺不透明底色，body 模糊无内容可糊已移除
-    .backgroundColor($r('app.color.index_page_body_background'));
+  build() {
+    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+      // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
+      HdsNavigation() {
+        this.scrollBody();
+      }
+      .titleBar({
+        enableComponentSafeArea: true,
+        // ⚠️ stackBuilder 全自定义区域系统不做状态栏避让（系统 mainTitle 槽位才自带避让），
+        // 必须显式开启 avoidLayoutSafeArea，titleBar 内容整体下移 statusBarHeight，总高自动变为 statusBarHeight+56；
+        // stackBuilder 内部不要再手工加 statusBarHeight（titleBar 高度固定会溢出裁剪）
+        avoidLayoutSafeArea: true,
+        content: {
+          // 自定义整段标题区：仅展示居中 24vp「我的」大字
+          stackBuilder: (): void => { this.customTitleContent(); },
+        },
+        style: {
+          // 滚动到顶栏下方时触发 GradientBlur 渐变模糊：采样下层内容做动态光感模糊
+          scrollEffectOpts: {
+            enableScrollEffect: true,
+            scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            // 官方推荐 ADAPTIVE：系统按设备算力自适应档位，避免低端机卡顿/发热
+            //（EXQUISITE 需 getSystemMaterialTypes() 检测支持后才可硬编码）
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          },
+        }
+      })
+      .hideBackButton(true)
+      .titleMode(HdsNavigationTitleMode.MINI)
+      // 官方：绑定 Scroll 滚动 → scrollEffectOpts 才会根据滚动偏移激活 GradientBlur 渐变模糊
+      .bindToScrollable([this.scroller])
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.index_page_body_background'));
+    } else {
+      // ─── API < 26: Stack + 手工顶栏叠层（backgroundBlurStyle 降级）───
+      Column() {
+        Stack({ alignContent: Alignment.Top }) {
+          this.scrollBody();
+          // 顶栏层（上层）：blurStyle + 半透明底色糊住下层滚动内容
+          this.fallbackTitleBar();
+        }.width('100%').layoutWeight(1);
+      }
+      .width('100%').height('100%')
+      .backgroundColor($r('app.color.index_page_body_background'));
+    }
   }
 
   // 统一的右箭头图标：列表行/卡片通用，尺寸与颜色只需在此处调整

@@ -5,7 +5,8 @@ import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { SOURCE_CODE_URL } from '../views/MineView';
-import { getSystemMaterial, resolveBlurStyle } from '../utils/ImmersiveUtil';
+import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'SharePage';
@@ -17,10 +18,10 @@ struct SharePage {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 24;
-  // 沉浸光感材质就绪信号：uiMaterial 模块（API 26+）动态加载成功后置 true，触发重渲染切换到材质分支
-  @StorageProp('immersiveMaterialReady') materialReady: boolean = false;
   @State loadingProgress: number = 0;
   @State pageTitle: string = '开源代码';
+  // 标题显隐：网页下滑超过阈值后隐藏顶栏标题，滚回顶部附近恢复（由 Web.onScroll 驱动）
+  @State titleVisible: boolean = true;
   @State targetUrl: string = SOURCE_CODE_URL;
   // 下拉刷新状态：单向绑定 + 手动控制（ArkTS 双向绑定 $$ 当前 SDK 不支持）
   @State refreshing: boolean = false;
@@ -60,7 +61,10 @@ struct SharePage {
       .fontWeight(FontWeight.Bold)
       .fontColor($r('app.color.text_primary_color'))
       .layoutWeight(1)
-      .textAlign(TextAlign.Center);
+      .textAlign(TextAlign.Center)
+      // 与 HDS 分支联动：网页下滑后隐藏标题；用 opacity 保持 layoutWeight 占位，
+      // visibility(None) 会使占位消失导致左右图标错位
+      .opacity(this.titleVisible ? 1 : 0);
 
     Image($r('app.media.share'))
       .width(32)
@@ -73,39 +77,28 @@ struct SharePage {
       });
   }
 
+  // 降级顶栏：低版本 SDK 手工 Stack 叠层，blurStyle + 半透明底色实现毛玻璃
   @Builder
-  titleBar() {
-    if (this.materialReady) {
-      Row() {
-        this.topBarContent();
-      }
-      .width('100%')
-      .padding({
-        left: 8,
-        right: 8,
-        top: 12 + this.statusBarHeight,
-        bottom: 12
-      })
-      .systemMaterial(getSystemMaterial('bar'))
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
-    } else {
-      Row() {
-        this.topBarContent();
-      }
-      .width('100%')
-      .padding({
-        left: 8,
-        right: 8,
-        top: 12 + this.statusBarHeight,
-        bottom: 12
-      })
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
+  fallbackTitleBar() {
+    Row() {
+      this.topBarContent();
     }
+    .width('100%')
+    .padding({
+      left: 8,
+      right: 8,
+      top: 12 + this.statusBarHeight,
+      bottom: 12
+    })
+    // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
   // 自定义刷新指示器：仅在下拉/刷新过程中显示（Inactive 隐藏）；
-  // 顶部 spacer 让转圈下移到毛玻璃顶栏（高 = statusBarHeight + 56）下方，避免被遮挡
+  // 顶部 spacer 让转圈下移到 titleBar 下方避免被遮挡：
+  // 铺满方案下内容区从窗口顶开始（enableComponentSafeArea: false），Refresh 顶部贴近窗口顶，
+  // 两条分支统一全量补偿 statusBarHeight + 56 + 16（titleBar 总高 + 余量），与降级分支一致
   @Builder
   refreshHeaderBuilder() {
     Column() {
@@ -122,79 +115,150 @@ struct SharePage {
     .alignItems(HorizontalAlign.Center);
   }
 
-  build() {
-    Stack({ alignContent: Alignment.Top }) {
-      // 内容层（下层）：Progress + WebView 铺满 Stack，顶部延伸到状态栏
-      Column() {
-        Progress({ value: this.loadingProgress, total: 100, type: ProgressType.Linear })
-          .width('100%')
-          .height(2)
-          .color($r('app.color.text_accent_color'))
-          .backgroundColor($r('app.color.divider_color'))
-          .opacity(this.loadingProgress < 100 ? 1 : 0);
+  // WebView 主体（Progress + Refresh { Web }），两条渲染路径共用内容体
+  @Builder
+  webBody() {
+    Column() {
+      Progress({ value: this.loadingProgress, total: 100, type: ProgressType.Linear })
+        .width('100%')
+        .height(2)
+        .color($r('app.color.text_accent_color'))
+        .backgroundColor($r('app.color.divider_color'))
+        .opacity(this.loadingProgress < 100 ? 1 : 0);
 
-        // 下拉刷新容器：Web 触顶后下拉手势才交给 Refresh，页面中间下拉仍是网页正常滚动
-        Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
-          Web({ src: this.targetUrl, controller: this.controller })
-            .width('100%')
-            .height('100%')
-            .javaScriptAccess(true)
-            .domStorageAccess(true)
-            .databaseAccess(false)
-            .cacheMode(CacheMode.None)
-            .zoomAccess(true)
-            .darkMode(WebDarkMode.Auto)
-            // 嵌套滚动：Web 自身先滚动，到边界（触顶）后交给父容器 Refresh 触发下拉刷新
-            .nestedScroll({
-              scrollForward: NestedScrollMode.SELF_FIRST,
-              scrollBackward: NestedScrollMode.SELF_FIRST
-            })
-            .onProgressChange((data) => {
-              this.loadingProgress = data.newProgress;
-            })
-            .onPageEnd(() => {
-              // 刷新/加载完成：收起下拉刷新指示器
-              this.refreshing = false;
-              const topSafe = this.statusBarHeight + 56;
-              this.controller.runJavaScript(
-                `document.documentElement.style.setProperty('--safe-area-top', '${topSafe}px');` +
-                  `document.documentElement.style.setProperty('--safe-area-bottom', '${this.navBarHeight}px');` +
-                  `let s=document.createElement('style');` +
-                  `s.textContent='body{padding-top:var(--safe-area-top) !important;padding-bottom:var(--safe-area-bottom) !important;}';` +
-                  `document.head.appendChild(s);`
-              ).catch((err: Error) => {
-                const msg = err instanceof Error ? err.message : String(err);
-                hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
-              });
-            });
-        }
-        .layoutWeight(1)
-        .onStateChange((state: RefreshStatus) => {
-          // 同步刷新状态给自定义指示器，控制其显隐
-          // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
-          this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
-        })
-        .onRefreshing(() => {
-          // 触顶下拉触发：刷新 WebView 当前页；失败时立即收起指示器
-          this.refreshing = true;
-          try {
-            this.controller.refresh();
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            hilog.warn(DOMAIN, TAG, 'WebView 刷新失败：%{public}s', msg);
+      // 下拉刷新容器：Web 触顶后下拉手势才交给 Refresh，页面中间下拉仍是网页正常滚动
+      Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
+        Web({ src: this.targetUrl, controller: this.controller })
+          // HDS bindToNestedScrollable 需要通过组件 id 绑定嵌套滚动源
+          .id('shareWeb')
+          .width('100%')
+          .height('100%')
+          .javaScriptAccess(true)
+          .domStorageAccess(true)
+          .databaseAccess(false)
+          .cacheMode(CacheMode.None)
+          .zoomAccess(true)
+          .darkMode(WebDarkMode.Auto)
+          // ⚠️ 官方 HDS 动态模糊必配：Web 不裁剪溢出，内容才能向上穿出至 titleBar 背面被材质采样
+          .clip(false)
+          // 嵌套滚动：Web 自身先滚动，到边界（触顶）后交给父容器 Refresh 触发下拉刷新
+          .nestedScroll({
+            scrollForward: NestedScrollMode.SELF_FIRST,
+            scrollBackward: NestedScrollMode.SELF_FIRST
+          })
+          .onProgressChange((data) => {
+            this.loadingProgress = data.newProgress;
+          })
+          // 滚动联动标题显隐：网页下滑超过 64vp 隐藏顶栏标题，滚回顶部（< 64vp）恢复
+          .onScroll((event) => {
+            this.titleVisible = event.yOffset < 64;
+          })
+          .onPageEnd(() => {
+            // 刷新/加载完成：收起下拉刷新指示器
             this.refreshing = false;
+            // --safe-area-top 让网页 body 顶部留出 titleBar 区域（内容区避让 titleBar 后，
+            // 网页正文已从顶栏下缘开始，注入 padding-top 仅为顶栏高度兜底）
+            const topSafe: number = this.statusBarHeight + 56;
+            this.controller.runJavaScript(
+              `document.documentElement.style.setProperty('--safe-area-top', '${topSafe}px');` +
+                `document.documentElement.style.setProperty('--safe-area-bottom', '${this.navBarHeight}px');` +
+                `let s=document.createElement('style');` +
+                `s.textContent='body{padding-top:var(--safe-area-top) !important;padding-bottom:var(--safe-area-bottom) !important;}';` +
+                `document.head.appendChild(s);`
+            ).catch((err: Error) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
+            });
+          });
+      }
+      .layoutWeight(1)
+      // ⚠️ 官方 HDS 动态模糊必配：Refresh 外层也不裁剪溢出，否则穿出 titleBar 背面的 Web 内容会被 Refresh 边界裁掉
+      .clip(false)
+      .onStateChange((state: RefreshStatus) => {
+        // 同步刷新状态给自定义指示器，控制其显隐
+        // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
+        this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
+      })
+      .onRefreshing(() => {
+        // 触顶下拉触发：刷新 WebView 当前页；失败时立即收起指示器
+        this.refreshing = true;
+        try {
+          this.controller.refresh();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          hilog.warn(DOMAIN, TAG, 'WebView 刷新失败：%{public}s', msg);
+          this.refreshing = false;
+        }
+      });
+    }
+    .width('100%')
+    .height('100%');
+  }
+
+  build() {
+    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+      // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
+      HdsNavigation() {
+        this.webBody();
+      }
+      .titleBar({
+        // 铺满方案（复刻降级分支已验证布局）：内容区不避让标题栏 → Web 铺满全窗，
+        // 网页顶进状态栏后面，titleBar 毛玻璃悬浮其上透出+模糊下层内容；
+        // 网页正文起点由 onPageEnd 注入的 body padding-top 兜底（与降级分支一致）
+        enableComponentSafeArea: false,
+        // 标题栏内容（系统槽位 mainTitle/backIcon/menu）避让状态栏
+        avoidLayoutSafeArea: true,
+        content: {
+          // 系统 MINI 标题槽位：18vp 粗体居中，绑定 @State 动态标题（路由参数传入）；
+          // 网页下滑超过阈值后置空隐藏标题，滚回顶部恢复
+          title: { mainTitle: this.titleVisible ? this.pageTitle : '' },
+          // 系统返回键槽位：backIcon 支持自定义 action（d.ts: HdsNavigationIconOptions.action），
+          // 保留「先 Web 历史后退、再路由返回」逻辑
+          backIcon: {
+            icon: $r('app.media.arrow_left'),
+            action: (): void => { this.handleBack(); }
+          },
+          // 系统菜单槽位：右上分享按钮
+          menu: {
+            value: [{
+              content: {
+                icon: $r('app.media.share'),
+                action: (): void => { this.handleShare(); }
+              }
+            }]
           }
-        });
+        },
+        style: {
+          // 常驻半透明毛玻璃材质：Web 无 ArkTS Scroller 控制器，无法绑定滚动联动，
+          // 仅保留静态沉浸光感（titleBar 实时采样下层内容模糊）
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            // 官方推荐 ADAPTIVE：系统按设备算力自适应档位，避免低端机卡顿/发热
+            //（EXQUISITE 需 getSystemMaterialTypes() 检测支持后才可硬编码）
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          },
+        }
+      })
+      // 返回键走 backIcon 自定义 action（「先 Web 后退、再路由返回」），系统返回键保持显示
+      .hideBackButton(false)
+      .titleMode(HdsNavigationTitleMode.MINI)
+      // Web 本身无 ArkTS Scroller 控制器（NestedScrollInfo.parent 要求 Scroller），
+      // 故此处不通过 bindToNestedScrollable 绑定 Web 嵌套滚动；titleBar 原生 systemMaterialEffect
+      // 仍可在内容滚入顶栏背面时提供沉浸光感视觉效果
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.index_page_body_background'));
+    } else {
+      // ─── API < 26: Stack + 手工顶栏叠层（backgroundBlurStyle 降级）───
+      Stack({ alignContent: Alignment.Top }) {
+        this.webBody();
+        // 顶栏层（上层）：blurStyle + 半透明底色糊住下层 WebView 内容
+        this.fallbackTitleBar()
       }
       .width('100%')
       .height('100%')
-
-      // 顶栏层（上层）：systemMaterial 沉浸光感，糊住下层 WebView 内容
-      this.titleBar()
+      .backgroundColor($r('app.color.index_page_body_background'));
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.index_page_body_background'));
   }
 
   // 系统返回手势：WebView 优先后退
