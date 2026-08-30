@@ -97,7 +97,7 @@ push 链接同时发送到 iOS 和 HarmonyOS。
 - versionCode = `x*1000000 + y*1000 + z`，必须大于上一个版本（AGC 要求单调递增）
 - 发版流程：PR 合并进 main → 任意分支执行 `bin/release`（结束后自动切回原分支）
 - `--dry-run`：预览发版流程（版本号计算与各项校验结果），零副作用（不切分支、不打 tag、不推送），可与 `-y`/版本号任意组合
-- CI 构建环境：托管 runner 使用自建镜像 `ghcr.io/wallleap/harmonyos-ci`（预装 DevEco Command Line Tools for Linux 26.0.0.621 + JDK17——与项目 `targetSdkVersion 26.0.0` 配套，由 [docker-image.yml](.github/workflows/docker-image.yml) 从 [docker/ci/Dockerfile](docker/ci/Dockerfile) 构建推送；首次推送后需在 GitHub → Packages 中将包可见性改为 Public）。流水线定义：[release.yml](.github/workflows/release.yml)（tag 触发：构建 → 重签名 → 上传 AGC → GitHub Release）、[build-check.yml](.github/workflows/build-check.yml)（push/PR 构建检查）
+- CI 构建环境：托管 runner 使用自建镜像 `ghcr.io/wallleap/harmonyos-ci`（预装 DevEco Command Line Tools for Linux 26.0.0.821 + JDK17——与项目 `targetSdkVersion 26.0.0` 配套，由 [docker-image.yml](.github/workflows/docker-image.yml) 从 [docker/ci/Dockerfile](docker/ci/Dockerfile) 构建推送；首次推送后需在 GitHub → Packages 中将包可见性改为 Public）。流水线定义：[release.yml](.github/workflows/release.yml)（tag 触发：构建 → 重签名 → 上传 AGC → GitHub Release）、[build-check.yml](.github/workflows/build-check.yml)（push/PR 构建检查）
 
 ## 防伪校验
 
