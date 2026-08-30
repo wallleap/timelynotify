@@ -84,7 +84,7 @@ export struct ClientTokenDialog {
       }
       .width('100%');
     }
-    .width('80%')
+    .width('100%')
     .padding(18)
     .backgroundColor($r('app.color.card_background'))
     .borderRadius(14);

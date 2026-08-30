@@ -46,6 +46,9 @@ struct ServerSettingsPage {
       HdsNavigation() {
         Scroll(this.scroller) {
           Column() {
+            Row()
+              .width('100%')
+              .height(4);
             // HDS：enableComponentSafeArea 组件级安全区自动让内容起始于 titleBar 下方 → 删首占位
             // 降级：mainTitle 走系统槽位，enableComponentSafeArea 自动避让状态栏，无需自定义；
             //   但降级用的是 Stack 叠层，仍保留手工 statusBarHeight + MINI(56) + 余量 占位

@@ -219,7 +219,9 @@ export struct NotifyView {
         avoidLayoutSafeArea: true,
         content: {
           // 全自定义标题区：服务器标题 + 更多入口（胶囊按钮已迁至系统 menu 槽位获得沉浸光感）
-          stackBuilder: (): void => { this.customTitleContent(); },
+          stackBuilder: (): void => {
+            this.customTitleContent();
+          },
           // 系统槽位按钮：系统渲染胶囊/图标样式，自动跟随 titleBar 沉浸光感材质
           menu: {
             value: [
@@ -228,13 +230,17 @@ export struct NotifyView {
                   // 文字按钮必须显式指定 TextStyleMode.NORMAL（胶囊样式），默认为图标渲染模式
                   label: this.isEditing ? '取消' : '多选',
                   type: TextStyleMode.NORMAL,
-                  action: (): void => { this.handleMultiSelectClicked(); }
+                  action: (): void => {
+                    this.handleMultiSelectClicked();
+                  }
                 }
               },
               {
                 content: {
                   icon: $r('app.media.delete'),
-                  action: (): void => { this.handleDeletePillClicked(); }
+                  action: (): void => {
+                    this.handleDeletePillClicked();
+                  }
                 }
               }
             ]
@@ -370,9 +376,9 @@ export struct NotifyView {
     Column() {
       // 顶部 spacer 让刷新圈显示在 titleBar 下方：
       // - HDS：enableComponentSafeArea 内容区起点已在 titleBar 总高（statusBarHeight+56）下方，
-      //   spacer 仅需 16 余量；重复叠加 statusBarHeight 会导致刷新圈被双重下推（真机实证）
+      //   spacer 仅需 8 余量；重复叠加 statusBarHeight 会导致刷新圈被双重下推（真机实证）
       // - 降级：Stack 叠层内容从窗口顶开始，需 statusBarHeight + titleBar(64) + 16 余量
-      Row().height(SUPPORTS_IMMERSIVE_MATERIAL ? 16 : this.statusBarHeight + 64 + 16);
+      Row().height(SUPPORTS_IMMERSIVE_MATERIAL ? 8 : this.statusBarHeight + 64 + 16);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
@@ -387,14 +393,20 @@ export struct NotifyView {
 
   @Builder
   listView() {
-    List({ space: 12, scroller: this.scroller }) {
-      // 降级：Stack 叠层手工 statusBarHeight + titleBar(64) + space(12) 占位
-      // HDS：enableComponentSafeArea 组件级安全区自动避让 titleBar → 不再需要首占位，删
-      if (!SUPPORTS_IMMERSIVE_MATERIAL) {
+    List({ space: 10, scroller: this.scroller }) {
+      // 首占位：两分支统一加 2，配合 List space(10)，列表顶部实际间距 = 2 + 10 = 12
+      // 降级分支：Stack 叠层内容从窗口顶开始，占位还需叠加 statusBarHeight + titleBar(64) 手工避让
+      if (SUPPORTS_IMMERSIVE_MATERIAL) {
         ListItem() {
           Row()
             .width('100%')
-            .height(this.statusBarHeight + 64 + 12);
+            .height(2);
+        }
+      } else {
+        ListItem() {
+          Row()
+            .width('100%')
+            .height(this.statusBarHeight + 64 + 2);
         }
       }
 

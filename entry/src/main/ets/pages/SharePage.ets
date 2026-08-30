@@ -102,7 +102,7 @@ struct SharePage {
   @Builder
   refreshHeaderBuilder() {
     Column() {
-      Row().height(this.statusBarHeight + 56 + 16);
+      Row().height(SUPPORTS_IMMERSIVE_MATERIAL ? this.statusBarHeight + 56 - 4 : this.statusBarHeight + 56 + 16);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
@@ -129,7 +129,7 @@ struct SharePage {
       // 下拉刷新容器：Web 触顶后下拉手势才交给 Refresh，页面中间下拉仍是网页正常滚动
       Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
         Web({ src: this.targetUrl, controller: this.controller })
-          // HDS bindToNestedScrollable 需要通过组件 id 绑定嵌套滚动源
+        // HDS bindToNestedScrollable 需要通过组件 id 绑定嵌套滚动源
           .id('shareWeb')
           .width('100%')
           .height('100%')
@@ -216,14 +216,18 @@ struct SharePage {
           // 保留「先 Web 历史后退、再路由返回」逻辑
           backIcon: {
             icon: $r('app.media.arrow_left'),
-            action: (): void => { this.handleBack(); }
+            action: (): void => {
+              this.handleBack();
+            }
           },
           // 系统菜单槽位：右上分享按钮
           menu: {
             value: [{
               content: {
                 icon: $r('app.media.share'),
-                action: (): void => { this.handleShare(); }
+                action: (): void => {
+                  this.handleShare();
+                }
               }
             }]
           }

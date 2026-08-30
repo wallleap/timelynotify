@@ -140,332 +140,332 @@ export struct MineView {
         // 首项占位：组件级安全区（enableComponentSafeArea）已自动让内容起始于 titleBar 下方 → HDS 删除
         // 降级（Stack 叠层）仍需手工 statusBarHeight + titleBar(56) + 8 余量
         if (!SUPPORTS_IMMERSIVE_MATERIAL) {
-          Row().width('100%').height(this.statusBarHeight + 56 + 8);
+          Row().width('100%').height(this.statusBarHeight + 56 + 4);
         }
 
-            // 通知设置卡片
-            Column({ space: 0 }) { // 开启应用订阅通知（开关）
-              Row() {
-                Column({ space: 2 }) {
-                  Text('开启应用订阅通知')
-                    .fontSize(16)
+        // 通知设置卡片
+        Column({ space: 0 }) { // 开启应用订阅通知（开关）
+          Row() {
+            Column({ space: 2 }) {
+              Text('开启应用订阅通知')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'));
+              Text(this.notifyEnabled ? '已开启' : '已关闭')
+                .fontSize(12)
+                .fontColor(
+                  this.notifyEnabled ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+            Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
+              .selectedColor($r('app.color.text_accent_color'))
+              .onChange((isOn: boolean) => {
+                this.onNotifyToggle(isOn);
+              });
+          }.width('100%').padding(16);
+
+          Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+          // 通知权限设置（点击拉起系统通知管理）
+          Row() {
+            Text('通知权限设置')
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary_color'))
+              .layoutWeight(1);
+
+            this.arrowRightIcon();
+          }.width('100%').padding(16).onClick(() => {
+            this.openNotifySettings();
+          });
+
+          Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+          // 测试通知行（点击向当前服务器 POST /push 发送一条测试推送，验证通知链路）
+          Row() {
+            Column({ space: 2 }) {
+              Text('测试通知')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'));
+              Text(this.testingPush ? '正在发送…' : '发送一条测试推送验证通知链路')
+                .fontSize(12)
+                .fontColor($r('app.color.text_quinary_color'));
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+            // 发送中显示加载指示器，否则显示箭头
+            if (this.testingPush) {
+              LoadingProgress()
+                .width(24)
+                .height(24)
+                .color($r('app.color.text_accent_color'));
+            } else {
+              this.arrowRightIcon();
+            }
+          }.width('100%').padding(16).onClick(() => {
+            this.sendTestNotification();
+          });
+
+          Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+          // 导出消息行（点击导出当前设备全部消息为 txt 文件，内容为 JSON 数组）
+          Row() {
+            Column({ space: 2 }) {
+              Text('导出消息')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'));
+              Text(this.exporting ? '正在导出…' : '导出当前设备全部消息为 txt 文件')
+                .fontSize(12)
+                .fontColor($r('app.color.text_quinary_color'));
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+            // 导出中显示加载指示器，否则显示箭头
+            if (this.exporting) {
+              LoadingProgress()
+                .width(24)
+                .height(24)
+                .color($r('app.color.text_accent_color'));
+            } else {
+              this.arrowRightIcon();
+            }
+          }.width('100%').padding(16).onClick(() => {
+            this.exportMessages();
+          });
+        }
+        .width('100%')
+        .backgroundBlurStyle(resolveBlurStyle('bar')!)
+        .backgroundColor($r('app.color.card_glass_background'))
+        .borderRadius(12);
+
+        Column({ space: 8 }) {
+          Text('配置')
+            .fontSize(12)
+            .fontColor($r('app.color.text_quinary_color'))
+            .width('100%')
+            .padding({ left: 12 });
+
+          Column({ space: 12 }) { // 服务器入口卡片
+            Row({ space: 14 }) {
+              Column({ space: 4 }) {
+                Row() {
+                  Text('服务器')
+                    .fontSize(17)
                     .fontWeight(FontWeight.Medium)
                     .fontColor($r('app.color.text_primary_color'));
-                  Text(this.notifyEnabled ? '已开启' : '已关闭')
+                }.width('100%');
+
+                Row() {
+                  Text(this.serverName)
+                    .fontSize(14)
+                    .fontColor($r('app.color.text_tertiary_color'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis });
+                  Text(' (').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
+                  Text(this.hostDisplay)
                     .fontSize(12)
-                    .fontColor(
-                      this.notifyEnabled ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
-                }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+                    .fontColor($r('app.color.text_accent_color'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis });
+                  Text(')').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
+                }.width('100%')
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
-                Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
-                  .selectedColor($r('app.color.text_accent_color'))
-                  .onChange((isOn: boolean) => {
-                    this.onNotifyToggle(isOn);
-                  });
-              }.width('100%').padding(16);
-
-              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-              // 通知权限设置（点击拉起系统通知管理）
               Row() {
-                Text('通知权限设置')
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary_color'))
-                  .layoutWeight(1);
-
-                this.arrowRightIcon();
-              }.width('100%').padding(16).onClick(() => {
-                this.openNotifySettings();
-              });
-
-              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-              // 测试通知行（点击向当前服务器 POST /push 发送一条测试推送，验证通知链路）
-              Row() {
-                Column({ space: 2 }) {
-                  Text('测试通知')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'));
-                  Text(this.testingPush ? '正在发送…' : '发送一条测试推送验证通知链路')
-                    .fontSize(12)
-                    .fontColor($r('app.color.text_quinary_color'));
-                }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-                // 发送中显示加载指示器，否则显示箭头
-                if (this.testingPush) {
-                  LoadingProgress()
-                    .width(24)
-                    .height(24)
-                    .color($r('app.color.text_accent_color'));
-                } else {
-                  this.arrowRightIcon();
-                }
-              }.width('100%').padding(16).onClick(() => {
-                this.sendTestNotification();
-              });
-
-              Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-              // 导出消息行（点击导出当前设备全部消息为 txt 文件，内容为 JSON 数组）
-              Row() {
-                Column({ space: 2 }) {
-                  Text('导出消息')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'));
-                  Text(this.exporting ? '正在导出…' : '导出当前设备全部消息为 txt 文件')
-                    .fontSize(12)
-                    .fontColor($r('app.color.text_quinary_color'));
-                }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-                // 导出中显示加载指示器，否则显示箭头
-                if (this.exporting) {
-                  LoadingProgress()
-                    .width(24)
-                    .height(24)
-                    .color($r('app.color.text_accent_color'));
-                } else {
-                  this.arrowRightIcon();
-                }
-              }.width('100%').padding(16).onClick(() => {
-                this.exportMessages();
-              });
+                Text(`共 ${this.serverCount} 个`).fontSize(12).fontColor($r('app.color.text_quinary_color'));
+                this.arrowRightIcon()
+              }
             }
             .width('100%')
+            .padding(16)
             .backgroundBlurStyle(resolveBlurStyle('bar')!)
             .backgroundColor($r('app.color.card_glass_background'))
-            .borderRadius(12);
+            .borderRadius(12)
+            .onClick(() => {
+              this.handleCardClicked();
+            });
 
-            Column({ space: 8 }) {
-              Text('配置')
-                .fontSize(12)
-                .fontColor($r('app.color.text_quinary_color'))
-                .width('100%')
-                .padding({ left: 12 });
+            // 客户端 Token 卡片
+            Row({ space: 14 }) {
+              Column({ space: 4 }) {
+                Text('客户端 Token')
+                  .fontSize(17)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary_color'))
+                  .width('100%');
 
-              Column({ space: 12 }) { // 服务器入口卡片
-                Row({ space: 14 }) {
-                  Column({ space: 4 }) {
-                    Row() {
-                      Text('服务器')
-                        .fontSize(17)
-                        .fontWeight(FontWeight.Medium)
-                        .fontColor($r('app.color.text_primary_color'));
-                    }.width('100%');
+                Text(this.buildClientTokenDisplay())
+                  .fontSize(14)
+                  .fontColor(this.isDefaultClientToken ? $r('app.color.text_accent_color') :
+                    $r('app.color.text_tertiary_color'))
+                  .width('100%')
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis });
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
-                    Row() {
-                      Text(this.serverName)
-                        .fontSize(14)
-                        .fontColor($r('app.color.text_tertiary_color'))
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis });
-                      Text(' (').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
-                      Text(this.hostDisplay)
-                        .fontSize(12)
-                        .fontColor($r('app.color.text_accent_color'))
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis });
-                      Text(')').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
-                    }.width('100%')
-                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+              this.arrowRightIcon()
+            }
+            .width('100%')
+            .padding(16)
+            .backgroundBlurStyle(resolveBlurStyle('bar')!)
+            .backgroundColor($r('app.color.card_glass_background'))
+            .borderRadius(12)
+            .onClick(() => {
+              this.openTokenDialog();
+            });
 
-                  Row() {
-                    Text(`共 ${this.serverCount} 个`).fontSize(12).fontColor($r('app.color.text_quinary_color'));
-                    this.arrowRightIcon()
-                  }
-                }
-                .width('100%')
-                .padding(16)
-                .backgroundBlurStyle(resolveBlurStyle('bar')!)
-                .backgroundColor($r('app.color.card_glass_background'))
-                .borderRadius(12)
-                .onClick(() => {
-                  this.handleCardClicked();
-                });
-
-                // 客户端 Token 卡片
-                Row({ space: 14 }) {
-                  Column({ space: 4 }) {
-                    Text('客户端 Token')
-                      .fontSize(17)
-                      .fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.text_primary_color'))
-                      .width('100%');
-
-                    Text(this.buildClientTokenDisplay())
-                      .fontSize(14)
-                      .fontColor(this.isDefaultClientToken ? $r('app.color.text_accent_color') :
-                        $r('app.color.text_tertiary_color'))
-                      .width('100%')
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis });
-                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-                  this.arrowRightIcon()
-                }
-                .width('100%')
-                .padding(16)
-                .backgroundBlurStyle(resolveBlurStyle('bar')!)
-                .backgroundColor($r('app.color.card_glass_background'))
-                .borderRadius(12)
-                .onClick(() => {
-                  this.openTokenDialog();
-                });
-
-                // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
-                Row({ space: 14 }) {
-                  Column({ space: 4 }) {
-                    Row() {
-                      Text('推送 Token')
-                        .fontSize(17)
-                        .fontWeight(FontWeight.Medium)
-                        .fontColor($r('app.color.text_primary_color'));
-                      Text(' (自动生成)')
-                        .fontSize(14)
-                        .fontColor($r('app.color.text_tertiary_color'))
-                        .maxLines(1)
-                        .textOverflow({ overflow: TextOverflow.Ellipsis });
-                      Blank();
-                      Text('点击复制').fontSize(12).fontColor($r('app.color.text_accent_color'));
-                    }.width('100%');
-
-                    Text(this.buildDeviceTokenDisplay())
-                      .fontSize(14)
-                      .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.text_tertiary_color') :
-                        $r('app.color.text_quinary_color'))
-                      .width('100%')
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis });
-                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-                }
-                .width('100%')
-                .padding(16)
-                .backgroundBlurStyle(resolveBlurStyle('bar')!)
-                .backgroundColor($r('app.color.card_glass_background'))
-                .borderRadius(12)
-                .onClick(() => {
-                  this.copyDeviceToken();
-                });
-              }.width('100%')
-            }.width('100%');
-
-            // 关于板块（卡片内承载后续扩展项）
-            Column({ space: 8 }) {
-              Text('关于')
-                .fontSize(12)
-                .fontColor($r('app.color.text_quinary_color'))
-                .width('100%')
-                .padding({ left: 12 });
-
-              Column({ space: 0 }) { // 版本号行（整行点击复制版本信息）
+            // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
+            Row({ space: 14 }) {
+              Column({ space: 4 }) {
                 Row() {
-                  Text('当前版本')
-                    .fontSize(16)
+                  Text('推送 Token')
+                    .fontSize(17)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'))
-                    .layoutWeight(1);
-                  Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
+                    .fontColor($r('app.color.text_primary_color'));
+                  Text(' (自动生成)')
                     .fontSize(14)
-                    .fontColor($r('app.color.text_tertiary_color'));
-                }.width('100%').padding(16).onClick(() => {
-                  this.copyVersionInfo();
-                });
+                    .fontColor($r('app.color.text_tertiary_color'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis });
+                  Blank();
+                  Text('点击复制').fontSize(12).fontColor($r('app.color.text_accent_color'));
+                }.width('100%');
 
-                Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+                Text(this.buildDeviceTokenDisplay())
+                  .fontSize(14)
+                  .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.text_tertiary_color') :
+                    $r('app.color.text_quinary_color'))
+                  .width('100%')
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis });
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+            }
+            .width('100%')
+            .padding(16)
+            .backgroundBlurStyle(resolveBlurStyle('bar')!)
+            .backgroundColor($r('app.color.card_glass_background'))
+            .borderRadius(12)
+            .onClick(() => {
+              this.copyDeviceToken();
+            });
+          }.width('100%')
+        }.width('100%');
 
-                // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
-                Row() {
-                  Column({ space: 2 }) {
-                    Text('构建信息')
-                      .fontSize(16)
-                      .fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.text_primary_color'));
-                    Text(this.buildBuildInfoDisplay())
-                      .fontSize(12)
-                      .fontColor($r('app.color.text_quinary_color'))
-                      .maxLines(1)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis });
-                  }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+        // 关于板块（卡片内承载后续扩展项）
+        Column({ space: 8 }) {
+          Text('关于')
+            .fontSize(12)
+            .fontColor($r('app.color.text_quinary_color'))
+            .width('100%')
+            .padding({ left: 12 });
 
-                  // 云端构建才有对应记录页，本地构建不显示箭头
-                  if (this.hasCloudBuild()) {
-                    this.arrowRightIcon();
-                  }
-                }.width('100%').padding(16).onClick(() => {
-                  this.openBuildInfo();
-                });
+          Column({ space: 0 }) { // 版本号行（整行点击复制版本信息）
+            Row() {
+              Text('当前版本')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'))
+                .layoutWeight(1);
+              Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
+                .fontSize(14)
+                .fontColor($r('app.color.text_tertiary_color'));
+            }.width('100%').padding(16).onClick(() => {
+              this.copyVersionInfo();
+            });
 
-                Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+            Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
 
-                // 开源代码行（点击跳转 GitHub）
-                Row() {
-                  Text('开源代码')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'))
-                    .layoutWeight(1);
-                  this.arrowRightIcon();
-                }.width('100%').padding(16).onClick(() => {
-                  this.openSourceLink();
-                });
+            // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
+            Row() {
+              Column({ space: 2 }) {
+                Text('构建信息')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary_color'));
+                Text(this.buildBuildInfoDisplay())
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_quinary_color'))
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis });
+              }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
-                Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-                // 使用文档行（进入内嵌 WebView）
-                Row() {
-                  Text('使用文档')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'))
-                    .layoutWeight(1);
-                  this.arrowRightIcon();
-                }.width('100%').padding(16).onClick(() => {
-                  this.openDocs();
-                });
-
-                Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-                // 隐私协议行
-                Row() {
-                  Text('隐私协议')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'))
-                    .layoutWeight(1);
-                  this.arrowRightIcon();
-                }.width('100%').padding(16).onClick(() => {
-                  this.openPrivacy();
-                });
-
-                Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-                // 反馈问题行（发送邮件）
-                Row() {
-                  Text('反馈问题')
-                    .fontSize(16)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'))
-                    .layoutWeight(1);
-                  this.arrowRightIcon();
-                }.width('100%').padding(16).onClick(() => {
-                  this.sendFeedback();
-                });
+              // 云端构建才有对应记录页，本地构建不显示箭头
+              if (this.hasCloudBuild()) {
+                this.arrowRightIcon();
               }
-              .width('100%')
-              .backgroundBlurStyle(resolveBlurStyle('bar')!)
-              .backgroundColor($r('app.color.card_glass_background'))
-              .borderRadius(12);
-            }.width('100%');
+            }.width('100%').padding(16).onClick(() => {
+              this.openBuildInfo();
+            });
 
-            // 底部占位：随内容一起滚动，末尾卡片才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
-            // TabBar 总高 = 56 + 导航条高度，占位 72 保持视觉余量不变
-            Row().width('100%').height(this.navBarHeight + 72);
-          }.width('100%') // 左右避让边距（顶/底避让由首尾占位实现）
-          .padding({ left: 16, right: 16 });
-        }
-        .align(Alignment.TopStart)
+            Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+            // 开源代码行（点击跳转 GitHub）
+            Row() {
+              Text('开源代码')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'))
+                .layoutWeight(1);
+              this.arrowRightIcon();
+            }.width('100%').padding(16).onClick(() => {
+              this.openSourceLink();
+            });
+
+            Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+            // 使用文档行（进入内嵌 WebView）
+            Row() {
+              Text('使用文档')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'))
+                .layoutWeight(1);
+              this.arrowRightIcon();
+            }.width('100%').padding(16).onClick(() => {
+              this.openDocs();
+            });
+
+            Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+            // 隐私协议行
+            Row() {
+              Text('隐私协议')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'))
+                .layoutWeight(1);
+              this.arrowRightIcon();
+            }.width('100%').padding(16).onClick(() => {
+              this.openPrivacy();
+            });
+
+            Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+            // 反馈问题行（发送邮件）
+            Row() {
+              Text('反馈问题')
+                .fontSize(16)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'))
+                .layoutWeight(1);
+              this.arrowRightIcon();
+            }.width('100%').padding(16).onClick(() => {
+              this.sendFeedback();
+            });
+          }
+          .width('100%')
+          .backgroundBlurStyle(resolveBlurStyle('bar')!)
+          .backgroundColor($r('app.color.card_glass_background'))
+          .borderRadius(12);
+        }.width('100%');
+
+        // 底部占位：随内容一起滚动，末尾卡片才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
+        // TabBar 总高 = 56 + 导航条高度，占位 72 保持视觉余量不变
+        Row().width('100%').height(this.navBarHeight + 72);
+      }.width('100%') // 左右避让边距（顶/底避让由首尾占位实现）
+      .padding({ left: 16, right: 16 });
+    }
+    .align(Alignment.TopStart)
     .height('100%')
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
@@ -488,7 +488,9 @@ export struct MineView {
         avoidLayoutSafeArea: true,
         content: {
           // 自定义整段标题区：仅展示居中 24vp「我的」大字
-          stackBuilder: (): void => { this.customTitleContent(); },
+          stackBuilder: (): void => {
+            this.customTitleContent();
+          },
         },
         style: {
           // 滚动到顶栏下方时触发 GradientBlur 渐变模糊：采样下层内容做动态光感模糊
