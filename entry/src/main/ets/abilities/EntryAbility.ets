@@ -8,6 +8,7 @@ import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
 import { ensureImmersiveMaterial, KEY_NAV_BAR_HEIGHT, KEY_STATUS_BAR_HEIGHT } from '../utils/ImmersiveUtil';
+import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'EntryAbility';
@@ -20,12 +21,15 @@ export default class EntryAbility extends UIAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
+      // 先应用默认跟随系统（避免深色偏好用户冷启动闪浅色），随后异步读盘覆盖
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (err) {
       hilog.error(DOMAIN, TAG, 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
     // 最早拿到 UIAbilityContext 的时机，注入全局存储，之后组件/dialog/持久化都可以用
     AppContextStore.getInstance().setContext(this.context);
+    // 读取用户主题偏好（跟随系统/浅色/深色）并应用
+    this.applySavedColorMode();
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
     // 预加载 uiMaterial 沉浸光感材质模块（API 26+ 生效；API 23 无此模块，内部静默降级 blur）
     ensureImmersiveMaterial();
@@ -153,6 +157,22 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '获取避让区高度失败：%{public}s', msg);
+    }
+  }
+
+  /** 读取用户主题偏好并应用：'light'→浅色 / 'dark'→深色 / 其余（含未设置）→跟随系统 */
+  private async applySavedColorMode(): Promise<void> {
+    try {
+      const v: string = await PreferencesUtil.getString(this.context, PreferencesUtil.KEY_COLOR_MODE, 'system');
+      const mode: ConfigurationConstant.ColorMode = v === 'light'
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+        : v === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+          : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+      this.context.getApplicationContext().setColorMode(mode);
+      hilog.info(DOMAIN, TAG, '主题模式已应用：%{public}s', v);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.error(DOMAIN, TAG, '应用主题模式失败：%{public}s，保持跟随系统', msg);
     }
   }
 

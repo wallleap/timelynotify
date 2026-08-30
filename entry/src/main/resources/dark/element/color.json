@@ -57,6 +57,10 @@
       "value": "#333d2818"
     },
     {
+      "name": "color_mode_selected_background",
+      "value": "#1FFF6F22"
+    },
+    {
       "name": "dialog_background",
       "value": "#1f2021"
     },

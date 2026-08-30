@@ -47,6 +47,8 @@ export class PreferencesUtil {
   static readonly KEY_SERVER_LIST_JSON: string = 'server_list_json';
   static readonly KEY_SERVER_CURRENT_ID: string = 'server_current_id';
   static readonly KEY_NOTIFY_ENABLED: string = 'notify_enabled';
+  /** 主题颜色模式：'system'（跟随系统）/ 'light'（浅色）/ 'dark'（深色） */
+  static readonly KEY_COLOR_MODE: string = 'color_mode';
   private static readonly STORE_NAME: string = 'timelynotify_prefs';
   private static instance: preferences.Preferences | null = null;
 

@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit';
-import { bundleManager, common } from '@kit.AbilityKit';
+import { bundleManager, common, ConfigurationConstant } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { ServerEntry } from '../model/ServerEntry';
@@ -13,6 +13,7 @@ import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import showToast from '../components/showToast';
 import { DOMAIN } from '../common/Constant';
+import { AppContextStore } from '../common/AppContextStore';
 import { BuildInfo } from '../generated/BuildInfo';
 import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
@@ -59,7 +60,19 @@ export struct MineView {
   @State versionCodeDisplay: number = FALLBACK_VERSION_CODE;
   // 签名证书指纹尾 8 位（运行时读取；完整指纹发布在 README / GitHub Release 供比对）
   @State certFingerprintTail: string = '';
+  // 主题颜色模式选中索引：0=跟随系统 1=浅色 2=深色（与 COLOR_MODE_KEYS/ICONS 顺序一致）
+  @State @Watch('onColorModeIndexChanged') colorModeIndex: number = 0;
+  // 冷启动回填是否完成：回填阶段赋值不触发持久化/切换（EntryAbility 启动流程已应用过一次）
+  private colorModeInitialized: boolean = false;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
+  // 主题三选项的 Symbol 图标（顺序与 COLOR_MODE_KEYS 一致）
+  private readonly COLOR_MODE_ICONS: Resource[] = [
+    $r('sys.symbol.circle_lefthalf_inset_filled'),
+    $r('sys.symbol.sun_max_fill'),
+    $r('sys.symbol.moon_fill'),
+  ];
+  // 主题三选项的持久化键值（顺序与 COLOR_MODE_ICONS 一致）
+  private readonly COLOR_MODE_KEYS: string[] = ['system', 'light', 'dark'];
   // 官方结构：Scroll 绑定自己的 Scroller 实例，供 HdsNavigation.bindToScrollable 用
   private scroller: Scroller = new Scroller();
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
@@ -76,6 +89,7 @@ export struct MineView {
 
   aboutToAppear() {
     this.refreshSummary();
+    this.refreshColorMode();
     this.refreshClientToken();
     this.refreshDeviceToken();
     this.refreshNotifyEnabled();
@@ -97,8 +111,16 @@ export struct MineView {
   @Builder
   fallbackTitleBar() {
     Row() {
-      Text('我的').fontSize(24).fontWeight(FontWeight.Bold).width('100%').textAlign(TextAlign.Center);
-    }.width('100%').padding({
+      // 标题居左
+      Text('我的').fontSize(24).fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.text_primary_color'));
+      Blank();
+      // 右侧主题切换器（跟随系统/浅色/深色）
+      this.colorModeSelector();
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .padding({
       left: 16,
       right: 16,
       top: 16 + this.statusBarHeight,
@@ -109,18 +131,45 @@ export struct MineView {
     .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
+  // 顶栏右侧主题切换器：三段纯图标（跟随系统/浅色/深色），选中项圆形高亮底
+  @Builder
+  colorModeSelector() {
+    Row({ space: 4 }) {
+      ForEach(this.COLOR_MODE_ICONS, (icon: Resource, idx: number) => {
+        Row() {
+          SymbolGlyph(icon)
+            .fontSize(18)
+            .fontColor([idx === this.colorModeIndex ? $r('app.color.text_accent_color') :
+              $r('app.color.text_tertiary_color')])
+        }
+        .width(32)
+        .height(32)
+        .borderRadius(16)
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor(idx === this.colorModeIndex ? $r('app.color.color_mode_selected_background') :
+          Color.Transparent)
+        .onClick(() => {
+          this.colorModeIndex = idx;
+        })
+      }, (_icon: Resource, idx: number) => `color_mode_${idx}`)
+    }
+    .alignItems(VerticalAlign.Center)
+  }
+
   // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
   // 状态栏避让由 titleBar 级 avoidLayoutSafeArea: true 负责（系统将内容整体下移 statusBarHeight）；
   // 此处 padding 只留纯视觉余量，不得再叠加 statusBarHeight（titleBar 高度固定，会溢出裁剪 → 文字消失）。
   @Builder
   customTitleContent() {
     Row() {
+      // 标题居左
       Text('我的')
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
-        .width('100%')
-        .textAlign(TextAlign.Center)
         .fontColor($r('app.color.text_primary_color'));
+      Blank();
+      // 右侧主题切换器（跟随系统/浅色/深色）
+      this.colorModeSelector();
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
@@ -487,7 +536,7 @@ export struct MineView {
         // stackBuilder 内部不要再手工加 statusBarHeight（titleBar 高度固定会溢出裁剪）
         avoidLayoutSafeArea: true,
         content: {
-          // 自定义整段标题区：仅展示居中 24vp「我的」大字
+          // 自定义整段标题区：居左 24vp「我的」大字 + 右侧主题切换器
           stackBuilder: (): void => {
             this.customTitleContent();
           },
@@ -631,6 +680,39 @@ export struct MineView {
   private async refreshNotifyEnabled(): Promise<void> {
     const v: string = await PreferencesUtil.getString(null, PreferencesUtil.KEY_NOTIFY_ENABLED, '');
     this.notifyEnabled = v === 'true';
+  }
+
+  // 读取持久化的主题偏好并回填选中索引（EntryAbility 启动时已应用过一次，此处仅同步 UI）
+  private async refreshColorMode(): Promise<void> {
+    const v: string = await PreferencesUtil.getString(null, PreferencesUtil.KEY_COLOR_MODE, 'system');
+    const idx: number = this.COLOR_MODE_KEYS.indexOf(v);
+    this.colorModeIndex = idx >= 0 ? idx : 0;
+    this.colorModeInitialized = true; // 回填完成后，用户点击才触发持久化/切换
+  }
+
+  // 主题切换回调（@Watch）：持久化用户选择并即时应用到全局颜色模式
+  private onColorModeIndexChanged(): void {
+    if (!this.colorModeInitialized) {
+      return; // 冷启动回填阶段，避免重复写盘/切换（启动流程已处理）
+    }
+    const idx: number = this.colorModeIndex;
+    const key: string = (idx >= 0 && idx < this.COLOR_MODE_KEYS.length) ? this.COLOR_MODE_KEYS[idx] : 'system';
+    const mode: ConfigurationConstant.ColorMode = key === 'light'
+      ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+      : key === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+        : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+    PreferencesUtil.putString(null, PreferencesUtil.KEY_COLOR_MODE, key);
+    const ctx = AppContextStore.getInstance().getContext();
+    if (ctx) {
+      try {
+        // 应用级切换：全部页面即时换肤；深浅色变化会触发 EntryAbility.onConfigurationUpdate 同步状态栏样式
+        ctx.getApplicationContext().setColorMode(mode);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        hilog.warn(DOMAIN, TAG, 'setColorMode 失败：%{public}s', msg);
+        showToast(this.getUIContext(), '主题切换失败');
+      }
+    }
   }
 
   // 获取 UIAbilityContext（notificationManager 需要）
