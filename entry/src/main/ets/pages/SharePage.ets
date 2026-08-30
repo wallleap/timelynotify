@@ -98,7 +98,7 @@ struct SharePage {
   // 自定义刷新指示器：仅在下拉/刷新过程中显示（Inactive 隐藏）；
   // 顶部 spacer 让转圈下移到 titleBar 下方避免被遮挡：
   // 铺满方案下内容区从窗口顶开始（enableComponentSafeArea: false），Refresh 顶部贴近窗口顶，
-  // 两条分支统一全量补偿 statusBarHeight + 56 + 16（titleBar 总高 + 余量），与降级分支一致
+  // HDS 分支 spacer = statusBarHeight + 56 - 4（titleBar 总高微调 -4）；降级分支 = statusBarHeight + 56 + 16
   @Builder
   refreshHeaderBuilder() {
     Column() {

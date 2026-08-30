@@ -49,9 +49,8 @@ struct ServerSettingsPage {
             Row()
               .width('100%')
               .height(4);
-            // HDS：enableComponentSafeArea 组件级安全区自动让内容起始于 titleBar 下方 → 删首占位
-            // 降级：mainTitle 走系统槽位，enableComponentSafeArea 自动避让状态栏，无需自定义；
-            //   但降级用的是 Stack 叠层，仍保留手工 statusBarHeight + MINI(56) + 余量 占位
+            // 首占位：HDS 保留 4 作为列表顶部余量（enableComponentSafeArea 已让内容起始于 titleBar 下方）
+            // 降级：Stack 叠层内容从窗口顶开始，需手工 statusBarHeight + MINI(56) + 16 余量 占位
             ServerSettingsContent();
           }
           .width('100%')
