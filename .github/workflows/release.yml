@@ -402,7 +402,7 @@ jobs:
 
       # --------------------------------------------------------
       # .app 整体重签名（release 证书）
-      #   sign-app 的签名对象是 .app 整体：签名块附加在 zip 尾部（hvigor SignApp 同款原理）
+      #   sign-app 将签名块写入 zip 内部（内容 → 签名块 → 中央目录 → EOCD，APK v2 同款布局）
       #   （mode=localSign，SHA256withECDSA —— HarmonyOS 要求；hap-sign-tool 用明文密码）
       # --------------------------------------------------------
       - name: .app 重签名（release 证书）
@@ -441,16 +441,11 @@ jobs:
 
           # 自检 1：zip 结构完整
           unzip -t "$SIGNED_APP" > /dev/null || { echo "错误: 签名产物 zip 结构损坏"; exit 1; }
-          # 自检 2：EOCD 之后必须存在尾部签名附加块（未签名的 .app 没有）
-          python3 - "$SIGNED_APP" <<'PY'
-          import sys
-          data = open(sys.argv[1], 'rb').read()
-          eocd = data.rfind(b'PK\x05\x06')
-          assert eocd != -1, 'zip EOCD 缺失'
-          tail = len(data) - (eocd + 22)
-          assert tail > 100, f'尾部无签名块（仅 {tail} 字节）——签名未生效'
-          print(f'签名块自检通过：EOCD 后附加 {tail} 字节签名数据')
-          PY
+          # 自检 2：签名产物必须大于 unsigned 源包（签名块增加体积）
+          U_SIZE=$(stat -c%s "$UNSIGNED_APP"); S_SIZE=$(stat -c%s "$SIGNED_APP")
+          [ "$S_SIZE" -gt "$U_SIZE" ] || { echo "错误: 签名产物(${S_SIZE}B) 未大于源包(${U_SIZE}B)，签名未生效"; exit 1; }
+          # 自检 3：官方 verify-app 验签（验签名块 + 证书链 + Profile，最权威）
+          java -jar "$JAR" verify-app -inFile "$SIGNED_APP" || { echo "错误: verify-app 验签失败"; exit 1; }
           echo "--- 签名完成 ---"
           ls -lh "$SIGNED_APP"
           echo "signed_app=$SIGNED_APP" >> "$GITHUB_OUTPUT"
