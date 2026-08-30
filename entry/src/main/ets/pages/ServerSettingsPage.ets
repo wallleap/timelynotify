@@ -48,7 +48,7 @@ struct ServerSettingsPage {
           Column() {
             Row()
               .width('100%')
-              .height(4);
+              .height(8);
             // 首占位：HDS 保留 4 作为列表顶部余量（enableComponentSafeArea 已让内容起始于 titleBar 下方）
             // 降级：Stack 叠层内容从窗口顶开始，需手工 statusBarHeight + MINI(56) + 16 余量 占位
             ServerSettingsContent();

@@ -50,7 +50,7 @@
     },
     {
       "name": "input_background_color",
-      "value": "#992c2c2c"
+      "value": "#3C3C3C"
     },
     {
       "name": "selected_row_background",
@@ -95,6 +95,10 @@
     {
       "name": "text_quaternary_color",
       "value": "#fff"
+    },
+    {
+      "name": "text_quinary_color",
+      "value": "#86909c"
     }
   ]
 }

@@ -67,12 +67,12 @@ export struct MineView {
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   // 主题三选项的 Symbol 图标（顺序与 COLOR_MODE_KEYS 一致）
   private readonly COLOR_MODE_ICONS: Resource[] = [
-    $r('sys.symbol.circle_lefthalf_inset_filled'),
-    $r('sys.symbol.sun_max_fill'),
     $r('sys.symbol.moon_fill'),
+    $r('sys.symbol.sun_max_fill'),
+    $r('sys.symbol.circle_lefthalf_inset_filled'),
   ];
   // 主题三选项的持久化键值（顺序与 COLOR_MODE_ICONS 一致）
-  private readonly COLOR_MODE_KEYS: string[] = ['system', 'light', 'dark'];
+  private readonly COLOR_MODE_KEYS: string[] = ['dark', 'light', 'system'];
   // 官方结构：Scroll 绑定自己的 Scroller 实例，供 HdsNavigation.bindToScrollable 用
   private scroller: Scroller = new Scroller();
   // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
@@ -187,10 +187,7 @@ export struct MineView {
     Scroll(this.scroller) {
       Column({ space: 16 }) {
         // 首项占位：组件级安全区（enableComponentSafeArea）已自动让内容起始于 titleBar 下方 → HDS 无需占位
-        // 降级（Stack 叠层）仍需手工 statusBarHeight + titleBar(56) + 4 余量
-        if (!SUPPORTS_IMMERSIVE_MATERIAL) {
-          Row().width('100%').height(this.statusBarHeight + 56 + 10);
-        }
+        Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL ? 0 : this.statusBarHeight + 56 + 10);
 
         // 通知设置卡片
         Column({ space: 0 }) { // 开启应用订阅通知（开关）
@@ -294,7 +291,7 @@ export struct MineView {
             .width('100%')
             .padding({ left: 12 });
 
-          Column({ space: 12 }) { // 服务器入口卡片
+          Column({ space: 10 }) { // 服务器入口卡片
             Row({ space: 14 }) {
               Column({ space: 4 }) {
                 Row() {

@@ -461,7 +461,7 @@ export struct NotifyView {
         ListItem() {
           Row()
             .width('100%')
-            .height(2);
+            .height(4);
         }
       } else {
         ListItem() {
