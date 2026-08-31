@@ -10,7 +10,7 @@ import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
-import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_EDITING, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
+import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
 import showToast from '../components/showToast';
 
 const TAG: string = 'NotifyView';
@@ -50,6 +50,9 @@ export struct NotifyView {
   // 通知列表刷新信号（EntryAbility 回前台/点击通知拉起时自增）：@Watch 变化后自动拉取最新消息，
   // 保证用户回到列表/点通知进来时列表始终是最新的
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
+  // 主页页面可见状态（Index onPageShow/onPageHide 写入）：Index 被 router 跳转覆盖/退后台时组件
+  // 自身不会销毁（aboutToDisappear 不触发），需借助页面级显隐信号停止/恢复前台轮询
+  @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onPageVisibleChanged') indexPageVisible: boolean = true;
   // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
@@ -830,14 +833,29 @@ export struct NotifyView {
   }
 
   // Tab 切换监听（homeTabIndex 的 @Watch 回调）：切走「通知」Tab 后列表不可见，
-  // 多选状态保留无意义，自动退出编辑；切回「通知」Tab 时全量刷新并重启前台轮询
+  // 多选状态保留无意义，自动退出编辑；切回「通知」Tab 时全量刷新，
+  // 且仅在页面可见（未被其它页面覆盖/未退后台）时恢复前台轮询
   private onHomeTabIndexChanged(): void {
     if (this.isEditing) {
       this.exitEditMode();
     }
     if (this.homeTabIndex === 0) {
       this.loadMessages();
-      this.startPolling();
+      if (this.indexPageVisible) {
+        this.startPolling();
+      }
+    } else {
+      this.stopPolling();
+    }
+  }
+
+  // 页面显隐监听（indexPageVisible 的 @Watch 回调）：Index 被 router 跳转其它页面覆盖或应用
+  // 退后台时停止轮询；返回页面/回前台且停留在「通知」Tab 时恢复轮询
+  private onPageVisibleChanged(): void {
+    if (this.indexPageVisible) {
+      if (this.homeTabIndex === 0) {
+        this.startPolling();
+      }
     } else {
       this.stopPolling();
     }

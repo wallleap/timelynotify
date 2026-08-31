@@ -2,7 +2,7 @@ import { NotifyView } from '../views/NotifyView';
 import { MineView } from '../views/MineView';
 import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
-import { KEY_HOME_TAB_INDEX, KEY_NOTIFY_EDITING } from '../common/Constant';
+import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING } from '../common/Constant';
 
 // 底部 Tab 项定义
 interface TabItem {
@@ -63,6 +63,17 @@ struct Index {
       MineView()
     }
     .tabBar(this.tabBuilder(this.tabs[1], 1))
+  }
+
+  // 页面显隐：router 跳转其它页面（如服务器设置页）/应用退后台时触发 onPageHide，
+  // 返回/回前台时触发 onPageShow。Tab 内子组件感知不到页面级显隐（不会触发 aboutToDisappear），
+  // 经 AppStorage 同步给 NotifyView 用于停止/恢复前台轮询
+  onPageShow(): void {
+    AppStorage.setOrCreate(KEY_INDEX_PAGE_VISIBLE, true);
+  }
+
+  onPageHide(): void {
+    AppStorage.setOrCreate(KEY_INDEX_PAGE_VISIBLE, false);
   }
 
   // 系统返回拦截：通知页多选编辑态时，返回键/侧滑先退出多选而不是离开页面；
