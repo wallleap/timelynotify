@@ -10,7 +10,7 @@ import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
-import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_EDITING } from '../common/Constant';
+import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_EDITING, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
 import showToast from '../components/showToast';
 
 const TAG: string = 'NotifyView';
@@ -40,8 +40,12 @@ export struct NotifyView {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   // 底部导航条高度（vp），编辑操作栏与列表底部占位避让用
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  // 主页当前选中 Tab 索引（Index 经 @StorageLink 写入）：切走「通知」Tab 时自动退出多选模式
+  // 主页当前选中 Tab 索引（Index 经 @StorageLink 写入）：切走「通知」Tab 时自动退出多选模式；
+  // 切回「通知」Tab（值为 0）时自动刷新列表
   @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
+  // 通知列表刷新信号（EntryAbility 回前台/点击通知拉起时自增）：@Watch 变化后自动拉取最新消息，
+  // 保证用户回到列表/点通知进来时列表始终是最新的
+  @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
   // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
@@ -809,11 +813,19 @@ export struct NotifyView {
   }
 
   // Tab 切换监听（homeTabIndex 的 @Watch 回调）：切走「通知」Tab 后列表不可见，
-  // 多选状态保留无意义，自动退出编辑
+  // 多选状态保留无意义，自动退出编辑；切回「通知」Tab 时自动刷新，保证列表最新
   private onHomeTabIndexChanged(): void {
     if (this.isEditing) {
       this.exitEditMode();
     }
+    if (this.homeTabIndex === 0) {
+      this.loadMessages();
+    }
+  }
+
+  // 刷新信号监听（refreshSignal 的 @Watch 回调）：App 回前台或点击通知拉起时自动刷新列表
+  private onRefreshSignalChanged(): void {
+    this.loadMessages();
   }
 
   // 编辑态变化监听（isEditing 的 @Watch 回调）：任何来源退出编辑（自身退出/Tab 切换/
