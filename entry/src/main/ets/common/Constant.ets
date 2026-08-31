@@ -5,3 +5,6 @@ export const KEY_HOME_TAB_INDEX: string = 'homeTabIndex';
 
 /** AppStorage 键：通知页多选编辑态（NotifyView 持有并同步，Index onBackPress 读取以拦截返回退出编辑） */
 export const KEY_NOTIFY_EDITING: string = 'notifyIsEditing';
+
+/** AppStorage 键：通知列表刷新信号（EntryAbility 回前台/点击通知拉起时自增，NotifyView 监听变化后刷新列表） */
+export const KEY_NOTIFY_REFRESH_SIGNAL: string = 'notifyRefreshSignal';

@@ -9,7 +9,7 @@ import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
 import { ensureImmersiveMaterial, KEY_NAV_BAR_HEIGHT, KEY_STATUS_BAR_HEIGHT } from '../utils/ImmersiveUtil';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
-import { DOMAIN } from '../common/Constant';
+import { DOMAIN, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
 
 const TAG: string = 'EntryAbility';
 
@@ -76,10 +76,25 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(DOMAIN, TAG, 'Ability onForeground');
+    // 回前台自动刷新通知列表（后台→前台切换场景）
+    this.bumpNotifyRefreshSignal();
   }
 
   onBackground(): void {
     hilog.info(DOMAIN, TAG, 'Ability onBackground');
+  }
+
+  // 温启动：Ability 存活时被再次拉起（如点击通知、recent 任务切换）。
+  // 应用已在前台时点击通知只会走这里（onForeground 不重复触发），借此覆盖"前台点通知也要刷新"
+  onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+    hilog.info(DOMAIN, TAG, 'Ability onNewWant');
+    this.bumpNotifyRefreshSignal();
+  }
+
+  /** 自增通知列表刷新信号：NotifyView 通过 @StorageProp + @Watch 监听变化后拉取最新消息 */
+  private bumpNotifyRefreshSignal(): void {
+    const cur: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
+    AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, cur + 1);
   }
 
   /**
