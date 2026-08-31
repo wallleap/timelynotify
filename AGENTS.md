@@ -4,16 +4,16 @@
 
 ## 项目概览
 
-| 属性         | 值                                    |
-|------------|--------------------------------------|
-| **项目名称**   | TimelyNotify（及时通知）                   |
-| **包名**     | `cn.oicode.timelynotify`             |
-| **技术栈**    | ArkTS + ArkUI（Stage 模型）              |
-| **SDK 版本** | `targetSdkVersion 6.1.0(23)`（API 23） |
-| **构建系统**   | Hvigor                               |
-| **推送服务**   | 华为 AGC Push Kit v3                   |
-| **外部依赖**   | 无（零第三方 OHPM 依赖）                      |
-| **包类型**    | `entry`（HAP）                         |
+| 属性         | 值                                                                                 |
+|------------|-----------------------------------------------------------------------------------|
+| **项目名称**   | TimelyNotify（及时通知）                                                                |
+| **包名**     | `cn.oicode.timelynotify`                                                          |
+| **技术栈**    | ArkTS + ArkUI（Stage 模型）                                                           |
+| **SDK 版本** | 编译 target `26.0.0` / 兼容 `compatibleSdkVersion 6.1.0(23)`（API 23），UI 采用 Hds 沉浸光感方案 |
+| **构建系统**   | Hvigor                                                                            |
+| **推送服务**   | 华为 AGC Push Kit v3                                                                |
+| **外部依赖**   | 无（零第三方 OHPM 依赖）                                                                   |
+| **包类型**    | `entry`（HAP）                                                                      |
 
 **核心功能**：通过 HTTP 从自建/第三方服务器拉取推送通知，支持多服务器管理、设备注册、亮/暗双主题。
 
@@ -37,7 +37,8 @@ entry/src/main/ets/
 │   ├── ServerSettingsDialog.ets  # 服务器设置弹窗
 │   ├── ServerSettingsContent.ets # 服务器列表管理组件
 │   ├── ServerActionDialogs.ets   # 操作菜单弹窗集
-│   └── ClientTokenDialog.ets     # ClientToken 配置弹窗
+│   ├── ClientTokenDialog.ets     # ClientToken 配置弹窗
+│   └── showToast.ets             # Toast 提示封装
 ├── services/            # 业务服务层
 │   ├── ServerManager.ets         # 服务器 CRUD + 持久化
 │   ├── DeviceRegisterService.ets # 设备注册服务
@@ -49,9 +50,11 @@ entry/src/main/ets/
 │   └── ApiConfig.ets             # API 环境配置
 ├── utils/               # 工具类
 │   ├── HttpUtil.ets              # HTTP 请求封装
-│   └── PreferencesUtil.ets       # Preferences 持久化封装
+│   ├── PreferencesUtil.ets       # Preferences 持久化封装
+│   └── ImmersiveUtil.ets         # 沉浸式/状态栏高度工具
 └── common/              # 全局通用
-    └── AppContextStore.ets       # Context 存储单例
+    ├── AppContextStore.ets       # Context 存储单例
+    └── Constant.ets              # 常量（含 AppStorage 刷新信号键）
 ```
 
 ### 数据流架构
@@ -149,7 +152,7 @@ export class NotifyMessage {
 | 类型    | 规范               | 示例                                             |
 |-------|------------------|------------------------------------------------|
 | 类/接口  | PascalCase       | `ServerManager`, `NotifyMessage`               |
-| 函数/方法 | camelCase        | `loadServers`, `fetchMessages`                 |
+| 函数/方法 | camelCase        | `loadServers`, `getMessages`                   |
 | 变量/属性 | camelCase        | `deviceKey`, `baseURL`                         |
 | 常量    | UPPER_SNAKE_CASE | `PROD_BASE_URL`, `DEFAULT_CLIENT_TOKEN_BASE64` |
 | 文件    | PascalCase       | `EntryAbility.ets`, `HttpUtil.ets`             |
@@ -209,21 +212,35 @@ ComponentName
 ### 设备注册流程
 
 ```
-EntryAbility.onForeground
-  → pushService.getToken() → 存入 Preferences (deviceKey)
-  → ServerManager.loadServers() → 遍历服务器列表
-  → DeviceRegisterService.register(server, deviceKey)
-  → POST /register { device_key, platform, push_token }
-  → 返回 device_token → 存入 Preferences
+EntryAbility.onCreate
+  → bootstrapServerManager()（ServerManager 异步加载，并行）
+  → silentRegister()
+      ├─ pushService.getToken() → 与缓存 device_token 比对
+      │     └─ 变更 → 遍历所有已注册 server 重绑（新 token + 旧 device_key）
+      ├─ ensureRegistered：无缓存 key → 无 key 注册 → 服务端生成 device_key
+      └─ syncCurrentServerKey：GET /register/:device_key 校验
+            ├─ 有效 → 直接用
+            ├─ 无效 → POST /register 还原（新 token + 旧 key）
+            └─ 无本地 key → POST /register 重置 → 服务端生成新 key
+  → per-server 持久化（自定义 server 存 server_list_json，内置 server 存
+    server_builtin_device_keys），同时写全局 device_key 兼容旧链路
 ```
 
 ### 通知拉取流程
 
 ```
-NotifyView.onPageShow / 定时轮询
-  → NotifyMessageService.fetchMessages(server)
-  → GET /:device_key/message (Header: X-Gotify-Key)
-  → 返回 NotifyMessage[] → 更新 UI
+NotifyView.getMessages → GET /:device_key/message (Header: X-Gotify-Key)
+
+全量刷新（重置列表/分页）触发点：
+  - 组件初始化 / 服务器切换 / 下拉刷新
+  - 切回「通知」Tab（homeTabIndex watch）
+  - App 回前台 / 点击系统通知拉起（EntryAbility onForeground/onNewWant
+    经 AppStorage 信号 KEY_NOTIFY_REFRESH_SIGNAL 通知 NotifyView）
+
+增量轮询（「通知」Tab 可见期间，间隔 15s）：
+  - 仅插入 id > 当前列表最大 id 的新消息（不重置分页、不打断滚动位置）
+  - 启停条件：通知 Tab 可见 && 主页栈顶（Index onPageShow/onPageHide
+    经 AppStorage KEY_INDEX_PAGE_VISIBLE 控制）&& App 前台
 ```
 
 ### 服务器管理流程
@@ -252,8 +269,46 @@ hvigorw assembleHap
 
 - **模块未注册**：新页面未在 `main_pages.json` 中注册
 - **权限未声明**：使用了需要权限的 API 但未在 `module.json5` 声明
-- **API 版本不兼容**：使用了高于 `targetSdkVersion 22` 的 API
+- **API 版本不兼容**：使用了高于兼容版本 `6.1.0(23)`（API 23）的运行时 API（编译 target 26.0.0 的 Hds/beta UI API
+  除外，低版本设备需运行时兼容分支）
 - **类型未声明/不正确**
+
+---
+
+## Git 操作
+
+大小写不敏感，要改例如 `mineView` 为 `MineView`，需要先改成其它的，例 `mineView` → `tempView` → `MineView`
+
+### 开发
+
+main 为保护分支，编写代码之前，必须保证在 main 分支 pull 同步了最新代码，然后根据需求创建/切换分支（switch）
+
+**新功能、需求开发**
+
+分支名 `feature/xxx`，例 `feature/tab-immersive`，拆分多次 commit，不要累积到一起再 commit，功能开发测试完成 push
+
+**普通 bug**
+
+分支名 `bugfix/xxx`，例 `bugfix/text-display`，多次 commit，修复测试完 push
+
+**紧急修复 bug**
+
+分支名 `hotfix/xxx`，例 `hotfix/mineView-crash`，修复完立即 commit push，线上立即 merge 并发版
+
+> feature、bugfix 不着急 merge；如果 coding 时发现 main 已修改，要及时 pull main 到本分支并处理冲突；feature/bugfix/hotfix
+> 分支在 PR/MR 合并到 main 分支之后按需删除
+
+### 发版
+
+本地不修改版本号
+
+使用 `bin/release` 脚本发版，会自动切 main 分支，打 tag
+
+- 如果是小补丁，要在当前 tag 的基础（x.y.z）上，让 z +1，运行 `bin/release x.y.z+1`（z 最大只能是三位数）
+- 如果是功能更新，直接运行 `bin/release`，会自动让 y +1，并让 z 置 0
+- 如果是破坏性更新，则需要让 x +1，y、z 置 0，运行 `bin/release x+1.0.0`
+
+打完 tag 自动 push，GitHub 自动注入版本号，签名构建，传到 AGC、Release
 
 ---
 
@@ -275,5 +330,5 @@ hvigorw assembleHap
 
 ## 相关链接
 
-- **API 文档**：遵循 Gotify 兼容 API 规范
-- **HarmonyOS 文档**：基于 API 22 / SDK 6.0.2
+- **API 文档**：本仓库 [SERVER_API.md](SERVER_API.md)
+- **HarmonyOS 文档**：编译 target 26.0.0 / compatibleSdkVersion 6.1.0(23)
