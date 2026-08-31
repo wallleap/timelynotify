@@ -4,6 +4,7 @@ import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerActionMenuDialog, ServerKeyDialog, ServerRenameDialog, } from './ServerActionDialogs';
+import { ClientTokenDialog } from './ClientTokenDialog';
 import showToast from './showToast';
 import { DOMAIN } from '../common/Constant';
 
@@ -36,6 +37,8 @@ export struct ServerSettingsContent {
   @State targetName: string = '';
   // 当前 device_key（Key 弹窗参考用）
   @State currentDeviceKey: string = '';
+  // 当前 server 的 per-server client token（客户端 Token 弹窗预填/参考用）
+  @State currentClientToken: string = '';
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   // 操作菜单 controller（目标由 targetId 持有，回调闭包捕获 this 取最新值）
   private actionMenuController: CustomDialogController = new CustomDialogController({
@@ -45,6 +48,9 @@ export struct ServerSettingsContent {
       },
       onResetKey: () => {
         this.openKeyDialog();
+      },
+      onClientToken: () => {
+        this.openClientTokenDialog();
       },
       onRename: () => {
         this.openRenameDialog();
@@ -73,6 +79,19 @@ export struct ServerSettingsContent {
       getCurrentKey: (): string => this.currentDeviceKey,
       onConfirm: (inputKey: string): void => {
         this.handleResetOrRestore(inputKey);
+      },
+    }),
+    alignment: DialogAlignment.Center,
+    autoCancel: true,
+    offset: { dx: 0, dy: 0 },
+  });
+  // per-server 客户端 Token 弹窗（getInitToken 回填当前 server 已配置 token；保存后写入当前 server）
+  private clientTokenController: CustomDialogController = new CustomDialogController({
+    builder: ClientTokenDialog({
+      getInitToken: (): string => this.currentClientToken,
+      onSaved: (): void => {
+        // 保存后刷新本地缓存，便于再次打开时回填最新值
+        this.refreshClientToken();
       },
     }),
     alignment: DialogAlignment.Center,
@@ -252,6 +271,12 @@ export struct ServerSettingsContent {
     this.currentDeviceKey = k && k.length > 0 ? k : '';
   }
 
+  // 刷新当前 server 的 per-server client token（弹窗预填用；空串 = 未配置，走内置默认）
+  private async refreshClientToken(): Promise<void> {
+    await ServerManager.getInstance().ensureLoaded();
+    this.currentClientToken = ServerManager.getInstance().getCurrentClientToken();
+  }
+
   private findTarget(): ServerEntry | null {
     for (let i = 0; i < this.serverList.length; i++) {
       if (this.serverList[i].id === this.targetId) {
@@ -289,6 +314,17 @@ export struct ServerSettingsContent {
       this.keyController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'key dialog open 失败');
+      showToast(this.getUIContext(), '弹窗无法打开');
+    }
+  }
+
+  // 打开 per-server 客户端 Token 弹窗：先刷新当前 server 的 token 供预填
+  private async openClientTokenDialog(): Promise<void> {
+    await this.refreshClientToken();
+    try {
+      this.clientTokenController.open();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'client token dialog open 失败');
       showToast(this.getUIContext(), '弹窗无法打开');
     }
   }

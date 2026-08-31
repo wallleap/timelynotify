@@ -25,6 +25,7 @@ class ServerEntryJson extends Object {
   baseURL: string = '';
   isBuiltIn: boolean = false;
   deviceKey: string = '';
+  clientToken: string = '';
 }
 
 type ServerChangeListener = (list: ServerEntry[], currentId: string) => void;
@@ -113,6 +114,9 @@ export class ServerManager {
   // 内置 server 的 deviceKey 映射（id → key）。内置条目本身不持久化（跟随 ApiConfig 动态构造），
   // 但 deviceKey 必须跨启动保留，否则每次冷启动都会因 per-server key 为空而重置
   private static readonly KEY_BUILTIN_DEVICE_KEYS: string = 'server_builtin_device_keys';
+  // 内置 server 的 clientToken 映射（id → token）。内置条目本身不持久化，
+  // 但用户配置的 per-server client token 必须跨启动保留
+  private static readonly KEY_BUILTIN_CLIENT_TOKENS: string = 'server_builtin_client_tokens';
   private servers: ServerEntry[] = [];
   private currentId: string = '';
   // 内置项：baseURL 不持久化、不缓存，每次获取都从 ApiConfig 动态取值，
@@ -222,6 +226,23 @@ export class ServerManager {
           hilog.warn(DOMAIN, TAG, '内置 server deviceKey 映射解析失败，忽略');
         }
       }
+      // 读取内置 server 的 clientToken 映射并回填（与 deviceKey 同理，单独持久化）
+      const builtinTokensRaw: string =
+        await PreferencesUtil.getString(ctx, ServerManager.KEY_BUILTIN_CLIENT_TOKENS, '');
+      if (builtinTokensRaw && builtinTokensRaw.length > 0) {
+        try {
+          const tokenMap = JSON.parse(builtinTokensRaw) as Record<string, Object>;
+          for (let i = 0; i < builtIn.length; i++) {
+            const b: ServerEntry = builtIn[i];
+            const t: Object | undefined = tokenMap[b.id];
+            if (t && typeof t === 'string' && String(t).length > 0) {
+              b.clientToken = String(t);
+            }
+          }
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, '内置 server clientToken 映射解析失败，忽略');
+        }
+      }
       const list: ServerEntry[] = [];
       for (let i = 0; i < builtIn.length; i++) {
         const b: ServerEntry = builtIn[i];
@@ -243,8 +264,11 @@ export class ServerManager {
               const name: string = typeof obj['name'] === 'string' ? String(obj['name']) : '';
               const baseURL: string = typeof obj['baseURL'] === 'string' ? String(obj['baseURL']) : '';
               const savedDeviceKey: string = typeof obj['deviceKey'] === 'string' ? String(obj['deviceKey']) : '';
+              const savedClientToken: string =
+                typeof obj['clientToken'] === 'string' ? String(obj['clientToken']) : '';
               if (id && baseURL) {
-                list.push(new ServerEntry(id, name, normalizeBaseURL(baseURL), false, savedDeviceKey));
+                list.push(new ServerEntry(id, name, normalizeBaseURL(baseURL), false, savedDeviceKey,
+                  savedClientToken));
               }
             }
           }
@@ -261,6 +285,22 @@ export class ServerManager {
         this.currentId = this.servers[0].id;
       } else {
         this.currentId = '';
+      }
+      // 迁移：旧版全局 client_token → 当前 server 的 per-server clientToken
+      // 旧版所有 server 共享一个全局 token，迁移到当前 server（用户正在使用的那个）；
+      // 其余 server 留空走内置默认。迁移后清除全局 key，避免重复迁移
+      const legacyGlobalToken: string =
+        await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, '');
+      if (legacyGlobalToken && legacyGlobalToken.trim().length > 0) {
+        const cur: ServerEntry | null = this.findById(this.currentId);
+        if (cur && (!cur.clientToken || cur.clientToken.trim().length === 0)) {
+          cur.clientToken = legacyGlobalToken.trim();
+          hilog.info(DOMAIN, TAG, '迁移旧版全局 client_token 到当前 server：id=%{public}s', this.currentId);
+          await this.persist(ctx);
+        }
+        // 无论是否写入 per-server，都清除旧全局 key（trim 后非空才算配置过，避免重复迁移）
+        await PreferencesUtil.delete(ctx, PreferencesUtil.KEY_CLIENT_TOKEN);
+        hilog.info(DOMAIN, TAG, '已清除旧版全局 client_token');
       }
       this.hasLoaded = true;
       hilog.info(
@@ -350,6 +390,24 @@ export class ServerManager {
       entry.deviceKey = deviceKey;
       await this.persist(ctx);
       hilog.info(DOMAIN, TAG, '已更新 device_key：serverId=%{public}s key=%{public}s', serverId, deviceKey);
+    }
+  }
+
+  // 获取当前 server 用户配置的 client token（不含内置默认；空串 = 用户未配置，调用方应回退默认）
+  getCurrentClientToken(): string {
+    const cur: ServerEntry | null = this.findById(this.currentId);
+    return cur ? cur.clientToken : '';
+  }
+
+  // 更新指定 server 的 client token 并持久化。空串 = 清除自定义（恢复内置默认）。context 可传 null
+  async updateServerClientToken(context: common.Context | null, serverId: string,
+    clientToken: string): Promise<void> {
+    const ctx: common.Context | null = resolveContext(context);
+    const entry: ServerEntry | null = this.findById(serverId);
+    if (entry) {
+      entry.clientToken = clientToken;
+      await this.persist(ctx);
+      hilog.info(DOMAIN, TAG, '已更新 client_token：serverId=%{public}s', serverId);
     }
   }
 
@@ -541,6 +599,7 @@ export class ServerManager {
         j.baseURL = s.baseURL;
         j.isBuiltIn = false;
         j.deviceKey = s.deviceKey;
+        j.clientToken = s.clientToken;
         customs.push(j);
       }
     }
@@ -555,6 +614,15 @@ export class ServerManager {
       }
     }
     await PreferencesUtil.putString(ctx, ServerManager.KEY_BUILTIN_DEVICE_KEYS, JSON.stringify(builtinKeys));
+    // 持久化内置 server 的 clientToken 映射（仅非空项）
+    const builtinTokens: Record<string, string> = {};
+    for (let i = 0; i < this.servers.length; i++) {
+      const s: ServerEntry = this.servers[i];
+      if (s.isBuiltIn && s.clientToken && s.clientToken.length > 0) {
+        builtinTokens[s.id] = s.clientToken;
+      }
+    }
+    await PreferencesUtil.putString(ctx, ServerManager.KEY_BUILTIN_CLIENT_TOKENS, JSON.stringify(builtinTokens));
     // 持久化已删除的内置 id 列表
     await PreferencesUtil.putString(ctx, ServerManager.KEY_DELETED_BUILTIN, JSON.stringify(this.deletedBuiltInIds));
   }

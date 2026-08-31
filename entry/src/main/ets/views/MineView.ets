@@ -7,7 +7,6 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { extractHost } from '../components/ServerSettingsContent';
-import { ClientTokenDialog } from '../components/ClientTokenDialog';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
@@ -43,10 +42,6 @@ export struct MineView {
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
-  // 用户自定义的 token 原文（持久化层内容）；内置默认时空串
-  @State customClientToken: string = '';
-  // 是否正在使用内置默认 token
-  @State isDefaultClientToken: boolean = true;
   // 推送 Token（Push 下发的 device_token；卡片展示用，点击复制完整明文）
   @State deviceTokenDisplay: string = '';
   // 通知授权开关状态（系统级，应用无法直接关闭，只能引导用户去系统设置）
@@ -75,22 +70,10 @@ export struct MineView {
   private readonly COLOR_MODE_KEYS: string[] = ['dark', 'light', 'system'];
   // 官方结构：Scroll 绑定自己的 Scroller 实例，供 HdsNavigation.bindToScrollable 用
   private scroller: Scroller = new Scroller();
-  // client token 弹窗（打开时回填用户自定义内容；内置默认时显示空 placeholder，用户填即覆盖）
-  private tokenDialogController: CustomDialogController = new CustomDialogController({
-    builder: ClientTokenDialog({
-      getInitToken: (): string => this.customClientToken, onSaved: (): void => {
-        this.refreshClientToken();
-      },
-    }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    offset: { dx: 0, dy: 0 },
-  });
 
   aboutToAppear() {
     this.refreshSummary();
     this.refreshColorMode();
-    this.refreshClientToken();
     this.refreshDeviceToken();
     this.refreshNotifyEnabled();
     this.refreshAppVersion();
@@ -330,34 +313,44 @@ export struct MineView {
             .onClick(() => {
               this.handleCardClicked();
             });
+          }.width('100%')
+        }.width('100%');
 
-            // 客户端 Token 卡片
-            Row({ space: 14 }) {
-              Column({ space: 4 }) {
-                Text('客户端 Token')
-                  .fontSize(17)
+        Column({ space: 8 }) {
+          Text('信息')
+            .fontSize(12)
+            .fontColor($r('app.color.text_quinary_color'))
+            .width('100%')
+            .padding({ left: 12 });
+
+          Column({ space: 10 }) { // 服务器入口卡片
+            // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
+            Row() {
+              Column({ space: 2 }) {
+                Text('构建信息')
+                  .fontSize(16)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary_color'))
-                  .width('100%');
-
-                Text(this.buildClientTokenDisplay())
-                  .fontSize(14)
-                  .fontColor(this.isDefaultClientToken ? $r('app.color.text_accent_color') :
-                    $r('app.color.text_tertiary_color'))
-                  .width('100%')
+                  .fontColor($r('app.color.text_primary_color'));
+                Text(this.buildBuildInfoDisplay())
+                  .fontSize(12)
+                  .fontColor($r('app.color.text_quinary_color'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis });
               }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
-              this.arrowRightIcon()
+              // 云端构建才有对应记录页，本地构建不显示箭头
+              if (this.hasCloudBuild()) {
+                this.arrowRightIcon();
+              }
             }
+            .width('100%')
             .width('100%')
             .padding(16)
             .backgroundBlurStyle(resolveBlurStyle('bar')!)
             .backgroundColor($r('app.color.card_glass_background'))
             .borderRadius(12)
             .onClick(() => {
-              this.openTokenDialog();
+              this.openBuildInfo();
             });
 
             // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
@@ -417,30 +410,6 @@ export struct MineView {
                 .fontColor($r('app.color.text_tertiary_color'));
             }.width('100%').padding(16).onClick(() => {
               this.copyVersionInfo();
-            });
-
-            Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-            // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
-            Row() {
-              Column({ space: 2 }) {
-                Text('构建信息')
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary_color'));
-                Text(this.buildBuildInfoDisplay())
-                  .fontSize(12)
-                  .fontColor($r('app.color.text_quinary_color'))
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis });
-              }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-              // 云端构建才有对应记录页，本地构建不显示箭头
-              if (this.hasCloudBuild()) {
-                this.arrowRightIcon();
-              }
-            }.width('100%').padding(16).onClick(() => {
-              this.openBuildInfo();
             });
 
             Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
@@ -596,22 +565,6 @@ export struct MineView {
     this.serverCount = mgr.getList().length;
   }
 
-  private async refreshClientToken(): Promise<void> {
-    const svc = NotifyMessageService.getInstance();
-    this.customClientToken = await svc.getClientToken();
-    this.isDefaultClientToken = await svc.isClientTokenDefault();
-  }
-
-  /** 卡片展示用：区分内置默认 / 用户自定义两态；token 全程不显示明文 */
-  private buildClientTokenDisplay(): string {
-    if (this.isDefaultClientToken) {
-      return '•••••••• (内置默认 · 可修改)';
-    }
-    const t: string = this.customClientToken; // 用户自定义：只显示占位 + 长度，不暴露原文任何片段
-    const masked: string = '••••••••';
-    return `${masked} (已配置 · ${t.length} 位)`;
-  }
-
   // 刷新 Device Token（Push 下发）。先等当前注册任务完成（如 PushKit 还在 getToken），
   // 再读盘；保证启动早期进入 MineView 时也能拿到 Push 写入后的值。
   private async refreshDeviceToken(): Promise<void> {
@@ -660,16 +613,6 @@ export struct MineView {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'router push 失败：%{public}s', msg);
       showToast(this.getUIContext(), '页面无法打开');
-    }
-  }
-
-  private openTokenDialog(): void {
-    try {
-      this.tokenDialogController.open();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, 'token dialog open 失败：%{public}s', msg);
-      showToast(this.getUIContext(), '弹窗无法打开');
     }
   }
 

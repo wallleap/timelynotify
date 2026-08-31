@@ -8,7 +8,7 @@ const TAG: string = 'ServerActionDlg';
 function emptyActionBuilder(): void {
 }
 
-// 服务器项操作菜单（复制/重置还原Key/重命名/删除 + 右上角 close icon）
+// 服务器项操作菜单（复制/重置还原Key/客户端Token/重命名/删除 + 右上角 close icon）
 // 目标服务器由外层持有；本弹窗只负责展示选项并通过回调通知
 @CustomDialog
 export struct ServerActionMenuDialog {
@@ -21,6 +21,8 @@ export struct ServerActionMenuDialog {
   onCopy: () => void = () => {
   };
   onResetKey: () => void = () => {
+  };
+  onClientToken: () => void = () => {
   };
   onRename: () => void = () => {
   };
@@ -75,6 +77,20 @@ export struct ServerActionMenuDialog {
         .onClick(() => {
           this.close();
           this.onResetKey();
+        });
+
+      Divider().color($r('app.color.divider_color'));
+
+      // per-server 客户端 Token（X-Gotify-Key 认证）；留空走内置默认
+      Text('客户端 Token')
+        .fontSize(16)
+        .fontColor($r('app.color.text_primary_color'))
+        .width('100%')
+        .height(52)
+        .textAlign(TextAlign.Center)
+        .onClick(() => {
+          this.close();
+          this.onClientToken();
         });
 
       Divider().color($r('app.color.divider_color'));

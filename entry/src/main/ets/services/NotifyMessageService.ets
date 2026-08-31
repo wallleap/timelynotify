@@ -2,7 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { util } from '@kit.ArkTS';
 import { ServerManager } from './ServerManager';
-import { PreferencesUtil } from '../utils/PreferencesUtil';
+import { ServerEntry } from '../model/ServerEntry';
 import { HttpResponse, HttpUtil } from '../utils/HttpUtil';
 import { AppContextStore } from '../common/AppContextStore';
 import { NotifyMessage } from '../model/NotifyMessage';
@@ -120,20 +120,18 @@ export class NotifyMessageService {
     return list;
   }
 
-  // 获取用户手动配置并持久化的 client token（不含内置默认；返回空 = 用户没填）
+  // 获取当前 server 用户手动配置的 client token（不含内置默认；返回空 = 用户没填）
+  // per-server 存储：切换 server 即得到该 server 的 token
   async getClientToken(context: common.Context | null = null): Promise<string> {
-    const ctx: common.Context | null = resolveContext(context);
-    if (!ctx) {
-      return '';
-    }
-    return PreferencesUtil.getString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, '');
+    await ServerManager.getInstance().ensureLoaded();
+    return ServerManager.getInstance().getCurrentClientToken();
   }
 
   /**
    * 实际生效的 client token：
-   *   - 用户有自定义（非空 trim 后）→ 返回用户值
-   *   - 用户未自定义 → 返回内置默认 token（BASE64 decode 后）
-   * 接口调用都应该用这个方法取 token，而不是直接读 Preferences。
+   *   - 当前 server 有自定义（非空 trim 后）→ 返回用户值
+   *   - 当前 server 未自定义 → 返回内置默认 token（BASE64 decode 后）
+   * 接口调用都应该用这个方法取 token，而不是直接读 ServerManager。
    */
   async getEffectiveClientToken(context: common.Context | null = null): Promise<string> {
     const saved: string = await this.getClientToken(context);
@@ -142,11 +140,11 @@ export class NotifyMessageService {
       return trimmed;
     }
     const fallback: string = decodeDefaultClientToken();
-    hilog.info(DOMAIN, TAG, '用户未配置 client token，使用内置默认值');
+    hilog.info(DOMAIN, TAG, '当前 server 未配置 client token，使用内置默认值');
     return fallback;
   }
 
-  /** 用户是否使用内置默认 token（持久化层为空或只含空白 = 默认） */
+  /** 当前 server 是否使用内置默认 token（per-server 配置为空或只含空白 = 默认） */
   async isClientTokenDefault(context: common.Context | null = null): Promise<boolean> {
     const saved: string = await this.getClientToken(context);
     return !(saved && saved.trim().length > 0);
@@ -166,14 +164,16 @@ export class NotifyMessageService {
   // 返回 MessageListResult：ok=false 时 errorMsg 含原因（未注册/未配置 token/网络失败/认证失败）
   // since > 0 时拼接 ?since=N，用于触底分页加载更老的消息（gotify 协议：返回 ID <= since 的消息）
 
+  // 设置当前 server 的 client token（per-server）。空串/纯空白 = 清除自定义，恢复到内置默认
   async setClientToken(context: common.Context | null, token: string): Promise<boolean> {
-    const ctx: common.Context | null = resolveContext(context);
-    if (!ctx) {
+    await ServerManager.getInstance().ensureLoaded();
+    const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+    if (!cur) {
       return false;
     }
-    // 空串/纯空白 = 清除自定义，恢复到内置默认
     const v: string = token ? token.trim() : '';
-    return PreferencesUtil.putString(ctx, PreferencesUtil.KEY_CLIENT_TOKEN, v);
+    await ServerManager.getInstance().updateServerClientToken(context, cur.id, v);
+    return true;
   }
 
   // 从响应体解析消息列表，容错多种结构：
@@ -195,7 +195,7 @@ export class NotifyMessageService {
 
     const clientToken: string = await this.getEffectiveClientToken(context);
     if (!clientToken || clientToken.length === 0) {
-      result.errorMsg = '未配置客户端 Token';
+      result.errorMsg = '未配置客户端 Token，请到服务器设置中配置';
       return result;
     }
 
@@ -218,7 +218,7 @@ export class NotifyMessageService {
     const resp: HttpResponse<GotifyMessageResponse> = await HttpUtil.get<GotifyMessageResponse>(fullURL, headers);
 
     if (resp.code === 401) {
-      result.errorMsg = '客户端 Token 无效或已过期';
+      result.errorMsg = '客户端 Token 无效或已过期，请到服务器设置中重新配置';
       return result;
     }
     if (resp.code === 404) {
@@ -257,7 +257,7 @@ export class NotifyMessageService {
 
     const clientToken: string = await this.getEffectiveClientToken(ctx);
     if (!clientToken || clientToken.length === 0) {
-      result.errorMsg = '未配置客户端 Token';
+      result.errorMsg = '未配置客户端 Token，请到服务器设置中配置';
       return result;
     }
 
