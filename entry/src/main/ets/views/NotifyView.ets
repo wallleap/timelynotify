@@ -52,6 +52,10 @@ export struct NotifyView {
     offset: { dx: 0, dy: 0 },
   });
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
+  // 请求代际：服务器切换/新请求发起后递增，过期响应直接丢弃，防止旧服务器数据写入列表
+  private loadSeq: number = 0;
+  // 补拉标志：loadMessages 在请求进行中被调用时置 true，当前请求结束后补拉一次
+  private loadQueued: boolean = false;
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
@@ -62,6 +66,11 @@ export struct NotifyView {
       // 切换服务器后列表会整体刷新，selectedIds 属于旧服务器的消息 ID，继续操作会错删/报错，必须退出多选
       this.exitEditMode();
       this.refresh();
+      // 旧服务器的消息不属于新服务器：立即清空列表与分页状态（新服务器拉取失败时也不残留旧数据），
+      // 并递增代际使飞行中的旧请求响应过期丢弃
+      this.messages = [];
+      this.hasMore = false;
+      this.loadSeq++;
       // 服务器切换后重新拉取消息
       this.loadMessages();
     };
@@ -987,13 +996,20 @@ export struct NotifyView {
   private async loadMessages(): Promise<void> {
     if (this.loading) {
       this.refreshing = false;
+      // 已有请求在跑（如切换服务器时旧请求未完成）：排队补拉，保证新服务器数据最终被拉取
+      this.loadQueued = true;
       return;
     }
     this.loading = true;
+    // 请求代际：响应到达时与最新代际不符（期间已切换服务器/发起新请求）→ 过期丢弃
+    const seq: number = ++this.loadSeq;
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
     try {
       const result = await NotifyMessageService.getInstance().getMessages(null);
+      if (seq !== this.loadSeq) {
+        return; // 过期响应：期间已切换服务器/发起新请求，丢弃，防止旧数据写入列表
+      }
       if (result.ok) {
         // 按时间倒序（新消息在上）
         this.messages = result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
@@ -1012,10 +1028,16 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'loadMessages 异常：%{public}s', msg);
-      this.errorMsg = '加载失败';
+      if (seq === this.loadSeq) {
+        this.errorMsg = '加载失败';
+      }
     } finally {
       this.loading = false;
       this.refreshing = false;
+      if (this.loadQueued) {
+        this.loadQueued = false;
+        this.loadMessages(); // 补拉：消费排队期间产生的最新拉取需求
+      }
     }
   }
 
