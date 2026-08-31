@@ -15,6 +15,10 @@ import showToast from '../components/showToast';
 
 const TAG: string = 'NotifyView';
 
+// 前台轮询间隔（ms）：「通知」Tab 可见期间静默拉取新消息，
+// 补齐"用户停留列表页时新消息不及时出现"的场景
+const POLL_INTERVAL_MS: number = 15000;
+
 // 通知页 - 展示接收到的 HTTP 推送消息列表
 @Component
 export struct NotifyView {
@@ -61,6 +65,13 @@ export struct NotifyView {
   // 补拉标志：loadMessages 在请求进行中被调用时置 true，当前请求结束后补拉一次
   private loadQueued: boolean = false;
   private scroller: Scroller = new Scroller();
+  // 前台轮询定时器句柄（setTimeout 链式循环；-1 表示当前无待执行任务）
+  private pollTimer: number = -1;
+  // 轮询启用开关：「通知」Tab 可见时为 true；与 pollTimer 配合，
+  // 防止飞行中的轮询请求在切走 Tab 后又重启循环
+  private pollingEnabled: boolean = false;
+  // 轮询请求进行中标记：防止慢网络下请求堆积
+  private pollInFlight: boolean = false;
 
   aboutToAppear() {
     // ServerManager 可能还在异步 load，必须先 await ensureLoaded 再读当前 server，
@@ -79,12 +90,18 @@ export struct NotifyView {
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
+    // 「通知」Tab 为默认首 Tab，组件创建即可见时启动前台轮询
+    if (this.homeTabIndex === 0) {
+      this.startPolling();
+    }
   }
 
   aboutToDisappear() {
     if (this.onChange) {
       ServerManager.getInstance().removeChangeListener(this.onChange);
     }
+    // 组件销毁时停止轮询，避免定时器泄漏
+    this.stopPolling();
   }
 
   // 降级顶栏：低版本 SDK 手工 Stack 叠层，blurStyle + 半透明底色实现毛玻璃
@@ -813,19 +830,98 @@ export struct NotifyView {
   }
 
   // Tab 切换监听（homeTabIndex 的 @Watch 回调）：切走「通知」Tab 后列表不可见，
-  // 多选状态保留无意义，自动退出编辑；切回「通知」Tab 时自动刷新，保证列表最新
+  // 多选状态保留无意义，自动退出编辑；切回「通知」Tab 时全量刷新并重启前台轮询
   private onHomeTabIndexChanged(): void {
     if (this.isEditing) {
       this.exitEditMode();
     }
     if (this.homeTabIndex === 0) {
       this.loadMessages();
+      this.startPolling();
+    } else {
+      this.stopPolling();
     }
   }
 
   // 刷新信号监听（refreshSignal 的 @Watch 回调）：App 回前台或点击通知拉起时自动刷新列表
   private onRefreshSignalChanged(): void {
     this.loadMessages();
+  }
+
+  // ====== 前台轮询（「通知」Tab 可见期间保持列表增量更新）======
+
+  // 启动轮询：幂等，重复调用不会叠加定时器
+  private startPolling(): void {
+    if (this.pollingEnabled) {
+      return;
+    }
+    this.pollingEnabled = true;
+    this.scheduleNextPoll();
+  }
+
+  // 停止轮询：清除待执行任务并关闭开关，飞行中的请求完成后不再续排
+  private stopPolling(): void {
+    this.pollingEnabled = false;
+    if (this.pollTimer >= 0) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = -1;
+    }
+  }
+
+  // 调度下一轮轮询：15s 后执行一次增量拉取，请求完成后再续排，
+  // 间隔从请求结束时起算，慢网络下不会出现请求堆积
+  private scheduleNextPoll(): void {
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = -1;
+      this.pollNewMessages().finally(() => {
+        if (this.pollingEnabled) {
+          this.scheduleNextPoll();
+        }
+      });
+    }, POLL_INTERVAL_MS);
+  }
+
+  // 静默增量拉取：只把 id 大于当前列表最大 id 的新消息插入顶部，
+  // 不清空列表/不重置分页/不打断滚动位置；失败静默，等下一轮
+  private async pollNewMessages(): Promise<void> {
+    // 有全量请求/翻页/轮询进行中 → 本轮跳过；未配置 Token 的引导态 → 不发无谓请求
+    if (this.pollInFlight || this.loading || this.loadingMore || this.needGuideToConfig()) {
+      return;
+    }
+    this.pollInFlight = true;
+    try {
+      const result = await NotifyMessageService.getInstance().getMessages(null, 0, 100);
+      if (!result.ok || result.messages.length === 0) {
+        return; // 失败或无消息：静默结束
+      }
+      // 计算当前列表最大消息 id（服务端 id 单调递增，作为"最新"基准）
+      let curMaxId: number = 0;
+      for (let i = 0; i < this.messages.length; i++) {
+        if (this.messages[i].id > curMaxId) {
+          curMaxId = this.messages[i].id;
+        }
+      }
+      // 过滤出真正的新消息（重复拉取天然去重）
+      const fresh: NotifyMessage[] = [];
+      for (let i = 0; i < result.messages.length; i++) {
+        const m: NotifyMessage = result.messages[i];
+        if (m.id > curMaxId) {
+          fresh.push(m);
+        }
+      }
+      if (fresh.length === 0) {
+        return;
+      }
+      // 按时间倒序（新→旧）后插入列表顶部，保持原有滚动位置与分页状态
+      fresh.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
+      this.messages = fresh.concat(this.messages);
+      hilog.info(DOMAIN, TAG, '轮询新增 %{public}d 条消息', String(fresh.length));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '轮询异常：%{public}s', msg);
+    } finally {
+      this.pollInFlight = false;
+    }
   }
 
   // 编辑态变化监听（isEditing 的 @Watch 回调）：任何来源退出编辑（自身退出/Tab 切换/
