@@ -82,7 +82,7 @@ export struct ServerActionMenuDialog {
       Divider().color($r('app.color.divider_color'));
 
       // per-server 客户端 Token（X-Gotify-Key 认证）；留空走内置默认
-      Text('客户端 Token')
+      Text('设置客户端 Token')
         .fontSize(16)
         .fontColor($r('app.color.text_primary_color'))
         .width('100%')
