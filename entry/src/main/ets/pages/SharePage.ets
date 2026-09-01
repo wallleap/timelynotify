@@ -136,7 +136,9 @@ struct SharePage {
           .javaScriptAccess(true)
           .domStorageAccess(true)
           .databaseAccess(false)
-          .cacheMode(CacheMode.None)
+          // ⚠️ ArkWeb CacheMode 命名陷阱：None 不是"不用缓存"，而是"优先用缓存(连过期都用)"；
+          // 真正"强制走网络不读缓存"的是 Online，否则服务器更新后真机仍显示旧内容
+          .cacheMode(CacheMode.Online)
           .zoomAccess(true)
           .darkMode(WebDarkMode.Auto)
           // ⚠️ 官方 HDS 动态模糊必配：Web 不裁剪溢出，内容才能向上穿出至 titleBar 背面被材质采样
