@@ -211,6 +211,10 @@ CLT: <https://developer.huawei.com/consumer/cn/download/command-line-tools-for-h
 
 需要使用 CLT/DevEco Release 打包，不要用 Beta
 
+**WebView**
+
+- [CacheMode](https://developer.huawei.com/consumer/cn/doc/harmonyos-references/arkts-basic-components-web-e#cachemode)
+
 **其它**
 
 - [拉起指定类型的应用](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/specified-type-app-redirection)
