@@ -78,6 +78,8 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onForeground');
     // 回前台自动刷新通知列表（后台→前台切换场景）
     this.bumpNotifyRefreshSignal();
+    // 打开应用后未读角标已无意义，清除桌面图标角标
+    this.clearBadgeNumber();
   }
 
   onBackground(): void {
@@ -89,12 +91,24 @@ export default class EntryAbility extends UIAbility {
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'Ability onNewWant');
     this.bumpNotifyRefreshSignal();
+    // 应用已在前台时点击通知只走这里，同样清除桌面图标角标
+    this.clearBadgeNumber();
   }
 
   /** 自增通知列表刷新信号：NotifyView 通过 @StorageProp + @Watch 监听变化后拉取最新消息 */
   private bumpNotifyRefreshSignal(): void {
     const cur: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
     AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, cur + 1);
+  }
+
+  /** 清除桌面图标角标：打开应用后未读提示已无意义，设 0 即清除（官方约定 ≤0 为清除） */
+  private clearBadgeNumber(): void {
+    notificationManager.setBadgeNumber(0).then(() => {
+      hilog.info(DOMAIN, TAG, '已清除桌面角标');
+    }).catch((err: BusinessError) => {
+      // 角标开关被系统设置关闭等场景会失败，仅记录日志不影响功能
+      hilog.warn(DOMAIN, TAG, '清除桌面角标失败：code=%{public}d msg=%{public}s', err.code, err.message);
+    });
   }
 
   /**
