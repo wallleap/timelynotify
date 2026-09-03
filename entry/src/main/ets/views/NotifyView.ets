@@ -29,6 +29,12 @@ const TAG: string = 'NotifyView';
 // 补齐"用户停留列表页时新消息不及时出现"的场景
 const POLL_INTERVAL_MS: number = 15000;
 
+// HDS 顶栏右侧系统 menu 槽位（「多选/取消」文字胶囊 + 删除图标按钮）的占位宽度（vp）。
+// stackBuilder 为全宽叠层，menu 悬浮叠加其上、不参与 Row 布局，需放一个等宽透明占位
+// 约束标题区宽度，长标题省略号才会在按钮前收尾，不会钻到按钮下方。
+// 宽度组成：文字胶囊 ≈60 + 按钮间距 ≈8 + 图标按钮 ≈40 + 视觉余量 ≈8
+const TITLE_MENU_RESERVE_VP: number = 116;
+
 // 通知页 - 展示接收到的 HTTP 推送消息列表
 @Component
 export struct NotifyView {
@@ -217,9 +223,11 @@ export struct NotifyView {
   // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
   // 状态栏避让由 titleBar 级 avoidLayoutSafeArea: true 负责（系统将内容整体下移 statusBarHeight）；
   // 此处 padding 只留纯视觉余量，不得再叠加 statusBarHeight（titleBar 高度固定，会溢出裁剪 → 文字消失）。
-  // ⚠️ 内层 Row 全宽叠在标题栏上，与右侧系统 menu 槽位区域重叠：必须设 hitTestBehavior(None)
-  // 让 Row 自身不参与触摸测试（默认 Default 会阻塞兄弟节点），否则点击 menu 的「多选/删除」会误触发 title 事件；
-  // None 不阻塞子节点，标题文本/图标的 onClick 仍正常生效。
+  // ⚠️ stackBuilder 是全宽叠层，与右侧系统 menu 槽位区域重叠：
+  //   1. 标题 Row 与透明占位节点都必须设 hitTestBehavior(None)（默认 Default 会阻塞兄弟节点），
+  //      否则点击 menu 的「多选/删除」会误触发 title 事件；None 不阻塞子节点，标题/图标的 onClick 仍生效；
+  //   2. menu 悬浮叠加不参与 Row 布局，标题 Row 末尾放一个等宽透明占位（TITLE_MENU_RESERVE_VP），
+  //      标题区宽度才会被真实约束，长标题省略号在按钮前收尾，不会钻到按钮下方。
   @Builder
   customTitleContent() {
     Row({ space: 8 }) {
@@ -230,7 +238,9 @@ export struct NotifyView {
           .fontWeight(FontWeight.Bold)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-          // 点击标题文本打开服务器设置弹窗（热区仅文字宽度，不会盖住右侧 menu 按钮）
+          // 占满标题区剩余宽度：宽度由外层 layoutWeight(1) + 右侧 menu 占位共同约束，超长省略号收尾
+          .layoutWeight(1)
+          // 点击标题文本打开服务器设置弹窗
           .onClick(() => {
             this.handleMoreClicked();
           });
@@ -247,10 +257,15 @@ export struct NotifyView {
       }
       .layoutWeight(1)
       .width(0)
-      .padding({ right: 48 })
       .alignItems(VerticalAlign.Center)
-      // 自身不参与触摸测试，避免全宽 Row 拦截右侧系统 menu 槽位按钮的点击（子节点 onClick 不受影响）
+      // 自身不参与触摸测试，避免拦截右侧系统 menu 槽位按钮的点击（子节点 onClick 不受影响）
       .hitTestBehavior(HitTestMode.None);
+
+      // 系统 menu 槽位等宽透明占位：把 menu 悬浮区从 Row 布局中扣除，标题省略号才不会被按钮盖住
+      Row()
+        .width(TITLE_MENU_RESERVE_VP)
+        .height(1)
+        .hitTestBehavior(HitTestMode.None);
     }
     .width('100%')
     .padding({

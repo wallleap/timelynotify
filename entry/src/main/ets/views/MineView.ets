@@ -286,27 +286,41 @@ export struct MineView {
           Column({ space: 10 }) { // 服务器入口卡片
             Row({ space: 14 }) {
               Column({ space: 4 }) {
-                Row() {
+                // 第一行：标题 + 当前服务器名称标签（仅有自定义名称时显示）；
+                // 标题 flexShrink(0) 固定不压缩，标签 flexShrink(1) 允许压缩，超长时标签内省略号收尾
+                Row({ space: 8 }) {
                   Text('服务器')
                     .fontSize(17)
                     .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.text_primary_color'));
-                }.width('100%');
+                    .fontColor($r('app.color.text_primary_color'))
+                    .flexShrink(0);
+                  if (this.serverName.length > 0) {
+                    Text(this.serverName)
+                      .fontSize(11)
+                      .fontColor($r('app.color.text_accent_color'))
+                      .maxLines(1)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis })
+                      .padding({
+                        left: 6,
+                        right: 6,
+                        top: 2,
+                        bottom: 2
+                      })
+                      .borderRadius(4)
+                      .backgroundColor($r('app.color.selected_row_background'))
+                      .flexShrink(1);
+                  }
+                }.width('100%').alignItems(VerticalAlign.Center);
 
-                Row() {
-                  Text(this.serverName)
-                    .fontSize(14)
-                    .fontColor($r('app.color.text_tertiary_color'))
-                    .maxLines(1)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis });
-                  Text(' (').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
+                // 第二行：仅展示服务器链接；Text 置于 Column 中宽度有界，超长自动省略号
+                if (this.hostDisplay.length > 0) {
                   Text(this.hostDisplay)
                     .fontSize(12)
-                    .fontColor($r('app.color.text_accent_color'))
+                    .fontColor($r('app.color.text_quinary_color'))
+                    .width('100%')
                     .maxLines(1)
                     .textOverflow({ overflow: TextOverflow.Ellipsis });
-                  Text(')').fontSize(14).fontColor($r('app.color.text_tertiary_color')).maxLines(1)
-                }.width('100%')
+                }
               }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
               Row() {
@@ -603,7 +617,8 @@ export struct MineView {
     const cur: ServerEntry | null = mgr.getCurrentServer();
     if (cur) {
       this.hostDisplay = extractHost(cur.baseURL);
-      this.serverName = cur.name && cur.name.length > 0 ? cur.name : cur.baseURL;
+      // 名称标签仅展示用户自定义名称；未命名时留空（标签不渲染），链接行单独展示 host
+      this.serverName = cur.name && cur.name.length > 0 ? cur.name : '';
     } else {
       this.hostDisplay = '';
       this.serverName = '';
