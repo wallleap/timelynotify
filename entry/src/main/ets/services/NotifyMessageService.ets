@@ -37,7 +37,7 @@ class PushRequest extends Object {
   title: string = '';
   body: string = '';
   action?: string;
-  id?: string;
+  id?: number;
   icon?: string;
   badge?: number;
   sound?: string;
@@ -407,7 +407,6 @@ export class NotifyMessageService {
     req.device_key = deviceKey;
     req.title = '[订阅通知] 及时通知推送';
     req.body = '这是一条测试通知，收到即表示订阅推送链路工作正常';
-    req.id = 'this_is_test_notify'
     req.icon = 'https://static.wallleap.cn/temp/nwvgnm7l2on5u6c531mo.jpg'
     req.sound = 'multiwayinvitation'
 
