@@ -35,6 +35,9 @@ const POLL_INTERVAL_MS: number = 15000;
 // 宽度组成：文字胶囊 ≈60 + 按钮间距 ≈8 + 图标按钮 ≈40 + 视觉余量 ≈8
 const TITLE_MENU_RESERVE_VP: number = 116;
 
+// 列表项 inboxContent 多行摘要最多展示行数（与普通正文 maxLines(4) 保持一致）
+const INBOX_LIST_MAX_LINES: number = 4;
+
 // ====== 正文富文本解析：自动识别 URL 和验证码 ======
 
 // 文本段类型
@@ -695,7 +698,10 @@ export struct NotifyView {
                 .maxLines(2)
                 .textOverflow({ overflow: TextOverflow.Ellipsis });
             }
-            if (m.body && m.body.length > 0) {
+            // 正文优先展示 extras.inboxcontent 多行摘要（每行一条），无则回退普通正文
+            if (m.inboxContent.length > 0) {
+              this.inboxRichTextList(m.inboxContent)
+            } else if (m.body && m.body.length > 0) {
               this.bodyRichTextList(m.body)
             }
           }
@@ -898,7 +904,10 @@ export struct NotifyView {
                   .fontColor($r('app.color.text_accent_color'))
                   .width('100%');
               }
-              if (this.selectedMessage.body && this.selectedMessage.body.length > 0) {
+              // 正文优先展示 extras.inboxcontent（每条一段完整展示），无则回退普通正文
+              if (this.selectedMessage.inboxContent.length > 0) {
+                this.inboxRichTextDetail(this.selectedMessage.inboxContent)
+              } else if (this.selectedMessage.body && this.selectedMessage.body.length > 0) {
                 this.bodyRichTextDetail(this.selectedMessage.body)
               }
 
@@ -977,27 +986,34 @@ export struct NotifyView {
     }
   }
 
+  // 正文富文本共享片段：URL/验证码高亮可点击，普通段用次级文本色；
+  // fontSize 由调用方按场景指定（列表 14fp / 详情 15fp），必须内联在 Text 容器内使用
+  @Builder
+  richTextSpans(text: string, fontSize: number) {
+    ForEach(parseTextSegments(text), (seg: TextSegment, index: number) => {
+      if (seg.type === SEG_URL) {
+        Span(seg.text)
+          .fontColor($r('app.color.text_accent_color'))
+          .fontSize(fontSize)
+          .onClick(() => { this.openUrl(seg.text); });
+      } else if (seg.type === SEG_CODE) {
+        Span(seg.text)
+          .fontColor($r('app.color.text_accent_color'))
+          .fontSize(fontSize)
+          .onClick(() => { this.copyCode(seg.text); });
+      } else {
+        Span(seg.text)
+          .fontColor($r('app.color.text_secondary_color'))
+          .fontSize(fontSize);
+      }
+    }, (seg: TextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
+  }
+
   // 列表项正文富文本：URL/验证码高亮可点击，maxLines(4) + 省略号
   @Builder
   bodyRichTextList(text: string) {
     Text() {
-      ForEach(parseTextSegments(text), (seg: TextSegment, index: number) => {
-        if (seg.type === SEG_URL) {
-          Span(seg.text)
-            .fontColor($r('app.color.text_accent_color'))
-            .fontSize(14)
-            .onClick(() => { this.openUrl(seg.text); });
-        } else if (seg.type === SEG_CODE) {
-          Span(seg.text)
-            .fontColor($r('app.color.text_accent_color'))
-            .fontSize(14)
-            .onClick(() => { this.copyCode(seg.text); });
-        } else {
-          Span(seg.text)
-            .fontColor($r('app.color.text_secondary_color'))
-            .fontSize(14);
-        }
-      }, (seg: TextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
+      this.richTextSpans(text, 14)
     }
     .width('100%')
     .maxLines(4)
@@ -1006,30 +1022,52 @@ export struct NotifyView {
     .margin({ top: 4 }); // 与上方标题/副标题拉开间距
   }
 
+  // 列表项 inboxContent 富文本：每条独占一行、单行超出省略号，最多展示 INBOX_LIST_MAX_LINES 行
+  // （与普通正文 maxLines(4) 对齐）；每行仍保留 URL/验证码高亮可点击
+  @Builder
+  inboxRichTextList(items: string[]) {
+    Column() {
+      ForEach(items, (line: string, index: number) => {
+        if (index < INBOX_LIST_MAX_LINES) {
+          Text() {
+            this.richTextSpans(line, 14)
+          }
+          .width('100%')
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .lineHeight(21); // 1.5 倍行距（14fp × 1.5）
+        }
+      }, (line: string, index: number) => `${index}_${line}`)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+    .margin({ top: 4 }); // 与上方标题/副标题拉开间距
+  }
+
   // 详情页正文富文本：URL/验证码高亮可点击，不限制行数
   @Builder
   bodyRichTextDetail(text: string) {
     Text() {
-      ForEach(parseTextSegments(text), (seg: TextSegment, index: number) => {
-        if (seg.type === SEG_URL) {
-          Span(seg.text)
-            .fontColor($r('app.color.text_accent_color'))
-            .fontSize(15)
-            .onClick(() => { this.openUrl(seg.text); });
-        } else if (seg.type === SEG_CODE) {
-          Span(seg.text)
-            .fontColor($r('app.color.text_accent_color'))
-            .fontSize(15)
-            .onClick(() => { this.copyCode(seg.text); });
-        } else {
-          Span(seg.text)
-            .fontColor($r('app.color.text_secondary_color'))
-            .fontSize(15);
-        }
-      }, (seg: TextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
+      this.richTextSpans(text, 15)
     }
     .width('100%')
     .lineHeight(22.5); // 1.5 倍行距（15fp × 1.5）
+  }
+
+  // 详情页 inboxContent 富文本：每条独占一段、长文自动换行完整展示，段落间留间距
+  @Builder
+  inboxRichTextDetail(items: string[]) {
+    Column({ space: 8 }) {
+      ForEach(items, (line: string, index: number) => {
+        Text() {
+          this.richTextSpans(line, 15)
+        }
+        .width('100%')
+        .lineHeight(22.5); // 1.5 倍行距（15fp × 1.5）
+      }, (line: string, index: number) => `${index}_${line}`)
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start);
   }
 
   // 未配置 client token 或未注册 → 引导到"我的"页配置

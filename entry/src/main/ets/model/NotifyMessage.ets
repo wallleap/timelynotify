@@ -17,6 +17,8 @@ export class NotifyMessage extends Object {
   timestamp: number = 0;
   // 图片 URL（来自 extras.icon），非空时列表右侧显示圆角缩略图
   image: string = '';
+  // 收件箱式多行摘要（来自 extras.inboxcontent）：非空时正文优先按行展示，每条一行/一段
+  inboxContent: string[] = [];
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {
@@ -46,6 +48,19 @@ export class NotifyMessage extends Object {
       // 图片 URL 从 extras.icon 取
       const iconVal: Object | undefined = extras['icon'];
       m.image = typeof iconVal === 'string' ? iconVal : '';
+      // 多行摘要：服务端 extras 键名统一小写为 inboxcontent，兼容驼峰 inboxContent；仅收集字符串项
+      const inboxVal: Object | undefined =
+        extras['inboxcontent'] !== undefined ? extras['inboxcontent'] : extras['inboxContent'];
+      if (inboxVal instanceof Array) {
+        const lines: string[] = [];
+        const arr: Object[] = inboxVal as Object[];
+        for (let i = 0; i < arr.length; i++) {
+          if (typeof arr[i] === 'string') {
+            lines.push(arr[i] as string);
+          }
+        }
+        m.inboxContent = lines;
+      }
     }
 
     const dateVal: Object | undefined = raw['date'];

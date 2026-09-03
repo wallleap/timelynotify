@@ -38,7 +38,7 @@ class PushRequest extends Object {
   body: string = '';
   action?: string;
   id?: string;
-  icon?: number;
+  icon?: string;
   badge?: number;
   sound?: string;
   soundDuration?: number;
