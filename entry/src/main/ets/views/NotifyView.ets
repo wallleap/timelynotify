@@ -8,7 +8,11 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
-import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import {
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  resolveBlurStyle,
+  SUPPORTS_IMMERSIVE_MATERIAL
+} from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
 import {
   DOMAIN,
@@ -50,6 +54,8 @@ export struct NotifyView {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   // 底部导航条高度（vp），编辑操作栏与列表底部占位避让用
   @StorageProp('navBarHeight') navBarHeight: number = 0;
+  // 沉浸光感用户开关（API 26+ 生效；MineView Toggle 切换后经 AppStorage 同步，此处自动重渲染切换分支）
+  @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   // 主页当前选中 Tab 索引（Index 经 @StorageLink 写入）：切走「通知」Tab 时自动退出多选模式；
   // 切回「通知」Tab（值为 0）时自动刷新列表
   @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
@@ -307,7 +313,7 @@ export struct NotifyView {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
       // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
       HdsNavigation() {
         this.viewportBody();
@@ -479,7 +485,7 @@ export struct NotifyView {
       // - HDS：enableComponentSafeArea 内容区起点已在 titleBar 总高（statusBarHeight+56）下方，
       //   spacer 仅需 8 余量；重复叠加 statusBarHeight 会导致刷新圈被双重下推（真机实证）
       // - 降级：Stack 叠层内容从窗口顶开始，需 statusBarHeight + titleBar(64) + 16 余量
-      Row().height(SUPPORTS_IMMERSIVE_MATERIAL ? 8 : this.statusBarHeight + 64 + 16);
+      Row().height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 8 : this.statusBarHeight + 64 + 16);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
@@ -496,7 +502,7 @@ export struct NotifyView {
   listView() {
     List({ space: 10, scroller: this.scroller }) {
       // 降级分支：Stack 叠层内容从窗口顶开始，占位还需叠加 statusBarHeight + titleBar(64) 手工避让
-      if (SUPPORTS_IMMERSIVE_MATERIAL) {
+      if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
         ListItem() {
           Row()
             .width('100%')
@@ -555,7 +561,8 @@ export struct NotifyView {
       ListItem() {
         Row()
           .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL ? this.navBarHeight + 72 : this.navBarHeight + 64);
+          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.navBarHeight + 72 :
+            this.navBarHeight + 64);
       }
     }
     .width('100%')
@@ -731,7 +738,8 @@ export struct NotifyView {
       left: 16,
       right: 16,
       top: 12,
-      bottom: SUPPORTS_IMMERSIVE_MATERIAL ? this.navBarHeight + 72 : this.navBarHeight + 64
+      bottom: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.navBarHeight + 72 :
+        this.navBarHeight + 64
     })
     .backgroundBlurStyle(resolveBlurStyle('bar')!)
     .backgroundColor($r('app.color.index_page_top_glass_background'));

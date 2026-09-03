@@ -49,6 +49,8 @@ export class PreferencesUtil {
   static readonly KEY_NOTIFY_ENABLED: string = 'notify_enabled';
   /** 主题颜色模式：'system'（跟随系统）/ 'light'（浅色）/ 'dark'（深色） */
   static readonly KEY_COLOR_MODE: string = 'color_mode';
+  /** 沉浸光感开关：'true'（开启，默认）/ 'false'（关闭，走 blur 降级）。仅 API 26+ 生效 */
+  static readonly KEY_IMMERSIVE_LIGHT_ENABLED: string = 'immersive_light_enabled';
   private static readonly STORE_NAME: string = 'timelynotify_prefs';
   private static instance: preferences.Preferences | null = null;
 

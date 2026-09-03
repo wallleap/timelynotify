@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError, deviceInfo, pasteboard } from '@kit.BasicServicesKit';
-import { bundleManager, common, ConfigurationConstant } from '@kit.AbilityKit';
+import { bundleManager, common, ConfigurationConstant, Want } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { ServerEntry } from '../model/ServerEntry';
@@ -14,7 +14,11 @@ import showToast from '../components/showToast';
 import { DOMAIN } from '../common/Constant';
 import { AppContextStore } from '../common/AppContextStore';
 import { BuildInfo } from '../generated/BuildInfo';
-import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import {
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  resolveBlurStyle,
+  SUPPORTS_IMMERSIVE_MATERIAL
+} from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
 // 版本号兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常
@@ -39,6 +43,9 @@ export struct MineView {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
+  // 沉浸光感开关值（API 26+ 生效；EntryAbility 启动时从 Preferences 写入 AppStorage）：
+  // 入口行状态文本与各页面渲染分支均读此权威值；切换走 ActionMenu → 重启确认 → 重启应用生效
+  @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   @State hostDisplay: string = '';
   @State serverName: string = '';
   @State serverCount: number = 0;
@@ -170,7 +177,9 @@ export struct MineView {
     Scroll(this.scroller) {
       Column({ space: 16 }) {
         // 首项占位：组件级安全区（enableComponentSafeArea）已自动让内容起始于 titleBar 下方 → HDS 无需占位
-        Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL ? 0 : this.statusBarHeight + 56 + 10);
+        Row()
+          .width('100%')
+          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 0 : this.statusBarHeight + 56 + 10);
 
         // 通知设置卡片
         Column({ space: 0 }) { // 开启应用订阅通知（开关）
@@ -315,6 +324,43 @@ export struct MineView {
             });
           }.width('100%')
         }.width('100%');
+
+        // 外观板块（仅 API 26+ 显示）：沉浸光感入口行（点击弹 ActionMenu 切换，重启应用后生效）
+        if (SUPPORTS_IMMERSIVE_MATERIAL) {
+          Column({ space: 8 }) {
+            Text('外观')
+              .fontSize(12)
+              .fontColor($r('app.color.text_quinary_color'))
+              .width('100%')
+              .padding({ left: 12 });
+
+            // 沉浸光感入口卡片：与「服务器」等入口行风格一致，右侧展示当前状态 + 箭头；
+            // 说明文字放在点击后的 ActionMenu 标题中，卡片本身仅保留标题与状态
+            Row({ space: 14 }) {
+              Text('沉浸光感')
+                .fontSize(17)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary_color'))
+                .layoutWeight(1);
+
+              Row() {
+                Text(this.immersiveLightEnabled ? '已开启' : '已关闭')
+                  .fontSize(12)
+                  .fontColor(this.immersiveLightEnabled ? $r('app.color.text_accent_color') :
+                    $r('app.color.text_quinary_color'));
+                this.arrowRightIcon();
+              }
+            }
+            .width('100%')
+            .padding(16)
+            .backgroundBlurStyle(resolveBlurStyle('bar')!)
+            .backgroundColor($r('app.color.card_glass_background'))
+            .borderRadius(12)
+            .onClick(() => {
+              this.onImmersiveRowClick();
+            });
+          }.width('100%');
+        }
 
         Column({ space: 8 }) {
           Text('信息')
@@ -490,7 +536,7 @@ export struct MineView {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
       // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
       HdsNavigation() {
         this.scrollBody();
@@ -653,6 +699,63 @@ export struct MineView {
         showToast(this.getUIContext(), '主题切换失败');
       }
     }
+  }
+
+  // 沉浸光感入口行点击：直接弹居中确认对话框（效果说明 + 重启确认合并为一级）。
+  // 不原地写 AppStorage：Index.build 依赖该值选择 HdsTabs/Tabs 分支，原地切换会导致
+  // Tabs 整体重建、Tab 落回通知页（bug）；重启后由 EntryAbility.onCreate 读盘写入，天然规避
+  private onImmersiveRowClick(): void {
+    const uiCtx: UIContext = this.getUIContext();
+    // 目标状态（当前状态的反向）与对应文案
+    const enable: boolean = !this.immersiveLightEnabled;
+    const title: string = enable ? '开启沉浸光感' : '关闭沉浸光感';
+    const message: string = enable
+      ? '开启后界面将呈现沉浸光感材质。设置需重启应用后生效，是否立即重启？'
+      : '关闭后界面将回退为毛玻璃效果。设置需重启应用后生效，是否立即重启？';
+    const buttons: promptAction.Button[] = [{ text: '取消', color: $r('app.color.text_tertiary_color') },
+      { text: '立即重启', color: $r('app.color.text_accent_color') },];
+    uiCtx.getPromptAction().showDialog({
+      title: title,
+      message: message,
+      buttons: buttons,
+    }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
+      if (err || result.index !== 1) {
+        // 取消/关闭：无操作（入口行状态始终反映权威值，无需还原）
+        return;
+      }
+      // 确认：持久化偏好 → 重启应用（新实例 EntryAbility.onCreate 读盘写入 AppStorage，全页面按新偏好渲染）
+      PreferencesUtil.putString(null, PreferencesUtil.KEY_IMMERSIVE_LIGHT_ENABLED, enable ? 'true' : 'false')
+        .then((ok: boolean) => {
+          if (ok) {
+            hilog.info(DOMAIN, TAG, '沉浸光感开关已保存：%{public}s，准备重启应用', String(enable));
+            this.restartApp();
+          } else {
+            showToast(this.getUIContext(), '保存失败，设置未生效', 2000);
+          }
+        });
+    });
+  }
+
+  // 重启应用（官方应用重启 API：UIAbilityContext.restartApp 自 API 22 起，项目最低兼容 API 23 无需版本守卫）：
+  // 重启进程并拉起 EntryAbility，窗口保留（用户视野不回桌面）；不触发 onDestroy，
+  // 偏好已在重启前持久化，新实例 EntryAbility.onCreate 读盘写入 AppStorage，全页面按新偏好渲染
+  private restartApp(): void {
+    const ctx: common.UIAbilityContext | null = this.getAbilityContext();
+    if (!ctx) {
+      showToast(this.getUIContext(), '重启失败，请手动重启应用', 3000);
+      return;
+    }
+    const want: Want = {
+      deviceId: '',
+      bundleName: ctx.abilityInfo.bundleName,
+      abilityName: ctx.abilityInfo.name,
+    };
+    ctx.restartApp(want).then(() => {
+      hilog.info(DOMAIN, TAG, '应用重启已触发');
+    }).catch((err: BusinessError) => {
+      hilog.warn(DOMAIN, TAG, '应用重启失败：code=%{public}d msg=%{public}s', err.code, err.message);
+      showToast(this.getUIContext(), '重启失败，请手动重启应用', 3000);
+    });
   }
 
   // 获取 UIAbilityContext（notificationManager 需要）

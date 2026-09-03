@@ -1,5 +1,10 @@
 import { DOMAIN } from '../common/Constant';
-import { getSystemMaterial, KEY_MATERIAL_READY, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import {
+  getSystemMaterial,
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  KEY_MATERIAL_READY,
+  SUPPORTS_IMMERSIVE_MATERIAL
+} from '../utils/ImmersiveUtil';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /**
@@ -10,9 +15,11 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 export default function showToast(ctx: UIContext, message: string, durationMs: number = 1500,
   tag: string = 'Toast'): void {
   try {
-    // 模块就绪信号由 ImmersiveUtil 动态 import 成功后写入 AppStorage
+    // 模块就绪信号由 ImmersiveUtil 动态 import 成功后写入 AppStorage；
+    // 叠加用户沉浸光感开关（KEY_IMMERSIVE_LIGHT_ENABLED，!== false 即未关闭，默认开启）
     const materialReady: boolean =
-      SUPPORTS_IMMERSIVE_MATERIAL && AppStorage.get<boolean>(KEY_MATERIAL_READY) === true;
+      SUPPORTS_IMMERSIVE_MATERIAL && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false &&
+        AppStorage.get<boolean>(KEY_MATERIAL_READY) === true;
     if (materialReady) {
       ctx.getPromptAction().showToast({
         message: message,

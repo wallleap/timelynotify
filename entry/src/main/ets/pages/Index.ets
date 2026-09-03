@@ -1,6 +1,10 @@
 import { NotifyView } from '../views/NotifyView';
 import { MineView } from '../views/MineView';
-import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import {
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  resolveBlurStyle,
+  SUPPORTS_IMMERSIVE_MATERIAL
+} from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
 import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING } from '../common/Constant';
 
@@ -15,6 +19,8 @@ interface TabItem {
 @Component
 struct Index {
   @StorageProp('navBarHeight') navBarHeight: number = 0;
+  // 沉浸光感用户开关（API 26+ 生效；MineView Toggle 切换后经 AppStorage 同步，此处自动重渲染切换分支）
+  @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   // 当前选中 Tab：经 @StorageLink 双向同步到 AppStorage，NotifyView 通过 @Watch 监听以在切走时退出多选模式
   @StorageLink(KEY_HOME_TAB_INDEX) currentIndex: number = 0;
   // 通知页多选编辑态（NotifyView 经 @StorageLink 写入）：onBackPress 据此拦截系统返回
@@ -88,7 +94,7 @@ struct Index {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
       // ─── API 26+: HdsTabs 悬浮胶囊 + systemMaterialEffect 沉浸光感 ───
       Column() {
         HdsTabs({ controller: this.hdsController }) {

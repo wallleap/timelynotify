@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ServerSettingsContent } from '../components/ServerSettingsContent';
-import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { KEY_IMMERSIVE_LIGHT_ENABLED, resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
 
@@ -13,6 +13,8 @@ struct ServerSettingsPage {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
+  // 沉浸光感用户开关（API 26+ 生效；MineView Toggle 切换后经 AppStorage 同步，此处自动重渲染切换分支）
+  @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   // 官方结构：Scroll 绑定自己的 Scroller 实例，供 HdsNavigation.bindToScrollable 用
   private scroller: Scroller = new Scroller();
 
@@ -41,7 +43,7 @@ struct ServerSettingsPage {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
       // ─── API 26+: HdsNavigation 沉浸光感 ───
       HdsNavigation() {
         Scroll(this.scroller) {

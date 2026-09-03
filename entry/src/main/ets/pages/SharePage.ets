@@ -5,7 +5,11 @@ import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { SOURCE_CODE_URL } from '../views/MineView';
-import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import {
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  resolveBlurStyle,
+  SUPPORTS_IMMERSIVE_MATERIAL
+} from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
 
@@ -18,6 +22,8 @@ struct SharePage {
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 24;
+  // 沉浸光感用户开关（API 26+ 生效；MineView Toggle 切换后经 AppStorage 同步，此处自动重渲染切换分支）
+  @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   @State loadingProgress: number = 0;
   @State pageTitle: string = '开源代码';
   // 标题显隐：网页下滑超过阈值后隐藏顶栏标题，滚回顶部附近恢复（由 Web.onScroll 驱动）
@@ -102,7 +108,9 @@ struct SharePage {
   @Builder
   refreshHeaderBuilder() {
     Column() {
-      Row().height(SUPPORTS_IMMERSIVE_MATERIAL ? this.statusBarHeight + 56 - 4 : this.statusBarHeight + 56 + 16);
+      Row()
+        .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.statusBarHeight + 56 - 4 :
+          this.statusBarHeight + 56 + 16);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
@@ -198,7 +206,7 @@ struct SharePage {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL) {
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
       // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
       HdsNavigation() {
         this.webBody();

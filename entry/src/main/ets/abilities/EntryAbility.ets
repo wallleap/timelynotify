@@ -7,7 +7,12 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
-import { ensureImmersiveMaterial, KEY_NAV_BAR_HEIGHT, KEY_STATUS_BAR_HEIGHT } from '../utils/ImmersiveUtil';
+import {
+  ensureImmersiveMaterial,
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  KEY_NAV_BAR_HEIGHT,
+  KEY_STATUS_BAR_HEIGHT
+} from '../utils/ImmersiveUtil';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { DOMAIN, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
 
@@ -33,6 +38,8 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, 'Ability onCreate');
     // 预加载 uiMaterial 沉浸光感材质模块（API 26+ 生效；API 23 无此模块，内部静默降级 blur）
     ensureImmersiveMaterial();
+    // 读取用户沉浸光感开关偏好并写入 AppStorage（默认开启；API 26+ 页面据此选择沉浸/blur 分支）
+    this.applyImmersiveLightPreference();
     // 立刻触发 ServerManager 异步加载（与页面渲染/窗口创建并行），
     // 但任何消费 currentId/baseURL 的路径都必须先 await ensureLoaded()
     this.bootstrapServerManager();
@@ -202,6 +209,26 @@ export default class EntryAbility extends UIAbility {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.error(DOMAIN, TAG, '应用主题模式失败：%{public}s，保持跟随系统', msg);
+    }
+  }
+
+  /**
+   * 读取用户沉浸光感开关偏好并写入 AppStorage。
+   * 未设置时默认 true（开启）；用户在 MineView「外观」板块可关闭。
+   * AppStorage 键 KEY_IMMERSIVE_LIGHT_ENABLED 供各页面 @StorageProp 订阅，
+   * 关闭后页面走 backgroundBlurStyle 降级分支（即便设备为 API 26+）。
+   */
+  private async applyImmersiveLightPreference(): Promise<void> {
+    try {
+      const v: string =
+        await PreferencesUtil.getString(this.context, PreferencesUtil.KEY_IMMERSIVE_LIGHT_ENABLED, 'true');
+      const enabled: boolean = v !== 'false'; // 默认 true；仅 'false' 视为关闭
+      AppStorage.setOrCreate(KEY_IMMERSIVE_LIGHT_ENABLED, enabled);
+      hilog.info(DOMAIN, TAG, '沉浸光感开关已加载：%{public}s', String(enabled));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '加载沉浸光感开关失败：%{public}s，保持默认开启', msg);
+      AppStorage.setOrCreate(KEY_IMMERSIVE_LIGHT_ENABLED, true);
     }
   }
 

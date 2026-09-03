@@ -32,6 +32,13 @@ export const KEY_NAV_BAR_HEIGHT: string = 'navBarHeight';
 /** AppStorage 键：uiMaterial 模块就绪信号（API 26+ 动态加载成功后置 true） */
 export const KEY_MATERIAL_READY: string = 'immersiveMaterialReady';
 
+/**
+ * AppStorage 键：沉浸光感用户开关（API 26+ 生效）。
+ * 默认 true（开启）；用户在 MineView「外观」板块可关闭，关闭后所有页面走 blur 降级分支。
+ * EntryAbility.onCreate 读取 Preferences 写入此键；Toggle 切换经弹窗确认重启应用后生效。
+ */
+export const KEY_IMMERSIVE_LIGHT_ENABLED: string = 'immersiveLightEnabled';
+
 /** 当前设备 SDK API 版本（缓存） */
 export const CURRENT_SDK_VERSION: number = deviceInfo.sdkApiVersion;
 
