@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
-import { BusinessError } from '@kit.BasicServicesKit';
-import { common } from '@kit.AbilityKit';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
+import { common, Want } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
@@ -34,6 +34,75 @@ const POLL_INTERVAL_MS: number = 15000;
 // 约束标题区宽度，长标题省略号才会在按钮前收尾，不会钻到按钮下方。
 // 宽度组成：文字胶囊 ≈60 + 按钮间距 ≈8 + 图标按钮 ≈40 + 视觉余量 ≈8
 const TITLE_MENU_RESERVE_VP: number = 116;
+
+// ====== 正文富文本解析：自动识别 URL 和验证码 ======
+
+// 文本段类型
+interface TextSegment {
+  text: string;
+  type: number; // 0=普通, 1=URL, 2=验证码
+}
+const SEG_NORMAL: number = 0;
+const SEG_URL: number = 1;
+const SEG_CODE: number = 2;
+
+// 匹配项（临时结构，用于收集正则结果后排序合并）
+interface MatchInfo {
+  start: number;
+  end: number;
+  text: string;
+  type: number;
+}
+
+/**
+ * 将正文按 URL（http/https）和验证码（4-8 位连续数字）切分为文本段数组。
+ * URL 段和验证码段在渲染时以强调色高亮 + 可点击；普通段按默认样式渲染。
+ * 验证码区间若与 URL 重叠则跳过（避免把 URL 中的数字串误识别为验证码）。
+ */
+function parseTextSegments(text: string): TextSegment[] {
+  if (!text || text.length === 0) {
+    return [];
+  }
+  const urlPattern: RegExp = /https?:\/\/[^\s<>"'\])]+/g;
+  const codePattern: RegExp = /\b\d{4,8}\b/g;
+
+  const matches: MatchInfo[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = urlPattern.exec(text)) !== null) {
+    const info: MatchInfo = { start: m.index, end: m.index + m[0].length, text: m[0], type: SEG_URL };
+    matches.push(info);
+  }
+  while ((m = codePattern.exec(text)) !== null) {
+    // 跳过与已有 URL 匹配重叠的区间
+    let overlaps = false;
+    for (let i = 0; i < matches.length; i++) {
+      if (m.index < matches[i].end && m.index + m[0].length > matches[i].start) {
+        overlaps = true;
+        break;
+      }
+    }
+    if (!overlaps) {
+      const info: MatchInfo = { start: m.index, end: m.index + m[0].length, text: m[0], type: SEG_CODE };
+      matches.push(info);
+    }
+  }
+
+  // 按起始位置排序后构建文本段数组
+  matches.sort((a: MatchInfo, b: MatchInfo) => a.start - b.start);
+  const segments: TextSegment[] = [];
+  let lastEnd = 0;
+  for (let i = 0; i < matches.length; i++) {
+    if (matches[i].start > lastEnd) {
+      segments.push({ text: text.substring(lastEnd, matches[i].start), type: SEG_NORMAL });
+    }
+    segments.push({ text: matches[i].text, type: matches[i].type });
+    lastEnd = matches[i].end;
+  }
+  if (lastEnd < text.length) {
+    segments.push({ text: text.substring(lastEnd), type: SEG_NORMAL });
+  }
+  return segments;
+}
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
 @Component
@@ -627,14 +696,7 @@ export struct NotifyView {
                 .textOverflow({ overflow: TextOverflow.Ellipsis });
             }
             if (m.body && m.body.length > 0) {
-              Text(m.body)
-                .fontSize(14)
-                .fontColor($r('app.color.text_secondary_color'))
-                .width('100%')
-                .maxLines(4)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-                .lineHeight(21) // 1.5 倍行距（14fp × 1.5）
-                .margin({ top: 4 }); // 与上方标题/副标题拉开间距
+              this.bodyRichTextList(m.body)
             }
           }
           .layoutWeight(1)
@@ -837,11 +899,7 @@ export struct NotifyView {
                   .width('100%');
               }
               if (this.selectedMessage.body && this.selectedMessage.body.length > 0) {
-                Text(this.selectedMessage.body)
-                  .fontSize(15)
-                  .fontColor($r('app.color.text_secondary_color'))
-                  .width('100%')
-                  .lineHeight(22.5); // 1.5 倍行距（15fp × 1.5）
+                this.bodyRichTextDetail(this.selectedMessage.body)
               }
 
               // 下：时间居右
@@ -884,6 +942,94 @@ export struct NotifyView {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
     }
+  }
+
+  // ====== 正文富文本：URL 点击打开系统浏览器 ======
+  private openUrl(url: string): void {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const want: Want = {
+        action: 'ohos.want.action.viewData',
+        uri: url,
+      };
+      ctx.startAbility(want).catch((err: BusinessError) => {
+        hilog.warn(DOMAIN, TAG, '打开链接失败：code=%{public}d msg=%{public}s', err.code, err.message);
+        showToast(this.getUIContext(), '无法打开链接');
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'openUrl 异常：%{public}s', msg);
+      showToast(this.getUIContext(), '无法打开链接');
+    }
+  }
+
+  // ====== 正文富文本：验证码点击复制到剪贴板 ======
+  private async copyCode(code: string): Promise<void> {
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, code);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      await sys.setData(data);
+      showToast(this.getUIContext(), `已复制 ${code}`, 1500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '复制验证码失败：%{public}s', msg);
+      showToast(this.getUIContext(), '复制失败');
+    }
+  }
+
+  // 列表项正文富文本：URL/验证码高亮可点击，maxLines(4) + 省略号
+  @Builder
+  bodyRichTextList(text: string) {
+    Text() {
+      ForEach(parseTextSegments(text), (seg: TextSegment, index: number) => {
+        if (seg.type === SEG_URL) {
+          Span(seg.text)
+            .fontColor($r('app.color.text_accent_color'))
+            .fontSize(14)
+            .onClick(() => { this.openUrl(seg.text); });
+        } else if (seg.type === SEG_CODE) {
+          Span(seg.text)
+            .fontColor($r('app.color.text_accent_color'))
+            .fontSize(14)
+            .onClick(() => { this.copyCode(seg.text); });
+        } else {
+          Span(seg.text)
+            .fontColor($r('app.color.text_secondary_color'))
+            .fontSize(14);
+        }
+      }, (seg: TextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
+    }
+    .width('100%')
+    .maxLines(4)
+    .textOverflow({ overflow: TextOverflow.Ellipsis })
+    .lineHeight(21) // 1.5 倍行距（14fp × 1.5）
+    .margin({ top: 4 }); // 与上方标题/副标题拉开间距
+  }
+
+  // 详情页正文富文本：URL/验证码高亮可点击，不限制行数
+  @Builder
+  bodyRichTextDetail(text: string) {
+    Text() {
+      ForEach(parseTextSegments(text), (seg: TextSegment, index: number) => {
+        if (seg.type === SEG_URL) {
+          Span(seg.text)
+            .fontColor($r('app.color.text_accent_color'))
+            .fontSize(15)
+            .onClick(() => { this.openUrl(seg.text); });
+        } else if (seg.type === SEG_CODE) {
+          Span(seg.text)
+            .fontColor($r('app.color.text_accent_color'))
+            .fontSize(15)
+            .onClick(() => { this.copyCode(seg.text); });
+        } else {
+          Span(seg.text)
+            .fontColor($r('app.color.text_secondary_color'))
+            .fontSize(15);
+        }
+      }, (seg: TextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
+    }
+    .width('100%')
+    .lineHeight(22.5); // 1.5 倍行距（15fp × 1.5）
   }
 
   // 未配置 client token 或未注册 → 引导到"我的"页配置
