@@ -632,7 +632,9 @@ export struct NotifyView {
                 .fontColor($r('app.color.text_secondary_color'))
                 .width('100%')
                 .maxLines(4)
-                .textOverflow({ overflow: TextOverflow.Ellipsis });
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .lineHeight(21) // 1.5 倍行距（14fp × 1.5）
+                .margin({ top: 4 }); // 与上方标题/副标题拉开间距
             }
           }
           .layoutWeight(1)
@@ -838,7 +840,8 @@ export struct NotifyView {
                 Text(this.selectedMessage.body)
                   .fontSize(15)
                   .fontColor($r('app.color.text_secondary_color'))
-                  .width('100%');
+                  .width('100%')
+                  .lineHeight(22.5); // 1.5 倍行距（15fp × 1.5）
               }
 
               // 下：时间居右
