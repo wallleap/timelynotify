@@ -36,6 +36,14 @@ class PushRequest extends Object {
   device_key: string = '';
   title: string = '';
   body: string = '';
+  action?: string;
+  id?: string;
+  icon?: number;
+  badge?: number;
+  sound?: string;
+  soundDuration?: number;
+  foregroundShow?: number;
+  inboxContent?: string[];
 }
 
 // POST /push 响应信封：{ code, message, timestamp }
@@ -399,6 +407,9 @@ export class NotifyMessageService {
     req.device_key = deviceKey;
     req.title = '[订阅通知] 及时通知推送';
     req.body = '这是一条测试通知，收到即表示订阅推送链路工作正常';
+    req.id = 'this_is_test_notify'
+    req.icon = 'https://static.wallleap.cn/temp/nwvgnm7l2on5u6c531mo.jpg'
+    req.sound = 'multiwayinvitation'
 
     const fullURL: string = ServerManager.getInstance().resolveURL('/push');
     hilog.info(DOMAIN, TAG, '测试推送：POST %{public}s', fullURL);
