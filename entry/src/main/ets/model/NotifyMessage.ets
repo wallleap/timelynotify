@@ -15,6 +15,8 @@ export class NotifyMessage extends Object {
   createdAt: string = '';
   // 解析后的毫秒时间戳，便于排序与展示
   timestamp: number = 0;
+  // 图片 URL（来自 extras.icon），非空时列表右侧显示圆角缩略图
+  image: string = '';
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {
@@ -41,6 +43,9 @@ export class NotifyMessage extends Object {
       const extras = extrasVal as Record<string, Object>;
       const subtitleVal: Object | undefined = extras['subtitle'];
       m.subtitle = typeof subtitleVal === 'string' ? subtitleVal : '';
+      // 图片 URL 从 extras.icon 取
+      const iconVal: Object | undefined = extras['icon'];
+      m.image = typeof iconVal === 'string' ? iconVal : '';
     }
 
     const dateVal: Object | undefined = raw['date'];

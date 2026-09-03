@@ -10,7 +10,13 @@ import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
-import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
+import {
+  DOMAIN,
+  KEY_HOME_TAB_INDEX,
+  KEY_INDEX_PAGE_VISIBLE,
+  KEY_NOTIFY_EDITING,
+  KEY_NOTIFY_REFRESH_SIGNAL
+} from '../common/Constant';
 import showToast from '../components/showToast';
 
 const TAG: string = 'NotifyView';
@@ -578,31 +584,52 @@ export struct NotifyView {
           .shape(CheckBoxShape.CIRCLE);
       }
       Column({ space: 6 }) {
-        if (m.title && m.title.length > 0) {
-          Text(m.title)
-            .fontSize(15)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary_color'))
-            .width('100%')
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
+        // 上：标题/副标题/正文（左占剩余空间）+ icon（右 42x42）
+        Row({ space: 8 }) {
+          Column() {
+            if (m.title && m.title.length > 0) {
+              Text(m.title)
+                .fontSize(15)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_primary_color'))
+                .width('100%')
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis });
+            }
+            if (m.subtitle && m.subtitle.length > 0) {
+              Text(m.subtitle)
+                .fontSize(13)
+                .fontColor($r('app.color.text_accent_color'))
+                .width('100%')
+                .maxLines(2)
+                .textOverflow({ overflow: TextOverflow.Ellipsis });
+            }
+            if (m.body && m.body.length > 0) {
+              Text(m.body)
+                .fontSize(14)
+                .fontColor($r('app.color.text_secondary_color'))
+                .width('100%')
+                .maxLines(4)
+                .textOverflow({ overflow: TextOverflow.Ellipsis });
+            }
+          }
+          .layoutWeight(1)
+          .alignItems(HorizontalAlign.Start);
+
+          if (m.image && m.image.length > 0) {
+            Image(m.image)
+              .width(38)
+              .height(38)
+              .borderRadius(12)
+              .objectFit(ImageFit.Cover)
+              .flexShrink(0)
+              .alt($r('app.media.app_icon'));
+          }
         }
-        if (m.subtitle && m.subtitle.length > 0) {
-          Text(m.subtitle)
-            .fontSize(13)
-            .fontColor($r('app.color.text_accent_color'))
-            .width('100%')
-            .maxLines(2)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
-        if (m.body && m.body.length > 0) {
-          Text(m.body)
-            .fontSize(14)
-            .fontColor($r('app.color.text_secondary_color'))
-            .width('100%')
-            .maxLines(4)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top);
+
+        // 下：时间居右
         Text(this.formatTime(m.timestamp))
           .fontSize(11)
           .fontColor($r('app.color.text_quinary_color'))
@@ -756,13 +783,28 @@ export struct NotifyView {
               .height(this.statusBarHeight + 72);
 
             if (this.selectedMessage) {
-              if (this.selectedMessage.title && this.selectedMessage.title.length > 0) {
-                Text(this.selectedMessage.title)
-                  .fontSize(18)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.text_primary_color'))
-                  .width('100%');
+              // 标题行：标题（左占剩余空间）+ icon（右 38x38，与列表样式一致）
+              Row({ space: 8 }) {
+                if (this.selectedMessage.title && this.selectedMessage.title.length > 0) {
+                  Text(this.selectedMessage.title)
+                    .fontSize(18)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor($r('app.color.text_primary_color'))
+                    .layoutWeight(1);
+                }
+                if (this.selectedMessage.image && this.selectedMessage.image.length > 0) {
+                  Image(this.selectedMessage.image)
+                    .width(38)
+                    .height(38)
+                    .borderRadius(12)
+                    .objectFit(ImageFit.Cover)
+                    .flexShrink(0)
+                    .alt($r('app.media.app_icon'));
+                }
               }
+              .width('100%')
+              .alignItems(VerticalAlign.Top);
+
               if (this.selectedMessage.subtitle && this.selectedMessage.subtitle.length > 0) {
                 Text(this.selectedMessage.subtitle)
                   .fontSize(14)
@@ -775,6 +817,8 @@ export struct NotifyView {
                   .fontColor($r('app.color.text_secondary_color'))
                   .width('100%');
               }
+
+              // 下：时间居右
               Text(this.formatTime(this.selectedMessage.timestamp))
                 .fontSize(12)
                 .fontColor($r('app.color.text_quinary_color'))
