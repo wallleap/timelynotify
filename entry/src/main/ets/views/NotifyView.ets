@@ -207,7 +207,10 @@ export struct NotifyView {
           .fontColor($r('app.color.text_primary_color'))
           .fontWeight(FontWeight.Bold)
           .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          // 短标题保持内容宽度、箭头紧贴标题；长标题时收缩出省略号
+          // （Row/Column 子组件 flexShrink 默认 0，必须显式声明才会收缩）
+          .flexShrink(1);
 
         Image($r('app.media.select_more'))
           .width(24)
@@ -310,8 +313,10 @@ export struct NotifyView {
           .fontWeight(FontWeight.Bold)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
-          // 占满标题区剩余宽度：宽度由外层 layoutWeight(1) + 右侧 menu 占位共同约束，超长省略号收尾
-          .layoutWeight(1)
+          // 不占满剩余空间：短标题按内容宽度排布，展开箭头紧贴标题；
+          // 长标题时外层定宽 Row（layoutWeight + menu 占位）空间不足，本节点 flexShrink(1) 被压缩出省略号。
+          // 注意：Row/Column 子组件 flexShrink 默认 0（不收缩），必须显式声明，否则长标题会把箭头挤出
+          .flexShrink(1)
           // 点击标题文本打开服务器设置弹窗
           .onClick(() => {
             this.handleMoreClicked();
