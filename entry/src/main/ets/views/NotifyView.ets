@@ -7,6 +7,7 @@ import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
+import { MessageCacheStore } from '../services/MessageCacheStore';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
@@ -951,7 +952,17 @@ export struct NotifyView {
     try {
       await ServerManager.getInstance().ensureLoaded();
       this.refresh();
-      this.loadMessages();
+      // 缓存优先：先从本地 RDB 读最新一页立即渲染，避免冷启动白屏等网络
+      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      if (deviceKey && deviceKey.length > 0) {
+        const cached: NotifyMessage[] = await MessageCacheStore.loadLatest(deviceKey, 100);
+        if (cached.length > 0) {
+          this.messages = cached;
+          this.hasMore = true;
+        }
+      }
+      // 后台增量同步服务端（合并新消息 + 删除事件）
+      this.syncFromServer(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
@@ -1158,8 +1169,8 @@ export struct NotifyView {
     }, POLL_INTERVAL_MS);
   }
 
-  // 静默增量拉取：只把 id 大于当前列表最大 id 的新消息插入顶部，
-  // 不清空列表/不重置分页/不打断滚动位置；失败静默，等下一轮
+  // 静默增量拉取：走 after + deletedSince 协议，只拉本地没有的新消息并应用删除事件，
+  // 不清空列表/不重置分页；失败静默，等下一轮
   private async pollNewMessages(): Promise<void> {
     // 有全量请求/翻页/轮询进行中 → 本轮跳过；未配置 Token 的引导态 → 不发无谓请求
     if (this.pollInFlight || this.loading || this.loadingMore || this.needGuideToConfig()) {
@@ -1167,32 +1178,7 @@ export struct NotifyView {
     }
     this.pollInFlight = true;
     try {
-      const result = await NotifyMessageService.getInstance().getMessages(null, 0, 100);
-      if (!result.ok || result.messages.length === 0) {
-        return; // 失败或无消息：静默结束
-      }
-      // 计算当前列表最大消息 id（服务端 id 单调递增，作为"最新"基准）
-      let curMaxId: number = 0;
-      for (let i = 0; i < this.messages.length; i++) {
-        if (this.messages[i].id > curMaxId) {
-          curMaxId = this.messages[i].id;
-        }
-      }
-      // 过滤出真正的新消息（重复拉取天然去重）
-      const fresh: NotifyMessage[] = [];
-      for (let i = 0; i < result.messages.length; i++) {
-        const m: NotifyMessage = result.messages[i];
-        if (m.id > curMaxId) {
-          fresh.push(m);
-        }
-      }
-      if (fresh.length === 0) {
-        return;
-      }
-      // 按时间倒序（新→旧）后插入列表顶部，保持原有滚动位置与分页状态
-      fresh.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
-      this.messages = fresh.concat(this.messages);
-      hilog.info(DOMAIN, TAG, '轮询新增 %{public}d 条消息', String(fresh.length));
+      await this.syncFromServer(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '轮询异常：%{public}s', msg);
@@ -1296,6 +1282,12 @@ export struct NotifyView {
         showToast(uiCtx, errMsg);
         return;
       }
+      // 同步删除本地缓存
+      await ServerManager.getInstance().ensureLoaded();
+      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      if (deviceKey && deviceKey.length > 0) {
+        await MessageCacheStore.deleteByIds(deviceKey, [m.id]);
+      }
       this.removeFromList([m.id]);
       this.exitEditMode();
       showToast(uiCtx, '已删除');
@@ -1326,6 +1318,12 @@ export struct NotifyView {
           failCount++;
           hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', ids[i], errMsg);
         }
+      }
+      // 同步删除本地缓存（成功删除的 id 才删缓存；失败的保留，下次同步由删除流水兜底）
+      await ServerManager.getInstance().ensureLoaded();
+      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      if (deviceKey && deviceKey.length > 0) {
+        await MessageCacheStore.deleteByIds(deviceKey, ids);
       }
       this.removeFromList(ids);
       this.exitEditMode();
@@ -1362,7 +1360,12 @@ export struct NotifyView {
         showToast(uiCtx, errMsg);
         return;
       }
-      // 清空成功：移除本地列表并退出多选模式
+      // 清空成功：移除本地列表、清空本地缓存并退出多选模式
+      await ServerManager.getInstance().ensureLoaded();
+      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      if (deviceKey && deviceKey.length > 0) {
+        await MessageCacheStore.clearDevice(deviceKey);
+      }
       this.exitEditMode();
       this.messages = [];
       showToast(uiCtx, '已清空全部消息');
@@ -1391,23 +1394,7 @@ export struct NotifyView {
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
     try {
-      const result = await NotifyMessageService.getInstance().getMessages(null);
-      if (seq !== this.loadSeq) {
-        return; // 过期响应：期间已切换服务器/发起新请求，丢弃，防止旧数据写入列表
-      }
-      if (result.ok) {
-        // 按时间倒序（新消息在上）
-        this.messages = result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
-        this.errorMsg = '';
-        // 首次拉取/下拉刷新 → 重置分页状态，允许后续触底加载
-        this.hasMore = this.messages.length > 0;
-      } else {
-        this.errorMsg = result.errorMsg;
-        // 仅首次拉取失败清空列表；刷新失败保留旧数据
-        if (this.messages.length === 0) {
-          this.messages = [];
-        }
-      }
+      await this.syncFromServer(true, seq);
       // 是否有可用 client token（用户自定义 or 内置默认），用于引导态判断
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
@@ -1426,7 +1413,116 @@ export struct NotifyView {
     }
   }
 
-  // 触底加载更多：取当前列表末尾（最旧）消息的 ID 作 since，请求更老的消息
+  /**
+   * 与服务端同步（增量协议）。
+   * - forceFull=true：清空本地缓存，从 after=0 重新播种最新一页（下拉刷新/切服务器用）
+   * - forceFull=false：以本地 maxId 为 after、delCursor 为 deletedSince，只拉新消息 + 删除事件
+   * expectedSeq：请求代际，与 this.loadSeq 不符则丢弃结果（服务器切换防串数据）
+   */
+  private async syncFromServer(forceFull: boolean, expectedSeq: number = -1): Promise<void> {
+    const svc = NotifyMessageService.getInstance();
+    await ServerManager.getInstance().ensureLoaded();
+    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+    if (!deviceKey || deviceKey.length === 0) {
+      return;
+    }
+
+    // 代际校验：期间已切换服务器 → 丢弃
+    if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
+      return;
+    }
+
+    // 读取同步基线
+    let after: number = 0;
+    let delCursor: number = 0;
+    if (forceFull) {
+      await MessageCacheStore.clearDevice(deviceKey);
+    } else {
+      const meta = await MessageCacheStore.getMeta(deviceKey);
+      after = meta.maxId;
+      delCursor = meta.delCursor;
+      if (after === 0) {
+        after = await MessageCacheStore.getMaxId(deviceKey);
+      }
+    }
+
+    let newMaxId: number = after;
+    let newDelCursor: number = delCursor;
+
+    // 增量翻页循环（after 升序），最多 20 页防异常死循环
+    const MAX_PAGES: number = 20;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
+        return;
+      }
+      const result = await svc.getMessages(null, 0, 100, after, newDelCursor);
+      if (!result.ok) {
+        // 失败：保留本地缓存，静默结束；forceFull 且本地为空时透出错误
+        hilog.warn(DOMAIN, TAG, 'syncFromServer 失败：%{public}s', result.errorMsg);
+        if (forceFull && this.messages.length === 0) {
+          this.errorMsg = result.errorMsg;
+        }
+        return;
+      }
+
+      // 处理删除事件
+      if (result.reset) {
+        // 游标落在流水保留期缺口：清空本地重新播种
+        hilog.info(DOMAIN, TAG, 'syncFromServer reset：清空本地缓存重新播种');
+        await MessageCacheStore.clearDevice(deviceKey);
+        after = 0;
+        newMaxId = 0;
+      } else {
+        if (result.deletionIds.length > 0) {
+          await MessageCacheStore.deleteByIds(deviceKey, result.deletionIds);
+        }
+        if (result.purges.length > 0) {
+          let maxCeiling: number = 0;
+          for (let i = 0; i < result.purges.length; i++) {
+            if (result.purges[i] > maxCeiling) {
+              maxCeiling = result.purges[i];
+            }
+          }
+          if (maxCeiling > 0) {
+            await MessageCacheStore.purgeBefore(deviceKey, maxCeiling);
+          }
+        }
+      }
+      if (result.delCursor > 0) {
+        newDelCursor = result.delCursor;
+      }
+
+      // 写入新消息并推进 maxId
+      if (result.messages.length > 0) {
+        await MessageCacheStore.upsertMessages(deviceKey, result.messages);
+        for (let i = 0; i < result.messages.length; i++) {
+          if (result.messages[i].id > newMaxId) {
+            newMaxId = result.messages[i].id;
+          }
+        }
+      }
+
+      if (!result.hasMore) {
+        break;
+      }
+      // 下一页：用当前最大 id 作 after，删除游标只在首请求拉一次即可
+      after = newMaxId;
+    }
+
+    // 持久化同步元信息
+    await MessageCacheStore.saveMeta(deviceKey, newMaxId, newDelCursor);
+
+    // 代际校验后从缓存重新加载列表（含删除结果，与本地一致）
+    if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
+      return;
+    }
+    const refreshed: NotifyMessage[] = await MessageCacheStore.loadLatest(deviceKey, 100);
+    this.messages = refreshed;
+    this.hasMore = refreshed.length > 0;
+    this.errorMsg = '';
+  }
+
+  // 触底加载更多：优先读本地缓存（秒出），缓存不足一页再走服务端 since 翻页并落库
   // limit 默认 100，返回少于 100 条说明已到底，置 hasMore=false
   private async loadMore(): Promise<void> {
     if (this.loadingMore || !this.hasMore || this.messages.length === 0) {
@@ -1440,39 +1536,54 @@ export struct NotifyView {
     this.loadingMore = true;
     const PAGE_SIZE: number = 100;
     try {
-      const result = await NotifyMessageService.getInstance().getMessages(null, oldest.id, PAGE_SIZE);
-      if (result.ok) {
-        const newItems: NotifyMessage[] =
-          result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
-        if (newItems.length === 0) {
-          this.hasMore = false;
-        } else {
-          // 去重：过滤掉已经存在的 ID（避免后端返回包含 oldest.id 本身导致重复）
-          const existingIds: Set<number> = new Set<number>();
-          for (let i = 0; i < this.messages.length; i++) {
-            existingIds.add(this.messages[i].id);
-          }
-          const deduped: NotifyMessage[] = [];
-          for (let i = 0; i < newItems.length; i++) {
-            const m: NotifyMessage = newItems[i];
-            if (!existingIds.has(m.id)) {
-              deduped.push(m);
-            }
-          }
-          if (deduped.length === 0) {
-            // 全部重复 → 后端实际没有更老消息
-            this.hasMore = false;
-          } else {
-            // 列表按时间倒序（新→旧），追加到末尾保持顺序
-            this.messages = this.messages.concat(deduped);
-            // 返回不足一页（< limit）→ 已到底；否则保持 hasMore=true 允许继续翻
-            if (newItems.length < PAGE_SIZE) {
-              this.hasMore = false;
-            }
-          }
+      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      const existingIds: Set<number> = new Set<number>();
+      for (let i = 0; i < this.messages.length; i++) {
+        existingIds.add(this.messages[i].id);
+      }
+
+      // 1) 优先从本地缓存读更老的消息
+      let cached: NotifyMessage[] = [];
+      if (deviceKey && deviceKey.length > 0) {
+        cached = await MessageCacheStore.loadOlder(deviceKey, oldest.id, PAGE_SIZE);
+      }
+      const cachedDeduped: NotifyMessage[] = [];
+      for (let i = 0; i < cached.length; i++) {
+        if (!existingIds.has(cached[i].id)) {
+          cachedDeduped.push(cached[i]);
+          existingIds.add(cached[i].id);
         }
       }
-      // loadMore 失败不弹错误提示，避免打扰用户；日志已由 service 层打印
+      if (cachedDeduped.length > 0) {
+        this.messages = this.messages.concat(cachedDeduped);
+      }
+
+      // 2) 缓存不足一页 → 走网络 since 翻页补齐，并落库供下次离线浏览
+      if (cached.length < PAGE_SIZE) {
+        const result = await NotifyMessageService.getInstance().getMessages(null, oldest.id, PAGE_SIZE);
+        if (result.ok) {
+          const newItems: NotifyMessage[] =
+            result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
+          const deduped: NotifyMessage[] = [];
+          for (let i = 0; i < newItems.length; i++) {
+            if (!existingIds.has(newItems[i].id)) {
+              deduped.push(newItems[i]);
+              existingIds.add(newItems[i].id);
+            }
+          }
+          if (deduped.length > 0) {
+            this.messages = this.messages.concat(deduped);
+            if (deviceKey && deviceKey.length > 0) {
+              await MessageCacheStore.upsertMessages(deviceKey, deduped);
+            }
+          }
+          if (newItems.length < PAGE_SIZE) {
+            this.hasMore = false;
+          }
+        }
+        // loadMore 失败不弹错误提示，避免打扰用户；日志已由 service 层打印
+      }
+      // 缓存满一页 → 仍可能有更多缓存，保持 hasMore=true 让用户继续下拉
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'loadMore 异常：%{public}s', msg);

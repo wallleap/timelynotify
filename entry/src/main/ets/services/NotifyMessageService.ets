@@ -55,9 +55,11 @@ class PushEnvelope extends Object {
 
 // 服务端响应格式（gotify 兼容）：{ paging, messages: [...] }
 // 注意：message 接口不走服务端统一 envelope，顶层直接是 {paging, messages}
+// 增量同步协议下额外返回 deletions（仅请求带 deletedSince 时出现）
 class GotifyMessageResponse extends Object {
   paging: Object | null = null;
   messages: Object | null = null;
+  deletions: Object | null = null;
 }
 
 // 调用结果
@@ -69,6 +71,19 @@ export class MessageListResult {
   truncated: boolean = false;
   // 服务端原始消息数组（保留全部字段，无损导出用；仅全量导出时填充）
   rawMessages: Object[] = [];
+  // ====== 增量同步协议字段（after + deletedSince）======
+  // after 翻页是否还有更新的消息
+  hasMore: boolean = false;
+  // 本次响应的删除事件：被删消息 id 列表
+  deletionIds: number[] = [];
+  // 本次响应的清空事件：ceiling 列表（本地删除 id <= ceiling 的所有消息）
+  purges: number[] = [];
+  // 删除流水当前游标（下次请求作为 deletedSince）
+  delCursor: number = 0;
+  // 删除事件是否还有下一页
+  delHasMore: boolean = false;
+  // 游标已落在流水保留期缺口内：客户端应清空本地缓存并重新播种
+  reset: boolean = false;
 }
 
 function resolveContext(ctx: common.Context | null): common.Context | null {
@@ -189,10 +204,12 @@ export class NotifyMessageService {
   // 2) 顶层直接是数组 → 直接解析
 
   // limit 默认 100，控制单次返回条数；客户端据此判断是否到底（返回 < limit 视为到底）
+  // since > 0：向后翻页（返回 id < since），用于触底加载更老消息
+  // after > 0：向前增量（返回 id > after，升序），用于拉取本地没有的新消息（与 since 互斥）
+  // deletedSince > 0：返回该游标之后的删除事件（deletions 信封）
   async getMessages(context: common.Context | null = null, since: number = 0,
-    limit: number = 100): Promise<MessageListResult> {
+    limit: number = 100, after: number = 0, deletedSince: number = 0): Promise<MessageListResult> {
     const result = new MessageListResult();
-    // const ctx: common.Context | null = resolveContext(context);
 
     await ServerManager.getInstance().ensureLoaded();
     const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(context);
@@ -211,6 +228,12 @@ export class NotifyMessageService {
     const params: string[] = [];
     if (since > 0) {
       params.push(`since=${since}`);
+    }
+    if (after > 0) {
+      params.push(`after=${after}`);
+    }
+    if (deletedSince > 0) {
+      params.push(`deletedSince=${deletedSince}`);
     }
     if (limit > 0) {
       params.push(`limit=${limit}`);
@@ -244,9 +267,66 @@ export class NotifyMessageService {
 
     // 顶层直接是 {paging, messages}，不走服务端统一 envelope
     result.messages = NotifyMessageService.extractMessages(resp.result as Object);
+
+    // 解析 paging.hasMore（after 增量翻页用）
+    const raw = resp.result as Object as Record<string, Object>;
+    const pagingVal: Object | undefined = raw['paging'];
+    if (pagingVal && typeof pagingVal === 'object') {
+      const paging = pagingVal as Record<string, Object>;
+      const hasMoreVal: Object | undefined = paging['hasMore'];
+      result.hasMore = typeof hasMoreVal === 'boolean' ? hasMoreVal : false;
+    }
+
+    // 解析 deletions 信封（仅请求带 deletedSince 时服务端返回）
+    const delVal: Object | undefined = raw['deletions'];
+    if (delVal && typeof delVal === 'object') {
+      const del = delVal as Record<string, Object>;
+      result.delCursor = NotifyMessageService.asNumber(del['cursor']);
+      result.delHasMore = NotifyMessageService.asBoolean(del['hasMore']);
+      result.reset = NotifyMessageService.asBoolean(del['reset']);
+      const idsVal: Object | undefined = del['ids'];
+      if (idsVal instanceof Array) {
+        for (let i = 0; i < idsVal.length; i++) {
+          const id: number = NotifyMessageService.asNumber(idsVal[i]);
+          if (id > 0) {
+            result.deletionIds.push(id);
+          }
+        }
+      }
+      const purgesVal: Object | undefined = del['purges'];
+      if (purgesVal instanceof Array) {
+        for (let i = 0; i < purgesVal.length; i++) {
+          const c: number = NotifyMessageService.asNumber(purgesVal[i]);
+          if (c > 0) {
+            result.purges.push(c);
+          }
+        }
+      }
+    }
+
     result.ok = true;
-    hilog.info(DOMAIN, TAG, '拉取成功，共 %{public}d 条', String(result.messages.length));
+    hilog.info(DOMAIN, TAG,
+      '拉取成功，消息 %{public}d 条，删除 %{public}d 条，purge %{public}d，reset=%{public}s',
+      String(result.messages.length), String(result.deletionIds.length),
+      String(result.purges.length), result.reset ? 'true' : 'false');
     return result;
+  }
+
+  // 安全把任意值转成 number（非数字返回 0）
+  private static asNumber(v: Object | undefined): number {
+    if (typeof v === 'number') {
+      return v;
+    }
+    if (typeof v === 'string') {
+      const n: number = Number(v);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  }
+
+  // 安全把任意值转成 boolean
+  private static asBoolean(v: Object | undefined): boolean {
+    return typeof v === 'boolean' ? v : false;
   }
 
   // 全量导出消息：GET /{device_key}/message?limit=-1
