@@ -5,32 +5,48 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "certpath": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.cer",
+          "storeFile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/debug.p12",
+          "storePassword": "0000001B005A17B75D71766A4415B35ECFE360AC091C1E15644F684961AD812E466A5D3AA270C07434195C",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001B2929F5369CE751E38F9B5C0EC872BDF712C7C21C659451C0D900CA9AD0C058D91113CCD5923CBB",
-          "profile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p7b",
+          "keyPassword": "0000001B0BED11722E6D6D09B189581F8AFC6664AC47F02C49D397CDC221053ADB38409A52B1C4CA0D00E4",
           "signAlg": "SHA256withECDSA",
-          "storeFile": "/Users/luwang/.ohos/config/default_timelynotify_n1IWyXceZ2bvykFkqSrpHM1-51VvUGAH4r6Z2QLC_PI=.p12",
-          "storePassword": "0000001B10A8D5079EA318656C1E503A1A7A39DF951AC382723F446610C1B88417A23F8CC760922297729B"
+          "profile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/debug.p7b",
+          "certpath": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/debug.cer"
         }
       },
       {
         "name": "release",
         "type": "HarmonyOS",
         "material": {
-          "storeFile": "./signature/release.p12",
-          "storePassword": "0000001B8DF311BC09837039C3D7809A6BE2A454ED6A5D7223459303FEDAD4DDBC81FDDF786D95DAC65403",
+          "certpath": "./signature/release.cer",
           "keyAlias": "tn9",
-          "keyPassword": "0000001B2D981EE91EB3C85503FAC926EDF9D4F2DBB4695D90CBB2CAB1C906C23C4C8BD1528FFCC47ADE58",
-          "signAlg": "SHA256withECDSA",
+          "keyPassword": "0000001B32AAB14D2A364400943208BC3528F4884D6F14A75EB95A9AF956713BCE04D8B529551427A71850",
           "profile": "./signature/release.p7b",
-          "certpath": "./signature/release.cer"
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "./signature/release.p12",
+          "storePassword": "0000001B9C21F6C76C2C3E72EACECEC43B61EF25AE3AB33ECB53D00B6BF1ECFEAE157ADE49DA6912B5F2FD"
         }
       }
     ],
     "products": [
       {
+        // 调试产物：日常开发/模拟器运行用（DevEco 工具栏选择此 product 即可，无需改文件）
+        // CI 发版也构建此 product：release.yml 会剥离调试签名后用 hap-sign-tool 重签
         "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "26.0.0",
+        "compatibleSdkVersion": "6.1.0(23)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      },
+      {
+        // 发布产物：本地需要 release 签名包时使用（hvigorw -p product=release）
+        "name": "release",
         "signingConfig": "release",
         "targetSdkVersion": "26.0.0",
         "compatibleSdkVersion": "6.1.0(23)",
@@ -71,7 +87,8 @@
         {
           "name": "default",
           "applyToProducts": [
-            "default"
+            "default",
+            "release"
           ]
         }
       ]
