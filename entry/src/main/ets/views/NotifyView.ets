@@ -646,7 +646,8 @@ export struct NotifyView {
                 .swipeAction({
                   end: {
                     builder: () => {
-                      this.swipeDeleteBuilder(m);
+                      // 仅末行删除按钮带右下圆角，与分组卡片底边弧线衔接
+                      this.swipeDeleteBuilder(m, 0, index === section.messages.length - 1 ? 12 : 0);
                     }
                   }
                 });
@@ -674,7 +675,8 @@ export struct NotifyView {
           .swipeAction({
             end: {
               builder: () => {
-                this.swipeDeleteBuilder(section.messages[0]);
+                // 普通卡片四角圆角 12，删除按钮右侧两角与卡片弧线一致
+                this.swipeDeleteBuilder(section.messages[0], 12, 12);
               }
             }
           });
@@ -928,7 +930,9 @@ export struct NotifyView {
         });
     }
     .height('100%')
-    .backgroundColor($r('app.color.text_error_color'));
+    .backgroundColor($r('app.color.text_error_color'))
+    // 与主卡片右侧 12vp 圆角衔接，避免左滑时方角红块在卡片弧线外露出灰底
+    .borderRadius({ topLeft: 0, topRight: 12, bottomLeft: 0, bottomRight: 12 });
   }
 
   // 折叠态层叠空壳层：视觉上是一张「内缩 + 下沉」的卡片，垫在主卡片背面制造层级感。
@@ -1069,11 +1073,12 @@ export struct NotifyView {
       .padding(12)
       .alignItems(VerticalAlign.Center);
 
-      // 顶栏与首条消息之间的分隔线
+      // 顶栏与首条消息之间的分隔线：左侧缩进 12vp 与文字对齐，右侧顶到卡片边缘
+      // （与展开组内各行的分隔线保持同一终点，左滑删除时不错位）
       Divider()
         .color($r('app.color.divider_color'))
         .strokeWidth(0.5)
-        .margin({ left: 12, right: 12 });
+        .margin({ left: 12 });
     }
     .width('100%')
     .backgroundColor($r('app.color.card_background'))
@@ -1095,11 +1100,14 @@ export struct NotifyView {
 
   // 展开态分组内的消息行：布局与普通消息卡片完全一致（上方标题/正文+右上 38vp 图标，下方时间居右），
   // 仅无独立圆角/底色，行下细分隔线，末行下方圆角。
+  // 根节点用 Stack 单表面（分隔线以 BottomStart 叠加在表面内部），不要把 Divider 作为
+  // 与内容并列的第二个子节点：swipeAction 的 end builder 用 height('100%') 匹配 ListItem 高度时，
+  // Column(Row+Divider) 结构下百分比高度解析不到整行，删除按钮会比行矮一截、与分隔线错位
   // contentTransitionId 非空（仅组内第一条）时，上半标题/正文/icon Row 绑定共享元素转场，
   // 与折叠卡上半 Row 做一镜到底过渡（底部时间行不参与，两侧结构保持一致）
   @Builder
   groupMessageRow(m: NotifyMessage, isLast: boolean, contentTransitionId: string) {
-    Column() {
+    Stack({ alignContent: Alignment.BottomStart }) {
       Row({ space: 12 }) {
         if (this.isEditing) {
           Checkbox()
@@ -1167,18 +1175,21 @@ export struct NotifyView {
         .alignItems(HorizontalAlign.Start);
       }
       .width('100%')
-      .alignItems(VerticalAlign.Top);
+      .alignItems(VerticalAlign.Top)
+      // 底部 22vp = 12vp 卡片边距 + 10vp 与分隔线间距（分隔线叠加在 Stack 底部，不占独立高度）
+      .padding({ left: 12, right: 12, top: 12, bottom: 22 });
 
-      // 非末行：行下分隔线（位于 Column 12vp 内边距之内，与卡片内容对齐）
+      // 非末行：分隔线贴卡片表面底边，左侧缩进 12vp 与文字对齐，右侧顶到卡片边缘——
+      // 左滑某一行时红线（删除区）与相邻行的分隔线终点在同一竖边上，不错位
       if (!isLast) {
         Divider()
           .color($r('app.color.divider_color'))
           .strokeWidth(0.5)
-          .margin({ top: 10 });
+          .width('100%')
+          .margin({ left: 12 });
       }
     }
     .width('100%')
-    .padding(12)
     .backgroundColor($r('app.color.card_background'))
     .borderRadius({
       topLeft: 0,
@@ -1186,6 +1197,8 @@ export struct NotifyView {
       bottomLeft: isLast ? 12 : 0,
       bottomRight: isLast ? 12 : 0
     })
+    // 圆角处裁剪：分隔线右侧顶边、左滑删除按钮都不能溢出圆角
+    .clip(true)
     // 各行随分组展开淡入、收起淡出（第一条消息内容本身另走共享元素飞行）
     .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
     .onClick(() => {
@@ -1198,9 +1211,11 @@ export struct NotifyView {
     });
   }
 
-  // 左滑露出的删除按钮
+  // 左滑露出的删除按钮。topRadius/bottomRadius 为右侧圆角（vp），
+  // 必须与卡片右侧圆角一致：普通卡片=12/12，展开分组内末行=0/12，其余行=0/0
+  // （按钮在卡片背后滑出，圆角不匹配会在卡片弧线外侧露出灰底缺口）
   @Builder
-  swipeDeleteBuilder(m: NotifyMessage) {
+  swipeDeleteBuilder(m: NotifyMessage, topRadius: number, bottomRadius: number) {
     Row() {
       Text('删除')
         .fontSize(15)
@@ -1211,7 +1226,13 @@ export struct NotifyView {
         });
     }
     .height('100%')
-    .backgroundColor($r('app.color.text_error_color'));
+    .backgroundColor($r('app.color.text_error_color'))
+    .borderRadius({
+      topLeft: 0,
+      topRight: topRadius,
+      bottomLeft: 0,
+      bottomRight: bottomRadius
+    });
   }
 
   // 多选模式底部操作栏（需要加在 Refresh 外面）
