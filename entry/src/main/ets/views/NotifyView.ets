@@ -1744,6 +1744,14 @@ export struct NotifyView {
   // 依据当前消息顺序构建展示分组：messages 已按时间倒序维护，分组位置取组内最新消息首次出现的位置；
   // 这是渲染层唯一的分组顺序来源，轮询/分页/删除后均重新从 messages 派生，避免多处各自排序造成漂移
   private buildSections(): NotifySection[] {
+    // 第一遍：统计每个 group 的成员数量，供 key 使用
+    const groupSizeMap: Map<string, number> = new Map<string, number>();
+    for (let i = 0; i < this.messages.length; i++) {
+      const g: string = this.messages[i].group;
+      if (g.length > 0) {
+        groupSizeMap.set(g, (groupSizeMap.get(g) ?? 0) + 1);
+      }
+    }
     const sections: NotifySection[] = [];
     const sectionIndexMap: Map<string, number> = new Map<string, number>();
     for (let i = 0; i < this.messages.length; i++) {
@@ -1761,8 +1769,12 @@ export struct NotifyView {
       const existIndex: number | undefined = sectionIndexMap.get(m.group);
       if (existIndex === undefined) {
         sectionIndexMap.set(m.group, sections.length);
+        // key 必须带成员数量：ArkUI ForEach 在 key 不变时会整体复用原子组件树、
+        // 不重新执行 item 生成函数（官方 FAQ 619）。若只用 groupKey 做 key，
+        // 组内删除/新增后数量变化但 key 不变，内层 ForEach 拿不到新数组，
+        // 表现为被删消息不消失、折叠卡「N 条通知」角标不更新
         const section: NotifySection = {
-          key: `group:${m.group}`,
+          key: `group:${m.group}:${groupSizeMap.get(m.group) ?? 0}`,
           groupKey: m.group,
           messages: [m],
           // 先按普通卡片占位；后续遇到同组消息时再升级为折叠分组
