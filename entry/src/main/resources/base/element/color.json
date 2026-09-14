@@ -37,6 +37,22 @@
       "value": "#99ffffff"
     },
     {
+      "name": "card_shell_deep",
+      "value": "#80e5e5e5"
+    },
+    {
+      "name": "card_shell_shallow",
+      "value": "#CCf6f6f6"
+    },
+    {
+      "name": "group_count_badge_bg",
+      "value": "#EFF0F2"
+    },
+    {
+      "name": "group_count_badge_text",
+      "value": "#86909C"
+    },
+    {
       "name": "glass_button_background",
       "value": "#59ffffff"
     },

@@ -58,6 +58,19 @@ interface MatchInfo {
   type: number;
 }
 
+// 列表展示分组：无 group 或同 group 仅加载到 1 条时按普通卡片展示；
+// 同 group 达到 2 条及以上时折叠为一个 ListItemGroup（折叠卡 header + 展开后多条子 ListItem）
+interface NotifySection {
+  // ForEach 稳定键：普通卡片与分组使用不同前缀，避免虚拟列表复用错位
+  key: string;
+  // 非空表示该 section 是 group 分组
+  groupKey: string;
+  // 组内消息按时间倒序（新→旧），首条为最新消息
+  messages: NotifyMessage[];
+  // 是否以折叠分组样式渲染
+  grouped: boolean;
+}
+
 /**
  * 将正文按 URL（http/https）和验证码（4-8 位连续数字）切分为文本段数组。
  * URL 段和验证码段在渲染时以强调色高亮 + 可点击；普通段按默认样式渲染。
@@ -128,6 +141,11 @@ export struct NotifyView {
   @State selectedIds: number[] = [];
   // 导出选中消息：防重复触发
   @State exportingSelected: boolean = false;
+  // 当前展开的 group 标识集合；折叠状态只属于 UI 展示层，数据源仍以 messages 为准
+  @State expandedGroups: string[] = [];
+  // 折叠态分组主卡片的实测高度（vp），按 groupKey 缓存。空壳层高度必须显式与主卡片一致：
+  // 在虚拟化 List 中给空壳设 height('100%') 会被解析成接近整个列表视口的高度，空壳会拉成通屏大面板
+  @State groupCardHeights: Map<string, number> = new Map<string, number>();
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   // 状态栏高度（vp），详情模态标题栏顶部避让用；EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
@@ -179,6 +197,9 @@ export struct NotifyView {
       // 并递增代际使飞行中的旧请求响应过期丢弃
       this.messages = [];
       this.hasMore = false;
+      // 展开状态属于当前服务器，切换后一并清空
+      this.expandedGroups = [];
+      this.groupCardHeights = new Map<string, number>();
       this.loadSeq++;
       // 服务器切换后重新拉取消息
       this.loadMessages();
@@ -609,18 +630,56 @@ export struct NotifyView {
         }
       }
 
-      ForEach(this.messages, (m: NotifyMessage) => {
-        ListItem() {
-          this.messageRow(m);
-        }
-        .swipeAction({
-          end: {
-            builder: () => {
-              this.swipeDeleteBuilder(m);
+      ForEach(this.buildSections(), (section: NotifySection) => {
+        if (section.grouped) {
+          if (this.isGroupExpanded(section.groupKey)) {
+            // 展开态 = ListItemGroup：header 为分组名顶栏，每条消息是独立子 ListItem
+            // （各自支持左滑删除/独立点击）。展开/收起在 animateTo 中切换，
+            // 子 ListItem 增删由 List 做布局动画
+            ListItemGroup({ space: 0, header: this.groupExpandedHeader(section) }) {
+              ForEach(section.messages, (m: NotifyMessage, index?: number) => {
+                ListItem() {
+                  // 第一条绑定共享元素 id（与折叠卡内容一一对应），其余行传空串不参与
+                  this.groupMessageRow(m, index === section.messages.length - 1,
+                    index === 0 ? `gmc:${section.groupKey}` : '');
+                }
+                .swipeAction({
+                  end: {
+                    builder: () => {
+                      this.swipeDeleteBuilder(m);
+                    }
+                  }
+                });
+              }, (m: NotifyMessage) => `group-child:${section.groupKey}:${m.id}`);
             }
+          } else {
+            // 折叠态 = 单个 ListItem（层叠卡片）。swipeAction 只能挂在 ListItem 上、
+            // ListItemGroup 的 header 不支持左滑，因此折叠态必须独立成 ListItem；
+            // 左滑删除按钮语义为「删除整个分组」
+            ListItem() {
+              this.groupHeaderBuilder(section);
+            }
+            .swipeAction({
+              end: {
+                builder: () => {
+                  this.swipeDeleteGroupBuilder(section);
+                }
+              }
+            });
           }
-        });
-      }, (m: NotifyMessage) => `${m.id}|${m.timestamp}`);
+        } else {
+          ListItem() {
+            this.messageRow(section.messages[0]);
+          }
+          .swipeAction({
+            end: {
+              builder: () => {
+                this.swipeDeleteBuilder(section.messages[0]);
+              }
+            }
+          });
+        }
+      }, (section: NotifySection) => section.key);
 
       // 触底加载指示器
       if (this.loadingMore) {
@@ -739,11 +798,396 @@ export struct NotifyView {
     }
     .width('100%')
     .padding(12)
-    // 页面内卡片用半透明玻璃色（弹窗仍用不透明 card_background）
-    .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.card_glass_background'))
-    .borderRadius(10)
+    .backgroundColor($r('app.color.card_background'))
+    .borderRadius(12)
     .alignItems(VerticalAlign.Top)
+    .onClick(() => {
+      if (this.isEditing) {
+        this.toggleSelect(m.id);
+      } else {
+        this.selectedMessage = m;
+        this.showDetail = true;
+      }
+    });
+  }
+
+  // 「N 条通知」灰色胶囊徽标（折叠卡底部与展开态顶栏共用同一视觉，纯视觉无交互）。
+  // 几何转场绑在调用处包裹它的直接 Row 节点上（gmb）；注意该 Row 不可嵌套在另一个
+  // geometryTransition 节点内部，否则收起方向的 in 节点 opacity 不会恢复（徽标永久消失）
+  @Builder
+  groupCountBadge(count: number) {
+    Text(`${count} 条通知`)
+      .fontSize(10)
+      .fontWeight(FontWeight.Medium)
+      .fontColor($r('app.color.group_count_badge_text'))
+      .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+      .borderRadius(10)
+      .backgroundColor($r('app.color.group_count_badge_bg'));
+  }
+
+  // 分组头卡片内容（主卡片与空壳层共用）：
+  // visible=true → 正常渲染（主卡片）；visible=false → 内容 Visibility.Hidden（不可见但保留布局空间，
+  // 使空壳与主卡片高度一致，解决空 Column height('100%') 在内容尺寸 Stack 中高度为 0 的问题）
+  @Builder
+  groupCardContent(section: NotifySection, visible: boolean) {
+    if (this.isEditing) {
+      Checkbox()
+        .select(this.isGroupAllSelected(section.messages))
+        .selectedColor($r('app.color.text_accent_color'))
+        .shape(CheckBoxShape.CIRCLE)
+        .visibility(visible ? Visibility.Visible : Visibility.Hidden)
+        .onClick(() => {
+          this.toggleGroupSelection(section.messages);
+        });
+    }
+    Column({ space: 6 }) {
+      // 上：标题/副标题/正文（左占剩余空间）+ icon（右 38x38）
+      // 该 Row 与展开列表第一行的上半 Row 结构完全一致，作为 gmc 共享元素：
+      // 展开时平滑「飞」到第一行，收起时反向飞回。只包上半 Row（不含底部徽标/时间行），
+      // 避免与徽标的 gmb 转场嵌套（嵌套几何转场会导致徽标收起后 opacity 不恢复）
+      Row({ space: 8 }) {
+        Column() {
+          if (section.messages[0].title && section.messages[0].title.length > 0) {
+            Text(section.messages[0].title)
+              .fontSize(15)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_primary_color'))
+              .width('100%')
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis });
+          }
+          if (section.messages[0].subtitle && section.messages[0].subtitle.length > 0) {
+            Text(section.messages[0].subtitle)
+              .fontSize(13)
+              .fontColor($r('app.color.text_accent_color'))
+              .width('100%')
+              .maxLines(2)
+              .textOverflow({ overflow: TextOverflow.Ellipsis });
+          }
+          // 正文优先展示 extras.inboxcontent 多行摘要，无则回退普通正文
+          if (section.messages[0].inboxContent.length > 0) {
+            this.inboxRichTextList(section.messages[0].inboxContent)
+          } else if (section.messages[0].body && section.messages[0].body.length > 0) {
+            this.bodyRichTextList(section.messages[0].body)
+          }
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start);
+
+        if (section.messages[0].image && section.messages[0].image.length > 0) {
+          Image(section.messages[0].image)
+            .width(38)
+            .height(38)
+            .borderRadius(12)
+            .objectFit(ImageFit.Cover)
+            .flexShrink(0)
+            .alt($r('app.media.app_icon'));
+        }
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top)
+      .geometryTransition(visible ? `gmc:${section.groupKey}` : '')
+      .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+
+      // 下：左侧条数徽标（gmb 共享元素，飞到展开顶栏；与 gmc 是兄弟节点，不可嵌套），右侧时间
+      // （折叠态不放箭头，点击整张卡片展开）
+      Row() {
+        Row() {
+          this.groupCountBadge(section.messages.length);
+        }
+        .flexShrink(0)
+        .geometryTransition(visible ? `gmb:${section.groupKey}` : '')
+        .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+        Blank();
+        Text(this.formatTime(section.messages[0].timestamp))
+          .fontSize(11)
+          .fontColor($r('app.color.text_quinary_color'));
+      }
+      .width('100%')
+      .margin({ top: 2 })
+      .alignItems(VerticalAlign.Center);
+    }
+    .layoutWeight(1)
+    .alignItems(HorizontalAlign.Start)
+    .visibility(visible ? Visibility.Visible : Visibility.Hidden)
+    .onClick(() => {
+      this.handleGroupHeaderClick(section);
+    });
+  }
+
+  // 折叠态分组卡片左滑露出的删除按钮：语义为删除整个分组（组内全部消息）
+  @Builder
+  swipeDeleteGroupBuilder(section: NotifySection) {
+    Row() {
+      Text('删除')
+        .fontSize(15)
+        .fontColor('#FFFFFF')
+        .padding({ left: 20, right: 20 })
+        .onClick(() => {
+          this.confirmDeleteGroup(section);
+        });
+    }
+    .height('100%')
+    .backgroundColor($r('app.color.text_error_color'));
+  }
+
+  // 折叠态层叠空壳层：视觉上是一张「内缩 + 下沉」的卡片，垫在主卡片背面制造层级感。
+  // inset = 单侧水平内缩 vp，yOffset = 向下偏移 vp。
+  // 高度直接取主卡片实测高度（groupCardHeights）：不能用 height('100%')，
+  // 虚拟化 List 中百分比高度会被解析成接近整个列表视口高度，空壳会拉成通屏大面板；
+  // 也不渲染 Hidden 占位内容，避免多一层布局。hitTestBehavior(None) 不拦截触摸。
+  @Builder
+  groupShellLayer(section: NotifySection, inset: number, yOffset: number, bgColor: Resource) {
+    Row() {
+      Column()
+        .layoutWeight(1)
+        .height('100%')
+        .borderRadius(12)
+        .backgroundColor(bgColor);
+    }
+    .width('100%')
+    // 高度 = 主卡片实测高度（vp）；未测量到（0）时由调用方跳过渲染，不会出现高度塌陷
+    .height(this.groupCardHeights.get(section.groupKey) ?? 0)
+    .padding({ left: inset, right: inset })
+    .offset({ y: yOffset })
+    .hitTestBehavior(HitTestMode.None);
+  }
+
+  // 分组头卡片：展示组内最新一条消息，右下角显示组内条数与展开/收起箭头。
+  // 折叠态在主卡片后方垫 1-2 张空壳卡片（向下偏移 + 两侧内缩），产生层叠透视效果：
+  //   2 条 → 1 层叠加（offset 9vp，左右内缩 8vp）
+  //   3 条及以上 → 2 层叠加（浅层 offset 9vp/内缩 8vp，深层 offset 18vp/内缩 16vp）
+  // 空壳半透明无投影（与全应用卡片平面风格一致），借鉴 iOS 通知堆叠的半透明后层：
+  // 亮色=半透明白罩（后层比背景略亮，像叠放的白纸，shallow 80% / deep 50%），
+  // 暗色=半透明白罩（后层比背景略亮，shallow 12% / deep 4%）；
+  // 两档不同透明度区分浅/深两层，层次同时由「越深越窄越低」的几何阶梯加强
+  // 展开后空壳层消失，仅展示主卡片 + 子项列表
+  // 空壳层渲染相同内容但 Visibility.Hidden（保留布局空间保证高度一致），仅背景可见；
+  // hitTestBehavior(None) 确保空壳不拦截任何触摸事件
+  //
+  // ⚠️ 关键：空壳层用 offset 向下偏移后会超出 Stack 内容底部 → 必须给 Stack 加
+  // paddingBottom 预留空间，让空壳层完全落在 Stack 边界内（否则会被父容器裁剪不可见）。
+  @Builder
+  groupHeaderBuilder(section: NotifySection) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      // ─── 叠加空壳层（折叠态 only）───
+      // Stack 中后声明的子组件在上层，空壳须先于主卡片声明才能垫在背面；
+      // 主卡片高度测量完成后才渲染，避免首帧 0 高闪烁
+      if (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 3
+        && (this.groupCardHeights.get(section.groupKey) ?? 0) > 0) {
+        // 深层：下沉 18vp、两侧各内缩 16vp，视觉最远；比浅层更深一档，两层阶梯可辨
+        this.groupShellLayer(section, 16, 18, $r('app.color.card_shell_deep'));
+      }
+      if (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 2
+        && (this.groupCardHeights.get(section.groupKey) ?? 0) > 0) {
+        // 浅层：下沉 9vp、两侧各内缩 8vp，介于深层与主卡片之间
+        this.groupShellLayer(section, 8, 9, $r('app.color.card_shell_shallow'));
+      }
+      // ─── 主卡片（最上层）───
+      Row({ space: 12 }) {
+        this.groupCardContent(section, true)
+      }
+      .width('100%')
+      .padding(12)
+      .backgroundColor($r('app.color.card_background'))
+      .borderRadius(12)
+      .alignItems(VerticalAlign.Top)
+      // 卡片底色随折叠态离场淡入淡出，配合消息内容的共享元素飞行，避免白底瞬间跳变
+      .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
+      // 上报主卡片实测高度（vp），空壳层用同一高度渲染；内容随轮询变化时同步更新
+      .onAreaChange((_oldValue: Area, newValue: Area) => {
+        // 当前 API 下 Area.height 的回调数值单位为 vp（不是 px，切勿再做 px2vp，
+        // 否则空壳高度会被缩小数倍、完全藏在主卡片身后不可见）
+        this.updateGroupCardHeight(section.groupKey, newValue.height as number);
+      });
+    }
+    .width('100%')
+    // paddingBottom 恰好等于空壳下沉量（无描边故无边框余量）：空壳底边与 Stack 底部齐平，
+    // 空壳下沿到下一项的距离 = List space(10vp)，与普通卡片间距视觉一致；展开/单条 → 0
+    .padding({ bottom:
+      (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 3) ? 18
+        : (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 2) ? 9 : 0
+    });
+  }
+
+  // 展开态分组顶栏：app 图标 + group 名称（左）+ 条数 + 折叠箭头（右），底部分隔线，仅上方圆角
+  @Builder
+  groupExpandedHeader(section: NotifySection) {
+    Column() {
+      Row({ space: 8 }) {
+        if (this.isEditing) {
+          Checkbox()
+            .select(this.isGroupAllSelected(section.messages))
+            .selectedColor($r('app.color.text_accent_color'))
+            .shape(CheckBoxShape.CIRCLE)
+        } else {
+          // 顶栏图标与消息卡片保持一致：优先用消息自带图标，无则回退 app 图标
+          if (section.messages[0].image && section.messages[0].image.length > 0) {
+            Image(section.messages[0].image)
+              .width(24)
+              .height(24)
+              .borderRadius(6)
+              .objectFit(ImageFit.Cover)
+              .flexShrink(0)
+              .alt($r('app.media.app_icon'));
+          } else {
+            Image($r('app.media.app_icon'))
+              .width(24)
+              .height(24)
+              .borderRadius(6)
+              .objectFit(ImageFit.Cover)
+              .flexShrink(0);
+          }
+        }
+        Text(section.groupKey)
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary_color'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1);
+        // 条数徽标与折叠卡共用同一 builder + 同一 gmb 共享元素 id：
+        // 展开时徽标从卡内底部飞到顶栏，收起时反向飞回
+        Row() {
+          this.groupCountBadge(section.messages.length);
+        }
+        .flexShrink(0)
+        .geometryTransition(`gmb:${section.groupKey}`)
+        .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+        // 箭头朝上（右箭头 -90°）仅作视觉指示，点击区域由整行统一处理；
+        // 尺寸/颜色与 MineView 右箭头保持一致
+        Image($r('app.media.arrow_right'))
+          .width(20)
+          .height(20)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.text_quinary_color'))
+          .rotate({ angle: -90 })
+          .flexShrink(0)
+          .padding({ left: 4, top: 2, bottom: 2 });
+      }
+      .width('100%')
+      .padding(12)
+      .alignItems(VerticalAlign.Center);
+
+      // 顶栏与首条消息之间的分隔线
+      Divider()
+        .color($r('app.color.divider_color'))
+        .strokeWidth(0.5)
+        .margin({ left: 12, right: 12 });
+    }
+    .width('100%')
+    .backgroundColor($r('app.color.card_background'))
+    .borderRadius({ topLeft: 12, topRight: 12, bottomLeft: 0, bottomRight: 0 })
+    // 点击整个顶栏：非编辑态收起分组，编辑态整组勾选（绑在根 Column，覆盖整行+分隔线）
+    // hitTestBehavior(Block)：ListItemGroup header 左部触摸会被子 ListItem 的
+    // swipeAction 手势层吞掉（只有右侧箭头区可点），Block 强制 header 自身消费整行触摸
+    .hitTestBehavior(HitTestMode.Block)
+    .onClick(() => {
+      if (this.isEditing) {
+        this.toggleGroupSelection(section.messages);
+      } else {
+        this.toggleGroupExpanded(section.groupKey);
+      }
+    })
+    // 顶栏随展开态淡入淡出（徽标本身另有共享元素飞行动画）
+    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+  }
+
+  // 展开态分组内的消息行：布局与普通消息卡片完全一致（上方标题/正文+右上 38vp 图标，下方时间居右），
+  // 仅无独立圆角/底色，行下细分隔线，末行下方圆角。
+  // contentTransitionId 非空（仅组内第一条）时，上半标题/正文/icon Row 绑定共享元素转场，
+  // 与折叠卡上半 Row 做一镜到底过渡（底部时间行不参与，两侧结构保持一致）
+  @Builder
+  groupMessageRow(m: NotifyMessage, isLast: boolean, contentTransitionId: string) {
+    Column() {
+      Row({ space: 12 }) {
+        if (this.isEditing) {
+          Checkbox()
+            .select(this.isSelected(m.id))
+            .selectedColor($r('app.color.text_accent_color'))
+            .shape(CheckBoxShape.CIRCLE)
+            .flexShrink(0);
+        }
+        Column({ space: 6 }) {
+          // 上：标题/副标题/正文（左占剩余空间）+ icon（右 38x38）
+          Row({ space: 8 }) {
+            Column() {
+              if (m.title && m.title.length > 0) {
+                Text(m.title)
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor($r('app.color.text_primary_color'))
+                  .width('100%')
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis });
+              }
+              if (m.subtitle && m.subtitle.length > 0) {
+                Text(m.subtitle)
+                  .fontSize(13)
+                  .fontColor($r('app.color.text_accent_color'))
+                  .width('100%')
+                  .maxLines(2)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis });
+              }
+              // 正文优先展示 extras.inboxcontent 多行摘要，无则回退普通正文（保留链接高亮能力）
+              if (m.inboxContent.length > 0) {
+                this.inboxRichTextList(m.inboxContent)
+              } else if (m.body && m.body.length > 0) {
+                this.bodyRichTextList(m.body)
+              }
+            }
+            .layoutWeight(1)
+            .alignItems(HorizontalAlign.Start);
+
+            if (m.image && m.image.length > 0) {
+              Image(m.image)
+                .width(38)
+                .height(38)
+                .borderRadius(12)
+                .objectFit(ImageFit.Cover)
+                .flexShrink(0)
+                .alt($r('app.media.app_icon'));
+            }
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+          // 仅第一条消息的上半 Row 与折叠卡上半 Row 做几何转场（其他行传空串不参与）；
+          // 只包标题/正文/icon 行，两侧结构一一对应，飞行轨迹最自然
+          .geometryTransition(contentTransitionId)
+          .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+
+          // 下：时间居右（与普通消息卡片一致）
+          Text(this.formatTime(m.timestamp))
+            .fontSize(11)
+            .fontColor($r('app.color.text_quinary_color'))
+            .width('100%')
+            .textAlign(TextAlign.End);
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start);
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top);
+
+      // 非末行：行下分隔线（位于 Column 12vp 内边距之内，与卡片内容对齐）
+      if (!isLast) {
+        Divider()
+          .color($r('app.color.divider_color'))
+          .strokeWidth(0.5)
+          .margin({ top: 10 });
+      }
+    }
+    .width('100%')
+    .padding(12)
+    .backgroundColor($r('app.color.card_background'))
+    .borderRadius({
+      topLeft: 0,
+      topRight: 0,
+      bottomLeft: isLast ? 12 : 0,
+      bottomRight: isLast ? 12 : 0
+    })
+    // 各行随分组展开淡入、收起淡出（第一条消息内容本身另走共享元素飞行）
+    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
     .onClick(() => {
       if (this.isEditing) {
         this.toggleSelect(m.id);
@@ -1246,6 +1690,134 @@ export struct NotifyView {
     }
   }
 
+  // ====== group 分组展示 ======
+
+  // 依据当前消息顺序构建展示分组：messages 已按时间倒序维护，分组位置取组内最新消息首次出现的位置；
+  // 这是渲染层唯一的分组顺序来源，轮询/分页/删除后均重新从 messages 派生，避免多处各自排序造成漂移
+  private buildSections(): NotifySection[] {
+    const sections: NotifySection[] = [];
+    const sectionIndexMap: Map<string, number> = new Map<string, number>();
+    for (let i = 0; i < this.messages.length; i++) {
+      const m: NotifyMessage = this.messages[i];
+      if (m.group.length === 0) {
+        const single: NotifySection = {
+          key: `single:${m.id}`,
+          groupKey: '',
+          messages: [m],
+          grouped: false
+        };
+        sections.push(single);
+        continue;
+      }
+      const existIndex: number | undefined = sectionIndexMap.get(m.group);
+      if (existIndex === undefined) {
+        sectionIndexMap.set(m.group, sections.length);
+        const section: NotifySection = {
+          key: `group:${m.group}`,
+          groupKey: m.group,
+          messages: [m],
+          // 先按普通卡片占位；后续遇到同组消息时再升级为折叠分组
+          grouped: false
+        };
+        sections.push(section);
+      } else {
+        const section: NotifySection = sections[existIndex];
+        section.messages.push(m);
+        section.grouped = true;
+      }
+    }
+    return sections;
+  }
+
+  private isGroupExpanded(groupKey: string): boolean {
+    return this.expandedGroups.indexOf(groupKey) >= 0;
+  }
+
+  // 缓存某个分组主卡片的实测高度（vp）；不可变更新 Map 以触发空壳层重渲染
+  private updateGroupCardHeight(groupKey: string, heightVp: number): void {
+    if (heightVp <= 0) {
+      return;
+    }
+    const prev: number = this.groupCardHeights.get(groupKey) ?? 0;
+    // 亚像素级抖动不更新，避免无意义重渲染
+    if (Math.abs(prev - heightVp) < 0.5) {
+      return;
+    }
+    const next: Map<string, number> = new Map<string, number>(this.groupCardHeights);
+    next.set(groupKey, heightVp);
+    this.groupCardHeights = next;
+  }
+
+  // 设置某个分组的展开状态（展开态数组不可变更新，确保 ForEach 刷新）
+  private setGroupExpanded(groupKey: string, expanded: boolean): void {
+    const exists: boolean = this.isGroupExpanded(groupKey);
+    if (exists === expanded) {
+      return;
+    }
+    if (expanded) {
+      this.expandedGroups = [...this.expandedGroups, groupKey];
+    } else {
+      this.expandedGroups = this.expandedGroups.filter((g: string) => g !== groupKey);
+    }
+  }
+
+  // 切换分组展开/收起，并在动画上下文中更新状态：
+  // animateTo 期间 ListItemGroup 子 ListItem 的增删由 List 插值布局（高度展开/下方项让位），
+  // header 内折叠卡/展开顶栏两形态通过各自的 TransitionEffect 交叉淡入淡出
+  private toggleGroupExpanded(groupKey: string): void {
+    const nextExpanded: boolean = !this.isGroupExpanded(groupKey);
+    this.getUIContext().animateTo({ duration: 280, curve: Curve.EaseInOut }, () => {
+      this.setGroupExpanded(groupKey, nextExpanded);
+    });
+  }
+
+  // 分组头内容区点击：编辑态整组勾选；非编辑态折叠时展开，已展开时打开最新消息详情
+  private handleGroupHeaderClick(section: NotifySection): void {
+    if (this.isEditing) {
+      this.toggleGroupSelection(section.messages);
+      return;
+    }
+    if (this.isGroupExpanded(section.groupKey)) {
+      this.selectedMessage = section.messages[0];
+      this.showDetail = true;
+    } else {
+      this.toggleGroupExpanded(section.groupKey);
+    }
+  }
+
+  // 分组复选框是否应显示为选中：组内消息全部选中才选中
+  private isGroupAllSelected(groupMessages: NotifyMessage[]): boolean {
+    if (groupMessages.length === 0) {
+      return false;
+    }
+    for (let i = 0; i < groupMessages.length; i++) {
+      if (!this.isSelected(groupMessages[i].id)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // 整组勾选/取消勾选：全选状态下取消整组，否则补齐组内未选中的消息
+  private toggleGroupSelection(groupMessages: NotifyMessage[]): void {
+    if (this.isGroupAllSelected(groupMessages)) {
+      const groupIdSet: Set<number> = new Set<number>();
+      for (let i = 0; i < groupMessages.length; i++) {
+        groupIdSet.add(groupMessages[i].id);
+      }
+      this.selectedIds = this.selectedIds.filter((id: number) => !groupIdSet.has(id));
+    } else {
+      const next: number[] = [...this.selectedIds];
+      for (let i = 0; i < groupMessages.length; i++) {
+        const id: number = groupMessages[i].id;
+        if (!this.isSelected(id)) {
+          next.push(id);
+        }
+      }
+      this.selectedIds = next;
+    }
+  }
+
   // 从本地列表移除（UI 即时更新，不刷新整个列表）
   private removeFromList(ids: number[]): void {
     const idSet: Set<number> = new Set<number>(ids);
@@ -1256,6 +1828,16 @@ export struct NotifyView {
       }
     }
     this.messages = newList;
+    // 清理已不存在，或删到只剩 1 条（已退回普通卡片）的分组展开状态，
+    // 避免后续再次聚合成组时意外沿用展开态
+    const groupCountMap: Map<string, number> = new Map<string, number>();
+    for (let i = 0; i < this.messages.length; i++) {
+      const g: string = this.messages[i].group;
+      if (g.length > 0) {
+        groupCountMap.set(g, (groupCountMap.get(g) ?? 0) + 1);
+      }
+    }
+    this.expandedGroups = this.expandedGroups.filter((g: string) => (groupCountMap.get(g) ?? 0) >= 2);
     // 如果删光了，退出编辑模式
     if (this.messages.length === 0) {
       this.exitEditMode();
@@ -1291,6 +1873,44 @@ export struct NotifyView {
       this.removeFromList([m.id]);
       this.exitEditMode();
       showToast(uiCtx, '已删除');
+    });
+  }
+
+  // 折叠态分组卡片左滑删除：删除该分组内全部消息
+  private confirmDeleteGroup(section: NotifySection): void {
+    const uiCtx: UIContext = this.getUIContext();
+    const ids: number[] = [];
+    for (let i = 0; i < section.messages.length; i++) {
+      ids.push(section.messages[i].id);
+    }
+    const count: number = ids.length;
+    uiCtx.getPromptAction().showDialog({
+      title: '删除整个分组',
+      message: `确定要删除该分组的 ${count} 条消息吗？此操作不可恢复。`,
+      buttons: [
+        { text: '取消', color: '#666666' },
+        { text: '全部删除', color: '#F53F3F' },
+      ],
+    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
+      if (err || result.index !== 1) {
+        return;
+      }
+      // 多条逐个删（服务端无批量删除 API）；失败的 id 收集后提示
+      const svc = NotifyMessageService.getInstance();
+      let failCount = 0;
+      for (let i = 0; i < ids.length; i++) {
+        const errMsg: string = await svc.deleteMessage(ids[i]);
+        if (errMsg.length > 0) {
+          failCount++;
+          hilog.warn(DOMAIN, TAG, '删除分组消息 %{public}d 失败：%{public}s', ids[i], errMsg);
+        }
+      }
+      this.removeFromList(ids);
+      if (failCount > 0) {
+        showToast(uiCtx, `删除完成，${failCount} 条失败`);
+      } else {
+        showToast(uiCtx, `已删除 ${count} 条`);
+      }
     });
   }
 
@@ -1368,6 +1988,8 @@ export struct NotifyView {
       }
       this.exitEditMode();
       this.messages = [];
+      this.expandedGroups = [];
+      this.groupCardHeights = new Map<string, number>();
       showToast(uiCtx, '已清空全部消息');
     });
   }

@@ -19,6 +19,8 @@ export class NotifyMessage extends Object {
   image: string = '';
   // 收件箱式多行摘要（来自 extras.inboxcontent）：非空时正文优先按行展示，每条一行/一段
   inboxContent: string[] = [];
+  // 通知分组标识（来自 extras.group）：非空且相同的消息在列表中折叠为一组
+  group: string = '';
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {
@@ -61,6 +63,14 @@ export class NotifyMessage extends Object {
         }
         m.inboxContent = lines;
       }
+      // 分组标识从 extras.group 取，纯空白视为未分组
+      const groupVal: Object | undefined = extras['group'];
+      m.group = typeof groupVal === 'string' ? groupVal.trim() : '';
+    }
+    // 兼容部分推送通道把 group 放在消息顶层的情况
+    if (m.group.length === 0) {
+      const topGroupVal: Object | undefined = raw['group'];
+      m.group = typeof topGroupVal === 'string' ? topGroupVal.trim() : '';
     }
 
     const dateVal: Object | undefined = raw['date'];
