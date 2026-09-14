@@ -643,14 +643,24 @@ export struct NotifyView {
                   this.groupMessageRow(m, index === section.messages.length - 1,
                     index === 0 ? `gmc:${section.groupKey}` : '');
                 }
-                .swipeAction({
-                  end: {
-                    builder: () => {
-                      // 仅末行删除按钮带右下圆角，与分组卡片底边弧线衔接
-                      this.swipeDeleteBuilder(m, 0, index === section.messages.length - 1 ? 12 : 0);
+                  // ListItem 自身铺卡片底色并裁剪：左滑时露出的区域保持与 item 一致的白底
+                  // （而非列表灰底），且滑动内容被裁在卡片左右边界内、不会越界；
+                  // 末行保留底部 12vp 圆角，与展开卡片底边弧线一致
+                  .backgroundColor($r('app.color.card_background'))
+                  .borderRadius({
+                    topLeft: 0,
+                    topRight: 0,
+                    bottomLeft: index === section.messages.length - 1 ? 12 : 0,
+                    bottomRight: index === section.messages.length - 1 ? 12 : 0
+                  })
+                  .clip(true)
+                  .swipeAction({
+                    end: {
+                      builder: () => {
+                        this.swipeDeleteBuilder(m);
+                      }
                     }
-                  }
-                });
+                  });
               }, (m: NotifyMessage) => `group-child:${section.groupKey}:${m.id}`);
             }
           } else {
@@ -675,8 +685,7 @@ export struct NotifyView {
           .swipeAction({
             end: {
               builder: () => {
-                // 普通卡片四角圆角 12，删除按钮右侧两角与卡片弧线一致
-                this.swipeDeleteBuilder(section.messages[0], 12, 12);
+                this.swipeDeleteBuilder(section.messages[0]);
               }
             }
           });
@@ -920,19 +929,31 @@ export struct NotifyView {
   // 折叠态分组卡片左滑露出的删除按钮：语义为删除整个分组（组内全部消息）
   @Builder
   swipeDeleteGroupBuilder(section: NotifySection) {
+    // 外层透明容器只负责占位宽度、与卡片的间距及垂直居中，背景透出列表底色
     Row() {
-      Text('删除')
-        .fontSize(15)
-        .fontColor('#FFFFFF')
-        .padding({ left: 20, right: 20 })
-        .onClick(() => {
-          this.confirmDeleteGroup(section);
-        });
+      // 44vp 红色圆形按钮 + 白色垃圾桶图标
+      Row() {
+        Image($r('app.media.delete'))
+          .width(22)
+          .height(22)
+          .objectFit(ImageFit.Contain)
+          .fillColor('#FFFFFF');
+      }
+      .width(44)
+      .height(44)
+      .borderRadius(44)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
+      .backgroundColor($r('app.color.text_error_color'))
+      .onClick(() => {
+        this.confirmDeleteGroup(section);
+      });
     }
+    .width(68)
     .height('100%')
-    .backgroundColor($r('app.color.text_error_color'))
-    // 与主卡片右侧 12vp 圆角衔接，避免左滑时方角红块在卡片弧线外露出灰底
-    .borderRadius({ topLeft: 0, topRight: 12, bottomLeft: 0, bottomRight: 12 });
+    .padding({ left: 12 })
+    .justifyContent(FlexAlign.Start)
+    .alignItems(VerticalAlign.Center);
   }
 
   // 折叠态层叠空壳层：视觉上是一张「内缩 + 下沉」的卡片，垫在主卡片背面制造层级感。
@@ -1211,28 +1232,35 @@ export struct NotifyView {
     });
   }
 
-  // 左滑露出的删除按钮。topRadius/bottomRadius 为右侧圆角（vp），
-  // 必须与卡片右侧圆角一致：普通卡片=12/12，展开分组内末行=0/12，其余行=0/0
-  // （按钮在卡片背后滑出，圆角不匹配会在卡片弧线外侧露出灰底缺口）
+  // 左滑露出的删除按钮：44vp 红底白色垃圾桶圆形按钮，垂直居中于行内，
+  // 与卡片左缘保留 12vp 间距（外层透明容器透出列表底色，不再铺满行高）
   @Builder
-  swipeDeleteBuilder(m: NotifyMessage, topRadius: number, bottomRadius: number) {
+  swipeDeleteBuilder(m: NotifyMessage) {
+    // 外层透明容器只负责占位宽度、与卡片的间距及垂直居中，背景透出列表底色
     Row() {
-      Text('删除')
-        .fontSize(15)
-        .fontColor('#FFFFFF')
-        .padding({ left: 20, right: 20 })
-        .onClick(() => {
-          this.confirmDeleteOne(m);
-        });
+      // 44vp 红色圆形按钮 + 白色垃圾桶图标（复用顶栏 delete.svg，fillColor 着白色）
+      Row() {
+        Image($r('app.media.delete'))
+          .width(22)
+          .height(22)
+          .objectFit(ImageFit.Contain)
+          .fillColor('#FFFFFF');
+      }
+      .width(44)
+      .height(44)
+      .borderRadius(44)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
+      .backgroundColor($r('app.color.text_error_color'))
+      .onClick(() => {
+        this.confirmDeleteOne(m);
+      });
     }
+    .width(68)
     .height('100%')
-    .backgroundColor($r('app.color.text_error_color'))
-    .borderRadius({
-      topLeft: 0,
-      topRight: topRadius,
-      bottomLeft: 0,
-      bottomRight: bottomRadius
-    });
+    .padding({ left: 12 })
+    .justifyContent(FlexAlign.Start)
+    .alignItems(VerticalAlign.Center);
   }
 
   // 多选模式底部操作栏（需要加在 Refresh 外面）
