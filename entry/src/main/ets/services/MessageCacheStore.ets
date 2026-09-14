@@ -25,6 +25,8 @@ const SQL_CREATE_MSG: string =
   'image TEXT NOT NULL DEFAULT \'\', ' +
   // inboxContent 序列化为 JSON 字符串存储
   'inbox_content TEXT NOT NULL DEFAULT \'\', ' +
+  // 通知分组标识（对应 NotifyMessage.group；不能用 group 命名，SQL 保留字）
+  'group_key TEXT NOT NULL DEFAULT \'\', ' +
   'PRIMARY KEY (device_key, id)' +
   ')';
 
@@ -68,6 +70,7 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'timestamp': m.timestamp,
     'image': m.image,
     'inbox_content': JSON.stringify(m.inboxContent),
+    'group_key': m.group,
   };
   return bucket;
 }
@@ -85,6 +88,7 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
   m.createdAt = rs.getString(rs.getColumnIndex('created_at'));
   m.timestamp = rs.getLong(rs.getColumnIndex('timestamp'));
   m.image = rs.getString(rs.getColumnIndex('image'));
+  m.group = rs.getString(rs.getColumnIndex('group_key'));
   const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
   if (inboxStr && inboxStr.length > 0) {
     try {
@@ -114,6 +118,41 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
 export class MessageCacheStore {
   private static store: relationalStore.RdbStore | null = null;
 
+  /**
+   * 旧库结构迁移。
+   * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效。
+   * 检测到 group_key 缺失时：ADD COLUMN 补列，并清空消息与同步元信息，
+   * 让下次同步走 after=0 全量重新播种（增量同步无法回填旧行的 group）。
+   */
+  private static async migrateSchema(db: relationalStore.RdbStore): Promise<void> {
+    try {
+      const rs: relationalStore.ResultSet =
+        await db.querySql(`PRAGMA table_info(${TABLE_MSG})`);
+      let hasGroupKey: boolean = false;
+      if (rs.goToFirstRow()) {
+        const nameIndex: number = rs.getColumnIndex('name');
+        do {
+          if (rs.getString(nameIndex) === 'group_key') {
+            hasGroupKey = true;
+            break;
+          }
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+      if (hasGroupKey) {
+        return;
+      }
+      hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 group_key 列并清空旧缓存');
+      await db.executeSql(
+        `ALTER TABLE ${TABLE_MSG} ADD COLUMN group_key TEXT NOT NULL DEFAULT ''`);
+      // 旧行 group 无法回填，作废本地缓存重新播种（元信息一并清空，等价于一次 forceFull）
+      await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
+      await db.executeSql(`DELETE FROM ${TABLE_META}`);
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'migrateSchema 失败：%{public}s', formatError(err));
+    }
+  }
+
   private static async getStore(): Promise<relationalStore.RdbStore | null> {
     if (MessageCacheStore.store) {
       return MessageCacheStore.store;
@@ -132,6 +171,7 @@ export class MessageCacheStore {
       await db.executeSql(SQL_CREATE_MSG);
       await db.executeSql(SQL_CREATE_MSG_INDEX);
       await db.executeSql(SQL_CREATE_META);
+      await MessageCacheStore.migrateSchema(db);
       MessageCacheStore.store = db;
       return db;
     } catch (err) {
