@@ -24,12 +24,7 @@ import {
 import showToast from '../components/showToast';
 import {
   buildNotifySections,
-  formatNotifyTime,
-  NOTIFY_SEGMENT_CODE,
-  NOTIFY_SEGMENT_URL,
-  NotifySection,
-  NotifyTextSegment,
-  parseNotifyTextSegments
+  NotifySection
 } from '../components/notify/NotifyViewTypes';
 import {
   areGroupMessagesSelected,
@@ -45,17 +40,16 @@ import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
-import { NotifyGroupCountBadge, NotifyGroupShellLayer } from '../components/notify/NotifyGroupVisuals';
 import { NotifyGroupExpandedHeader } from '../components/notify/NotifyGroupExpandedHeader';
+import { NotifyGroupMessageRow } from '../components/notify/NotifyGroupMessageRow';
+import { NotifyGroupCard } from '../components/notify/NotifyGroupCard';
+import { NotifySwipeDelete } from '../components/notify/NotifySwipeDelete';
 
 const TAG: string = 'NotifyView';
 
 // 前台轮询间隔（ms）：「通知」Tab 可见期间静默拉取新消息，
 // 补齐"用户停留列表页时新消息不及时出现"的场景
 const POLL_INTERVAL_MS: number = 15000;
-
-// 列表项 inboxContent 多行摘要最多展示行数（与普通正文 maxLines(4) 保持一致）
-const INBOX_LIST_MAX_LINES: number = 4;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -476,143 +470,10 @@ export struct NotifyView {
     this.showDetail = true;
   }
 
-  // 「N 条通知」灰色胶囊徽标（折叠卡底部与展开态顶栏共用同一视觉，纯视觉无交互）。
-  // 几何转场绑在调用处包裹它的直接 Row 节点上（gmb）；注意该 Row 不可嵌套在另一个
-  // geometryTransition 节点内部，否则收起方向的 in 节点 opacity 不会恢复（徽标永久消失）
-  @Builder
-  groupCountBadge(count: number) {
-    NotifyGroupCountBadge({ count: count });
-  }
-
-  // 分组头卡片内容（主卡片与空壳层共用）：
-  // visible=true → 正常渲染（主卡片）；visible=false → 内容 Visibility.Hidden（不可见但保留布局空间，
-  // 使空壳与主卡片高度一致，解决空 Column height('100%') 在内容尺寸 Stack 中高度为 0 的问题）
-  @Builder
-  groupCardContent(section: NotifySection, visible: boolean) {
-    if (this.isEditing) {
-      Checkbox()
-        .select(this.isGroupAllSelected(section.messages))
-        .selectedColor($r('app.color.text_accent_color'))
-        .shape(CheckBoxShape.CIRCLE)
-        .visibility(visible ? Visibility.Visible : Visibility.Hidden)
-        .onClick(() => {
-          this.toggleGroupSelection(section.messages);
-        });
-    }
-    Column({ space: 6 }) {
-      // 上：标题/副标题/正文（左占剩余空间）+ icon（右 38x38）
-      // 该 Row 与展开列表第一行的上半 Row 结构完全一致，作为 gmc 共享元素：
-      // 展开时平滑「飞」到第一行，收起时反向飞回。只包上半 Row（不含底部徽标/时间行），
-      // 避免与徽标的 gmb 转场嵌套（嵌套几何转场会导致徽标收起后 opacity 不恢复）
-      Row({ space: 8 }) {
-        Column() {
-          if (section.messages[0].title && section.messages[0].title.length > 0) {
-            Text(section.messages[0].title)
-              .fontSize(15)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary_color'))
-              .width('100%')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-          }
-          if (section.messages[0].subtitle && section.messages[0].subtitle.length > 0) {
-            Text(section.messages[0].subtitle)
-              .fontSize(13)
-              .fontColor($r('app.color.text_accent_color'))
-              .width('100%')
-              .maxLines(2)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-          }
-          // 正文优先展示 extras.inboxcontent 多行摘要，无则回退普通正文
-          if (section.messages[0].inboxContent.length > 0) {
-            this.inboxRichTextList(section.messages[0].inboxContent)
-          } else if (section.messages[0].body && section.messages[0].body.length > 0) {
-            this.bodyRichTextList(section.messages[0].body)
-          }
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start);
-
-        if (section.messages[0].image && section.messages[0].image.length > 0) {
-          Image(section.messages[0].image)
-            .width(38)
-            .height(38)
-            .borderRadius(12)
-            .objectFit(ImageFit.Cover)
-            .flexShrink(0)
-            .alt($r('app.media.app_icon'));
-        }
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Top)
-      .geometryTransition(visible ? `gmc:${section.groupKey}` : '')
-      .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-
-      // 下：左侧条数徽标（gmb 共享元素，飞到展开顶栏；与 gmc 是兄弟节点，不可嵌套），右侧时间
-      // （折叠态不放箭头，点击整张卡片展开）
-      Row() {
-        Row() {
-          this.groupCountBadge(section.messages.length);
-        }
-        .flexShrink(0)
-        .geometryTransition(visible ? `gmb:${section.groupKey}` : '')
-        .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-        Blank();
-        Text(this.formatTime(section.messages[0].timestamp))
-          .fontSize(11)
-          .fontColor($r('app.color.text_quinary_color'));
-      }
-      .width('100%')
-      .margin({ top: 2 })
-      .alignItems(VerticalAlign.Center);
-    }
-    .layoutWeight(1)
-    .alignItems(HorizontalAlign.Start)
-    .visibility(visible ? Visibility.Visible : Visibility.Hidden)
-    .onClick(() => {
-      this.handleGroupHeaderClick(section);
-    });
-  }
-
   // 折叠态分组卡片左滑露出的删除按钮：语义为删除整个分组（组内全部消息）
   @Builder
   swipeDeleteGroupBuilder(section: NotifySection) {
-    // 外层透明容器只负责占位宽度、与卡片的间距及垂直居中，背景透出列表底色
-    Row() {
-      // 44vp 红色圆形按钮 + 白色垃圾桶图标
-      Row() {
-        Image($r('app.media.delete'))
-          .width(22)
-          .height(22)
-          .objectFit(ImageFit.Contain)
-          .fillColor('#FFFFFF');
-      }
-      .width(44)
-      .height(44)
-      .borderRadius(44)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .backgroundColor($r('app.color.text_error_color'))
-      .onClick(() => {
-        this.confirmDeleteGroup(section);
-      });
-    }
-    .width(68)
-    .height('100%')
-    .padding({ left: 12 })
-    .justifyContent(FlexAlign.Start)
-    .alignItems(VerticalAlign.Center);
-  }
-
-  // 折叠态层叠空壳层：视觉上是一张「内缩 + 下沉」的卡片，垫在主卡片背面制造层级感。
-  // inset = 单侧水平内缩 vp，yOffset = 向下偏移 vp。
-  // 高度直接取主卡片实测高度（groupCardHeights）：不能用 height('100%')，
-  // 虚拟化 List 中百分比高度会被解析成接近整个列表视口高度，空壳会拉成通屏大面板；
-  // 也不渲染 Hidden 占位内容，避免多一层布局。hitTestBehavior(None) 不拦截触摸。
-  @Builder
-  groupShellLayer(section: NotifySection, inset: number, yOffset: number, bgColor: Resource) {
-    NotifyGroupShellLayer({ shellHeight: this.groupCardHeights.get(section.groupKey) ?? 0,
-      inset: inset, yOffset: yOffset, shellColor: bgColor });
+    NotifySwipeDelete({ onDelete: () => this.confirmDeleteGroup(section) });
   }
 
   // 分组头卡片：展示组内最新一条消息，右下角显示组内条数与展开/收起箭头。
@@ -631,45 +492,13 @@ export struct NotifyView {
   // paddingBottom 预留空间，让空壳层完全落在 Stack 边界内（否则会被父容器裁剪不可见）。
   @Builder
   groupHeaderBuilder(section: NotifySection) {
-    Stack({ alignContent: Alignment.TopStart }) {
-      // ─── 叠加空壳层（折叠态 only）───
-      // Stack 中后声明的子组件在上层，空壳须先于主卡片声明才能垫在背面；
-      // 主卡片高度测量完成后才渲染，避免首帧 0 高闪烁
-      if (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 3
-        && (this.groupCardHeights.get(section.groupKey) ?? 0) > 0) {
-        // 深层：下沉 18vp、两侧各内缩 16vp，视觉最远；比浅层更深一档，两层阶梯可辨
-        this.groupShellLayer(section, 16, 18, $r('app.color.card_shell_deep'));
-      }
-      if (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 2
-        && (this.groupCardHeights.get(section.groupKey) ?? 0) > 0) {
-        // 浅层：下沉 9vp、两侧各内缩 8vp，介于深层与主卡片之间
-        this.groupShellLayer(section, 8, 9, $r('app.color.card_shell_shallow'));
-      }
-      // ─── 主卡片（最上层）───
-      Row({ space: 12 }) {
-        this.groupCardContent(section, true)
-      }
-      .width('100%')
-      .padding(12)
-      .backgroundColor($r('app.color.card_background'))
-      .borderRadius(12)
-      .alignItems(VerticalAlign.Top)
-      // 卡片底色随折叠态离场淡入淡出，配合消息内容的共享元素飞行，避免白底瞬间跳变
-      .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
-      // 上报主卡片实测高度（vp），空壳层用同一高度渲染；内容随轮询变化时同步更新
-      .onAreaChange((_oldValue: Area, newValue: Area) => {
-        // 当前 API 下 Area.height 的回调数值单位为 vp（不是 px，切勿再做 px2vp，
-        // 否则空壳高度会被缩小数倍、完全藏在主卡片身后不可见）
-        this.updateGroupCardHeight(section.groupKey, newValue.height as number);
-      });
-    }
-    .width('100%')
-    // paddingBottom 恰好等于空壳下沉量（无描边故无边框余量）：空壳底边与 Stack 底部齐平，
-    // 空壳下沿到下一项的距离 = List space(10vp)，与普通卡片间距视觉一致；展开/单条 → 0
-    .padding({ bottom:
-      (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 3) ? 18
-        : (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 2) ? 9 : 0
-    });
+    NotifyGroupCard({ section: section, isEditing: this.isEditing,
+      groupSelected: this.isGroupAllSelected(section.messages),
+      cardHeight: this.groupCardHeights.get(section.groupKey) ?? 0,
+      onToggleSelection: () => this.toggleGroupSelection(section.messages),
+      onOpen: () => this.handleGroupHeaderClick(section),
+      onHeightChange: (height: number) => this.updateGroupCardHeight(section.groupKey, height),
+      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
   }
 
   // 展开态分组顶栏：app 图标 + group 名称（左）+ 条数 + 折叠箭头（右），底部分隔线，仅上方圆角
@@ -684,91 +513,6 @@ export struct NotifyView {
           this.toggleGroupExpanded(section.groupKey);
         }
       } });
-    /*
-     * 已迁移至 NotifyGroupExpandedHeader。保留旧实现仅作为共享元素动画的过渡参照，
-     * 下一步会随折叠卡片主体一并移除。
-     */
-    if (false) {
-    Column() {
-      Row({ space: 8 }) {
-        if (this.isEditing) {
-          Checkbox()
-            .select(this.isGroupAllSelected(section.messages))
-            .selectedColor($r('app.color.text_accent_color'))
-            .shape(CheckBoxShape.CIRCLE)
-        } else {
-          // 顶栏图标与消息卡片保持一致：优先用消息自带图标，无则回退 app 图标
-          if (section.messages[0].image && section.messages[0].image.length > 0) {
-            Image(section.messages[0].image)
-              .width(24)
-              .height(24)
-              .borderRadius(6)
-              .objectFit(ImageFit.Cover)
-              .flexShrink(0)
-              .alt($r('app.media.app_icon'));
-          } else {
-            Image($r('app.media.app_icon'))
-              .width(24)
-              .height(24)
-              .borderRadius(6)
-              .objectFit(ImageFit.Cover)
-              .flexShrink(0);
-          }
-        }
-        Text(section.groupKey)
-          .fontSize(15)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary_color'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1);
-        // 条数徽标与折叠卡共用同一 builder + 同一 gmb 共享元素 id：
-        // 展开时徽标从卡内底部飞到顶栏，收起时反向飞回
-        Row() {
-          this.groupCountBadge(section.messages.length);
-        }
-        .flexShrink(0)
-        .geometryTransition(`gmb:${section.groupKey}`)
-        .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-        // 箭头朝上（右箭头 -90°）仅作视觉指示，点击区域由整行统一处理；
-        // 尺寸/颜色与 MineView 右箭头保持一致
-        Image($r('app.media.arrow_right'))
-          .width(20)
-          .height(20)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_quinary_color'))
-          .rotate({ angle: -90 })
-          .flexShrink(0)
-          .padding({ left: 4, top: 2, bottom: 2 });
-      }
-      .width('100%')
-      .padding(12)
-      .alignItems(VerticalAlign.Center);
-
-      // 顶栏与首条消息之间的分隔线：左侧缩进 12vp 与文字对齐，右侧顶到卡片边缘
-      // （与展开组内各行的分隔线保持同一终点，左滑删除时不错位）
-      Divider()
-        .color($r('app.color.divider_color'))
-        .strokeWidth(0.5)
-        .margin({ left: 12 });
-    }
-    .width('100%')
-    .backgroundColor($r('app.color.card_background'))
-    .borderRadius({ topLeft: 12, topRight: 12, bottomLeft: 0, bottomRight: 0 })
-    // 点击整个顶栏：非编辑态收起分组，编辑态整组勾选（绑在根 Column，覆盖整行+分隔线）
-    // hitTestBehavior(Block)：ListItemGroup header 左部触摸会被子 ListItem 的
-    // swipeAction 手势层吞掉（只有右侧箭头区可点），Block 强制 header 自身消费整行触摸
-    .hitTestBehavior(HitTestMode.Block)
-    .onClick(() => {
-      if (this.isEditing) {
-        this.toggleGroupSelection(section.messages);
-      } else {
-        this.toggleGroupExpanded(section.groupKey);
-      }
-    })
-    // 顶栏随展开态淡入淡出（徽标本身另有共享元素飞行动画）
-    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-    }
   }
 
   // 展开态分组内的消息行：布局与普通消息卡片完全一致（上方标题/正文+右上 38vp 图标，下方时间居右），
@@ -780,139 +524,18 @@ export struct NotifyView {
   // 与折叠卡上半 Row 做一镜到底过渡（底部时间行不参与，两侧结构保持一致）
   @Builder
   groupMessageRow(m: NotifyMessage, isLast: boolean, contentTransitionId: string) {
-    Stack({ alignContent: Alignment.BottomStart }) {
-      Row({ space: 12 }) {
-        if (this.isEditing) {
-          Checkbox()
-            .select(this.isSelected(m.id))
-            .selectedColor($r('app.color.text_accent_color'))
-            .shape(CheckBoxShape.CIRCLE)
-            .flexShrink(0);
-        }
-        Column({ space: 6 }) {
-          // 上：标题/副标题/正文（左占剩余空间）+ icon（右 38x38）
-          Row({ space: 8 }) {
-            Column() {
-              if (m.title && m.title.length > 0) {
-                Text(m.title)
-                  .fontSize(15)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.text_primary_color'))
-                  .width('100%')
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
-              if (m.subtitle && m.subtitle.length > 0) {
-                Text(m.subtitle)
-                  .fontSize(13)
-                  .fontColor($r('app.color.text_accent_color'))
-                  .width('100%')
-                  .maxLines(2)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
-              // 正文优先展示 extras.inboxcontent 多行摘要，无则回退普通正文（保留链接高亮能力）
-              if (m.inboxContent.length > 0) {
-                this.inboxRichTextList(m.inboxContent)
-              } else if (m.body && m.body.length > 0) {
-                this.bodyRichTextList(m.body)
-              }
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start);
-
-            if (m.image && m.image.length > 0) {
-              Image(m.image)
-                .width(38)
-                .height(38)
-                .borderRadius(12)
-                .objectFit(ImageFit.Cover)
-                .flexShrink(0)
-                .alt($r('app.media.app_icon'));
-            }
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Top)
-          // 仅第一条消息的上半 Row 与折叠卡上半 Row 做几何转场（其他行传空串不参与）；
-          // 只包标题/正文/icon 行，两侧结构一一对应，飞行轨迹最自然
-          .geometryTransition(contentTransitionId)
-          .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-
-          // 下：时间居右（与普通消息卡片一致）
-          Text(this.formatTime(m.timestamp))
-            .fontSize(11)
-            .fontColor($r('app.color.text_quinary_color'))
-            .width('100%')
-            .textAlign(TextAlign.End);
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start);
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Top)
-      // 底部 22vp = 12vp 卡片边距 + 10vp 与分隔线间距（分隔线叠加在 Stack 底部，不占独立高度）
-      .padding({ left: 12, right: 12, top: 12, bottom: 22 });
-
-      // 非末行：分隔线贴卡片表面底边，左侧缩进 12vp 与文字对齐，右侧顶到卡片边缘——
-      // 左滑某一行时红线（删除区）与相邻行的分隔线终点在同一竖边上，不错位
-      if (!isLast) {
-        Divider()
-          .color($r('app.color.divider_color'))
-          .strokeWidth(0.5)
-          .width('100%')
-          .margin({ left: 12 });
-      }
-    }
-    .width('100%')
-    .backgroundColor($r('app.color.card_background'))
-    .borderRadius({
-      topLeft: 0,
-      topRight: 0,
-      bottomLeft: isLast ? 12 : 0,
-      bottomRight: isLast ? 12 : 0
-    })
-    // 圆角处裁剪：分隔线右侧顶边、左滑删除按钮都不能溢出圆角
-    .clip(true)
-    // 各行随分组展开淡入、收起淡出（第一条消息内容本身另走共享元素飞行）
-    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
-    .onClick(() => {
-      if (this.isEditing) {
-        this.toggleSelect(m.id);
-      } else {
-        this.selectedMessage = m;
-        this.showDetail = true;
-      }
-    });
+    NotifyGroupMessageRow({ message: m, isLast: isLast, isEditing: this.isEditing,
+      selected: this.isSelected(m.id), contentTransitionId: contentTransitionId,
+      onSelect: (id: number) => this.toggleSelect(id),
+      onOpen: (message: NotifyMessage) => this.openMessageDetail(message),
+      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
   }
 
   // 左滑露出的删除按钮：44vp 红底白色垃圾桶圆形按钮，垂直居中于行内，
   // 与卡片左缘保留 12vp 间距（外层透明容器透出列表底色，不再铺满行高）
   @Builder
   swipeDeleteBuilder(m: NotifyMessage) {
-    // 外层透明容器只负责占位宽度、与卡片的间距及垂直居中，背景透出列表底色
-    Row() {
-      // 44vp 红色圆形按钮 + 白色垃圾桶图标（复用顶栏 delete.svg，fillColor 着白色）
-      Row() {
-        Image($r('app.media.delete'))
-          .width(22)
-          .height(22)
-          .objectFit(ImageFit.Contain)
-          .fillColor('#FFFFFF');
-      }
-      .width(44)
-      .height(44)
-      .borderRadius(44)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .backgroundColor($r('app.color.text_error_color'))
-      .onClick(() => {
-        this.confirmDeleteOne(m);
-      });
-    }
-    .width(68)
-    .height('100%')
-    .padding({ left: 12 })
-    .justifyContent(FlexAlign.Start)
-    .alignItems(VerticalAlign.Center);
+    NotifySwipeDelete({ onDelete: () => this.confirmDeleteOne(m) });
   }
 
   // 多选模式底部操作栏（需要加在 Refresh 外面）
@@ -996,7 +619,6 @@ export struct NotifyView {
     }
   }
 
-  // ====== 正文富文本：URL 点击打开系统浏览器 ======
   private openUrl(url: string): void {
     try {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -1027,64 +649,6 @@ export struct NotifyView {
       hilog.warn(DOMAIN, TAG, '复制验证码失败：%{public}s', msg);
       showToast(this.getUIContext(), '复制失败');
     }
-  }
-
-  // 正文富文本共享片段：URL/验证码高亮可点击，普通段用次级文本色；
-  // fontSize 由调用方按场景指定（列表 14fp / 详情 15fp），必须内联在 Text 容器内使用
-  @Builder
-  richTextSpans(text: string, fontSize: number) {
-    ForEach(parseNotifyTextSegments(text), (seg: NotifyTextSegment, index: number) => {
-      if (seg.type === NOTIFY_SEGMENT_URL) {
-        Span(seg.text)
-          .fontColor($r('app.color.text_accent_color'))
-          .fontSize(fontSize)
-          .onClick(() => { this.openUrl(seg.text); });
-      } else if (seg.type === NOTIFY_SEGMENT_CODE) {
-        Span(seg.text)
-          .fontColor($r('app.color.text_accent_color'))
-          .fontSize(fontSize)
-          .onClick(() => { this.copyCode(seg.text); });
-      } else {
-        Span(seg.text)
-          .fontColor($r('app.color.text_secondary_color'))
-          .fontSize(fontSize);
-      }
-    }, (seg: NotifyTextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
-  }
-
-  // 列表项正文富文本：URL/验证码高亮可点击，maxLines(4) + 省略号
-  @Builder
-  bodyRichTextList(text: string) {
-    Text() {
-      this.richTextSpans(text, 14)
-    }
-    .width('100%')
-    .maxLines(4)
-    .textOverflow({ overflow: TextOverflow.Ellipsis })
-    .lineHeight(21) // 1.5 倍行距（14fp × 1.5）
-    .margin({ top: 4 }); // 与上方标题/副标题拉开间距
-  }
-
-  // 列表项 inboxContent 富文本：每条独占一行、单行超出省略号，最多展示 INBOX_LIST_MAX_LINES 行
-  // （与普通正文 maxLines(4) 对齐）；每行仍保留 URL/验证码高亮可点击
-  @Builder
-  inboxRichTextList(items: string[]) {
-    Column() {
-      ForEach(items, (line: string, index: number) => {
-        if (index < INBOX_LIST_MAX_LINES) {
-          Text() {
-            this.richTextSpans(line, 14)
-          }
-          .width('100%')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .lineHeight(21); // 1.5 倍行距（14fp × 1.5）
-        }
-      }, (line: string, index: number) => `${index}_${line}`)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
-    .margin({ top: 4 }); // 与上方标题/副标题拉开间距
   }
 
   // 未配置 client token 或未注册 → 引导到"我的"页配置
@@ -1689,10 +1253,6 @@ export struct NotifyView {
     } finally {
       this.loadingMore = false;
     }
-  }
-
-  private formatTime(ts: number): string {
-    return formatNotifyTime(ts);
   }
 
   private handleMoreClicked(): void {
