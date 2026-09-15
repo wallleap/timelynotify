@@ -4,7 +4,7 @@ import { systemShare } from '@kit.ShareKit';
 import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { SOURCE_CODE_URL } from '../views/MineView';
+import { SOURCE_CODE_URL } from '../services/AppInfoService';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
