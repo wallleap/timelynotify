@@ -46,6 +46,8 @@ export class PreferencesUtil {
   static readonly KEY_CLIENT_TOKEN: string = 'client_token';
   static readonly KEY_SERVER_LIST_JSON: string = 'server_list_json';
   static readonly KEY_SERVER_CURRENT_ID: string = 'server_current_id';
+  /** 通知视图范围：'true' 为聚合全部服务器，'false' 为仅当前服务器；缺失时默认聚合。 */
+  static readonly KEY_SERVER_VIEW_ALL_MODE: string = 'server_view_all_mode';
   static readonly KEY_NOTIFY_ENABLED: string = 'notify_enabled';
   /** 主题颜色模式：'system'（跟随系统）/ 'light'（浅色）/ 'dark'（深色） */
   static readonly KEY_COLOR_MODE: string = 'color_mode';
