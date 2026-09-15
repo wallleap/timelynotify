@@ -143,27 +143,31 @@ export class NotifyMessageService {
     return list;
   }
 
-  // 获取当前 server 用户手动配置的 client token（不含内置默认；返回空 = 用户没填）
-  // per-server 存储：切换 server 即得到该 server 的 token
-  async getClientToken(context: common.Context | null = null): Promise<string> {
+  // 获取指定 server 用户手动配置的 client token（不含内置默认；返回空 = 用户没填）。
+  // server 为空时取当前 server。
+  async getClientToken(context: common.Context | null = null, server: ServerEntry | null = null): Promise<string> {
     await ServerManager.getInstance().ensureLoaded();
+    if (server) {
+      return server.clientToken;
+    }
     return ServerManager.getInstance().getCurrentClientToken();
   }
 
   /**
    * 实际生效的 client token：
-   *   - 当前 server 有自定义（非空 trim 后）→ 返回用户值
-   *   - 当前 server 未自定义 → 返回内置默认 token（BASE64 decode 后）
-   * 接口调用都应该用这个方法取 token，而不是直接读 ServerManager。
+   *   - 指定 server 有自定义（非空 trim 后）→ 返回用户值
+   *   - 指定 server 未自定义 → 返回内置默认 token（BASE64 decode 后）
+   * server 为空时取当前 server。
    */
-  async getEffectiveClientToken(context: common.Context | null = null): Promise<string> {
-    const saved: string = await this.getClientToken(context);
+  async getEffectiveClientToken(context: common.Context | null = null,
+    server: ServerEntry | null = null): Promise<string> {
+    const saved: string = await this.getClientToken(context, server);
     const trimmed: string = saved ? saved.trim() : '';
     if (trimmed.length > 0) {
       return trimmed;
     }
     const fallback: string = decodeDefaultClientToken();
-    hilog.info(DOMAIN, TAG, '当前 server 未配置 client token，使用内置默认值');
+    hilog.info(DOMAIN, TAG, 'server 未配置 client token，使用内置默认值');
     return fallback;
   }
 
@@ -208,23 +212,38 @@ export class NotifyMessageService {
   // after > 0：向前增量（返回 id > after，升序），用于拉取本地没有的新消息（与 since 互斥）
   // deletedSince > 0：返回该游标之后的删除事件（deletions 信封）
   async getMessages(context: common.Context | null = null, since: number = 0,
-    limit: number = 100, after: number = 0, deletedSince: number = 0): Promise<MessageListResult> {
+    limit: number = 100, after: number = 0, deletedSince: number = 0,
+    server: ServerEntry | null = null): Promise<MessageListResult> {
     const result = new MessageListResult();
 
     await ServerManager.getInstance().ensureLoaded();
-    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(context);
+    let deviceKey: string = '';
+    let baseURL: string = '';
+    if (server) {
+      deviceKey = server.deviceKey;
+      baseURL = server.baseURL;
+    } else {
+      deviceKey = await ServerManager.getInstance().getCurrentDeviceKey(context);
+      baseURL = ServerManager.getInstance().getCurrentBaseURL();
+    }
     if (!deviceKey || deviceKey.length === 0) {
       result.errorMsg = '设备未注册';
       return result;
     }
 
-    const clientToken: string = await this.getEffectiveClientToken(context);
+    const clientToken: string = await this.getEffectiveClientToken(context, server);
     if (!clientToken || clientToken.length === 0) {
       result.errorMsg = '未配置客户端 Token，请到服务器设置中配置';
       return result;
     }
 
-    let fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
+    // 拼接 URL：指定 server 时用其 baseURL，否则用当前 server
+    let fullURL: string = baseURL;
+    const path: string = `/${deviceKey}/message`;
+    if (fullURL.length > 0 && fullURL[fullURL.length - 1] === '/') {
+      fullURL = fullURL.substring(0, fullURL.length - 1);
+    }
+    fullURL += path;
     const params: string[] = [];
     if (since > 0) {
       params.push(`since=${since}`);
@@ -402,22 +421,34 @@ export class NotifyMessageService {
 
   // 删除单条消息（服务端 API）：DELETE /{device_key}/message/{id}
 
-  // 返回 '' 表示成功；非空是错误描述
-  async deleteMessage(messageId: number, context: common.Context | null = null): Promise<string> {
+  // 返回 '' 表示成功；非空是错误描述。server 为空时操作当前服务器。
+  async deleteMessage(messageId: number, context: common.Context | null = null,
+    server: ServerEntry | null = null): Promise<string> {
     if (messageId <= 0) {
       return '消息 ID 无效';
     }
     const ctx: common.Context | null = resolveContext(context);
     await ServerManager.getInstance().ensureLoaded();
-    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
+    let deviceKey: string = '';
+    let baseURL: string = '';
+    if (server) {
+      deviceKey = server.deviceKey;
+      baseURL = server.baseURL;
+    } else {
+      deviceKey = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
+      baseURL = ServerManager.getInstance().getCurrentBaseURL();
+    }
     if (!deviceKey || deviceKey.length === 0) {
       return '设备未注册';
     }
-    const clientToken: string = await this.getEffectiveClientToken(ctx);
+    const clientToken: string = await this.getEffectiveClientToken(ctx, server);
     if (!clientToken || clientToken.length === 0) {
       return '未配置客户端 Token';
     }
-    const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message/${messageId}`);
+    if (baseURL.length > 0 && baseURL[baseURL.length - 1] === '/') {
+      baseURL = baseURL.substring(0, baseURL.length - 1);
+    }
+    const fullURL: string = `${baseURL}/${deviceKey}/message/${messageId}`;
     const headers: Record<string, string> = { 'X-Gotify-Key': clientToken };
     hilog.info(DOMAIN, TAG, '删除消息：DELETE %{public}s', fullURL);
     try {
@@ -440,19 +471,31 @@ export class NotifyMessageService {
     }
   }
 
-  // 删除全部消息（服务端 API）：DELETE /{device_key}/message
-  async deleteAllMessages(context: common.Context | null = null): Promise<string> {
+  // 删除全部消息（服务端 API）：DELETE /{device_key}/message。server 为空时操作当前服务器。
+  async deleteAllMessages(context: common.Context | null = null,
+    server: ServerEntry | null = null): Promise<string> {
     const ctx: common.Context | null = resolveContext(context);
     await ServerManager.getInstance().ensureLoaded();
-    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
+    let deviceKey: string = '';
+    let baseURL: string = '';
+    if (server) {
+      deviceKey = server.deviceKey;
+      baseURL = server.baseURL;
+    } else {
+      deviceKey = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
+      baseURL = ServerManager.getInstance().getCurrentBaseURL();
+    }
     if (!deviceKey || deviceKey.length === 0) {
       return '设备未注册';
     }
-    const clientToken: string = await this.getEffectiveClientToken(ctx);
+    const clientToken: string = await this.getEffectiveClientToken(ctx, server);
     if (!clientToken || clientToken.length === 0) {
       return '未配置客户端 Token';
     }
-    const fullURL: string = ServerManager.getInstance().resolveURL(`/${deviceKey}/message`);
+    if (baseURL.length > 0 && baseURL[baseURL.length - 1] === '/') {
+      baseURL = baseURL.substring(0, baseURL.length - 1);
+    }
+    const fullURL: string = `${baseURL}/${deviceKey}/message`;
     const headers: Record<string, string> = { 'X-Gotify-Key': clientToken };
     hilog.info(DOMAIN, TAG, '删除全部消息：DELETE %{public}s', fullURL);
     try {

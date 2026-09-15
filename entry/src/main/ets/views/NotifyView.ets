@@ -7,10 +7,13 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
+import { DeviceIdPair } from '../services/MessageCacheStore';
+import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  SUPPORTS_IMMERSIVE_MATERIAL,
+  resolveBlurStyle
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
 import {
@@ -53,9 +56,6 @@ export struct NotifyView {
   @State errorMsg: string = '';
   @State refreshing: boolean = false;
   @State hasClientToken: boolean = false;
-  // 触底分页加载更老消息
-  @State loadingMore: boolean = false;
-  @State hasMore: boolean = true;
   // 点击查看的消息详情（bindContentCover 全屏模态）
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
@@ -65,6 +65,14 @@ export struct NotifyView {
   @State exportingSelected: boolean = false;
   @State expandedGroups: string[] = [];
   @State groupCardHeights: Map<string, number> = new Map<string, number>();
+  // 每个 group_key 的真实总数（含未加载到内存的部分），用于徽标显示和"加载更多"按钮
+  @State groupTotals: Map<string, number> = new Map<string, number>();
+  // 组内加载更多进行中的 group_key 集合，用于按钮显示 loading 态
+  @State groupLoadingMore: Set<string> = new Set<string>();
+  // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
+  @State groupEnabled: boolean = true;
+  // 视图模式：true=显示所有服务器的通知，false=只显示当前服务器
+  @State viewAll: boolean = true;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -92,17 +100,27 @@ export struct NotifyView {
 
   aboutToAppear() {
     this.initAfterServerManagerReady();
+    // 读取分组显示开关（默认开启分组）
+    PreferencesUtil.getString(null, PreferencesUtil.KEY_GROUP_ENABLED, 'true')
+      .then((value: string) => {
+        this.groupEnabled = value === 'true';
+      });
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.exitEditMode();
+      // 从 ServerManager 同步视图模式（ServerSettingsContent 切换全部/单服务器时触发）
+      const newViewAll: boolean = ServerManager.getInstance().getViewAllMode();
+      const viewModeChanged: boolean = this.viewAll !== newViewAll;
+      this.viewAll = newViewAll;
       this.refresh();
-      // 并递增代际使飞行中的旧请求响应过期丢弃
-      this.messages = [];
-      this.hasMore = false;
-      // 展开状态属于当前服务器，切换后一并清空
-      this.expandedGroups = [];
-      this.groupCardHeights = new Map<string, number>();
+      // 视图模式变化或单服务器模式下切换服务器：清空列表重建
+      if (viewModeChanged || !this.viewAll) {
+        this.messages = [];
+        this.expandedGroups = [];
+        this.groupCardHeights = new Map<string, number>();
+        this.groupTotals = new Map<string, number>();
+        this.groupLoadingMore = new Set<string>();
+      }
       this.loadSeq++;
-      // 服务器切换后重新拉取消息
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
@@ -163,8 +181,18 @@ export struct NotifyView {
   @Builder
   viewportBody() {
     Column() {
-      Column() {
-        this.refreshContentBody();
+      Stack({ alignContent: Alignment.BottomEnd }) {
+        Column() {
+          this.refreshContentBody();
+        }
+        .width('100%')
+        .layoutWeight(1);
+
+        // 右下角"分组/平铺"模式切换浮动按钮
+        // 仅在非编辑模式、有消息时显示
+        if (!this.isEditing && this.messages.length > 0) {
+          this.groupModeToggleFab();
+        }
       }
       .width('100%')
       .layoutWeight(1);
@@ -176,6 +204,29 @@ export struct NotifyView {
     }
     .width('100%')
     .height('100%');
+  }
+
+  /**
+   * 右下角分组模式切换按钮：
+   * - 当前分组模式：显示 group_expand 图标，点击切为平铺
+   * - 当前平铺模式：显示 group_collapse 图标，点击切为分组
+   */
+  @Builder
+  private groupModeToggleFab() {
+    Row() {
+      Image(this.groupEnabled ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
+        .width(20).height(20).objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.text_primary_color'));
+    }
+    .width(44).height(44).borderRadius(22)
+    .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+    .backgroundColor($r('app.color.glass_button_background'))
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .border({ width: 1, color: $r('app.color.glass_button_border') })
+    .margin({ right: 16, bottom: this.navBarHeight + 56 + 16 })
+    .onClick(() => {
+      this.toggleGroupEnabled();
+    });
   }
 
   build() {
@@ -236,9 +287,18 @@ export struct NotifyView {
       .backgroundColor($r('app.color.index_page_body_background'));
     } else {
       Column() {
-        Stack({ alignContent: Alignment.Top }) {
-          this.refreshContentBody();
-          this.fallbackTitleBar();
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          Stack({ alignContent: Alignment.Top }) {
+            this.refreshContentBody();
+            this.fallbackTitleBar();
+          }
+          .width('100%')
+          .height('100%')
+
+          // 非沉浸式分支的右下角分组模式切换按钮
+          if (!this.isEditing && this.messages.length > 0) {
+            this.groupModeToggleFab();
+          }
         }
         .width('100%')
         .layoutWeight(1);
@@ -268,10 +328,13 @@ export struct NotifyView {
   @Builder
   listView() {
     NotifyMessageList({ messages: this.messages, isEditing: this.isEditing, selectedIds: this.selectedIds,
-      expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights, loadingMore: this.loadingMore,
-      hasMore: this.hasMore, statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
+      expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights,
+      groupTotals: this.groupTotals, groupLoadingMore: this.groupLoadingMore,
+      groupEnabled: this.groupEnabled,
+      statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
-      onLoadMore: () => this.loadMore(), onToggleSelect: (id: number) => this.toggleSelect(id),
+      onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
+      onToggleSelect: (id: number) => this.toggleSelect(id),
       onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
       onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
       onOpenMessage: (message: NotifyMessage) => this.openMessageDetail(message),
@@ -279,7 +342,8 @@ export struct NotifyView {
       onHeightChange: (groupKey: string, height: number) => this.updateGroupCardHeight(groupKey, height),
       onDeleteOne: (message: NotifyMessage) => this.confirmDeleteOne(message),
       onDeleteGroup: (section: NotifySection) => this.confirmDeleteGroup(section),
-      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
+      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code),
+      onCopyUrl: (url: string) => this.copyUrl(url) });
   }
 
   /** 打开消息详情，供列表卡片统一回调。 */
@@ -350,16 +414,43 @@ export struct NotifyView {
   private async initAfterServerManagerReady(): Promise<void> {
     try {
       await ServerManager.getInstance().ensureLoaded();
+      // 从 ServerManager 同步初始视图模式
+      this.viewAll = ServerManager.getInstance().getViewAllMode();
       this.refresh();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        const cached: NotifyMessage[] = await MessageCacheStore.loadLatest(deviceKey, 100);
-        if (cached.length > 0) {
-          this.messages = cached;
-          this.hasMore = true;
+      const seq: number = ++this.loadSeq;
+      if (this.viewAll) {
+        // 全部模式：先从本地缓存加载所有服务器的消息
+        const deviceKeys: string[] = this.getAllDeviceKeys();
+        if (deviceKeys.length > 0) {
+          const grouped = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
+          if (grouped.messages.length > 0) {
+            this.messages = grouped.messages;
+            this.groupTotals = grouped.totals;
+          }
+        }
+        await this.syncAllServers(seq);
+      } else {
+        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+        if (cur && cur.deviceKey && cur.deviceKey.length > 0) {
+          const grouped = await MessageCacheStore.loadGroupedLatest(cur.deviceKey, 100);
+          if (grouped.messages.length > 0) {
+            this.messages = grouped.messages;
+            this.groupTotals = grouped.totals;
+          }
+        }
+        if (cur) {
+          const changed: boolean = await this.syncSingleServer(cur, false, seq);
+          if (changed || this.messages.length === 0) {
+            const deviceKey: string = cur.deviceKey;
+            if (deviceKey && deviceKey.length > 0) {
+              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+              this.messages = refreshed.messages;
+              this.groupTotals = refreshed.totals;
+            }
+          }
         }
       }
-      this.syncFromServer(false);
+      this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
@@ -394,6 +485,20 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制验证码失败：%{public}s', msg);
+      showToast(this.getUIContext(), '复制失败');
+    }
+  }
+
+  /** 复制消息 extras.url 到剪贴板，供列表卡片链接 action 使用 */
+  private async copyUrl(url: string): Promise<void> {
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, url);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      await sys.setData(data);
+      showToast(this.getUIContext(), '链接已复制', 1500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '复制链接失败：%{public}s', msg);
       showToast(this.getUIContext(), '复制失败');
     }
   }
@@ -472,12 +577,29 @@ export struct NotifyView {
 
   // 不清空列表/不重置分页；失败静默，等下一轮
   private async pollNewMessages(): Promise<void> {
-    if (this.pollInFlight || this.loading || this.loadingMore || this.needGuideToConfig()) {
+    if (this.pollInFlight || this.loading || this.needGuideToConfig()) {
       return;
     }
     this.pollInFlight = true;
     try {
-      await this.syncFromServer(false);
+      await ServerManager.getInstance().ensureLoaded();
+      if (this.viewAll) {
+        await this.syncAllServers(-1);
+      } else {
+        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+        if (cur) {
+          const changed: boolean = await this.syncSingleServer(cur, false, -1);
+          // 单服务器模式有变化时从本地重新加载（保持与 syncFromServer 原行为一致）
+          if (changed || this.messages.length === 0) {
+            const deviceKey: string = cur.deviceKey;
+            if (deviceKey && deviceKey.length > 0) {
+              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+              this.messages = refreshed.messages;
+              this.groupTotals = refreshed.totals;
+            }
+          }
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '轮询异常：%{public}s', msg);
@@ -557,6 +679,20 @@ export struct NotifyView {
     });
   }
 
+  // ====== 分组/平铺模式切换（右下角浮动按钮） ======
+
+  /**
+   * 切换分组显示模式并持久化。
+   * 切到平铺时清空展开状态（平铺没有分组可展开）；
+   * 切回分组时也清空，让用户重新选择展开哪些组。
+   */
+  private toggleGroupEnabled(): void {
+    this.groupEnabled = !this.groupEnabled;
+    this.expandedGroups = [];
+    PreferencesUtil.putString(null, PreferencesUtil.KEY_GROUP_ENABLED,
+      this.groupEnabled ? 'true' : 'false');
+  }
+
   private handleGroupHeaderClick(section: NotifySection): void {
     if (this.isEditing) {
       this.toggleGroupSelection(section.messages);
@@ -610,16 +746,20 @@ export struct NotifyView {
         return;
       }
       const svc = NotifyMessageService.getInstance();
-      const errMsg: string = await svc.deleteMessage(m.id);
+      // 用消息自带的 deviceKey 定位来源服务器，避免跨服务器同 id 误删
+      const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
+      const errMsg: string = await svc.deleteMessage(m.id, null, server);
       if (errMsg.length > 0) {
         showToast(uiCtx, errMsg);
         return;
       }
-      // 同步删除本地缓存
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        await MessageCacheStore.deleteByIds(deviceKey, [m.id]);
+      // 同步删除本地缓存（按 deviceKey + id 精确删除）
+      if (m.deviceKey && m.deviceKey.length > 0) {
+        const pair: DeviceIdPair = { deviceKey: m.deviceKey, id: m.id };
+        await MessageCacheStore.deleteByDeviceIdPairs([pair]);
+        this.groupTotals = this.viewAll
+          ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
+          : await MessageCacheStore.getGroupTotals(m.deviceKey);
       }
       this.removeFromList([m.id]);
       this.exitEditMode();
@@ -629,11 +769,8 @@ export struct NotifyView {
 
   private confirmDeleteGroup(section: NotifySection): void {
     const uiCtx: UIContext = this.getUIContext();
-    const ids: number[] = [];
-    for (let i = 0; i < section.messages.length; i++) {
-      ids.push(section.messages[i].id);
-    }
-    const count: number = ids.length;
+    const messages: NotifyMessage[] = section.messages;
+    const count: number = messages.length;
     uiCtx.getPromptAction().showDialog({
       title: '删除整个分组',
       message: `确定要删除该分组的 ${count} 条消息吗？此操作不可恢复。`,
@@ -647,20 +784,39 @@ export struct NotifyView {
       }
       const svc = NotifyMessageService.getInstance();
       let failCount = 0;
-      for (let i = 0; i < ids.length; i++) {
-        const errMsg: string = await svc.deleteMessage(ids[i]);
+      // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
+      const pairs: DeviceIdPair[] = [];
+      for (let i = 0; i < messages.length; i++) {
+        const m: NotifyMessage = messages[i];
+        const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
+        const errMsg: string = await svc.deleteMessage(m.id, null, server);
         if (errMsg.length > 0) {
           failCount++;
-          hilog.warn(DOMAIN, TAG, '删除分组消息 %{public}d 失败：%{public}s', ids[i], errMsg);
+          hilog.warn(DOMAIN, TAG, '删除分组消息 %{public}d 失败：%{public}s', m.id, errMsg);
+        } else if (m.deviceKey && m.deviceKey.length > 0) {
+          pairs.push({ deviceKey: m.deviceKey, id: m.id });
         }
       }
-      this.removeFromList(ids);
+      if (pairs.length > 0) {
+        await MessageCacheStore.deleteByDeviceIdPairs(pairs);
+      }
+      this.removeFromList(section.messages.map((m: NotifyMessage) => m.id));
+      // 刷新分组总数
+      this.groupTotals = this.viewAll
+        ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
+        : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
       if (failCount > 0) {
         showToast(uiCtx, `删除完成，${failCount} 条失败`);
       } else {
         showToast(uiCtx, `已删除 ${count} 条`);
       }
     });
+  }
+
+  /** 获取当前服务器 deviceKey（单服务器模式刷新分组总数用） */
+  private findCurrentDeviceKey(): string {
+    const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+    return cur ? cur.deviceKey : '';
   }
 
   private confirmDeleteSelected(): void {
@@ -680,18 +836,28 @@ export struct NotifyView {
       const ids: number[] = [...this.selectedIds];
       const svc = NotifyMessageService.getInstance();
       let failCount = 0;
-      for (let i = 0; i < ids.length; i++) {
-        const errMsg: string = await svc.deleteMessage(ids[i]);
+      // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
+      const pairs: DeviceIdPair[] = [];
+      for (let i = 0; i < this.messages.length; i++) {
+        const m: NotifyMessage = this.messages[i];
+        if (ids.indexOf(m.id) < 0) {
+          continue;
+        }
+        const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
+        const errMsg: string = await svc.deleteMessage(m.id, null, server);
         if (errMsg.length > 0) {
           failCount++;
-          hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', ids[i], errMsg);
+          hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', m.id, errMsg);
+        } else if (m.deviceKey && m.deviceKey.length > 0) {
+          pairs.push({ deviceKey: m.deviceKey, id: m.id });
         }
       }
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        await MessageCacheStore.deleteByIds(deviceKey, ids);
+      if (pairs.length > 0) {
+        await MessageCacheStore.deleteByDeviceIdPairs(pairs);
       }
+      this.groupTotals = this.viewAll
+        ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
+        : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
       this.removeFromList(ids);
       this.exitEditMode();
       if (failCount > 0) {
@@ -711,7 +877,9 @@ export struct NotifyView {
     }
     uiCtx.getPromptAction().showDialog({
       title: '清空全部消息',
-      message: `将删除当前设备的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！`,
+      message: this.viewAll
+        ? '将删除所有服务器的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！'
+        : '将删除当前设备的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！',
       buttons: [
         { text: '取消', color: '#666666' },
         { text: '全部删除', color: '#F53F3F' },
@@ -721,31 +889,96 @@ export struct NotifyView {
         return;
       }
       const svc = NotifyMessageService.getInstance();
-      const errMsg: string = await svc.deleteAllMessages();
-      if (errMsg.length > 0) {
-        showToast(uiCtx, errMsg);
-        return;
-      }
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        await MessageCacheStore.clearDevice(deviceKey);
+      if (this.viewAll) {
+        // 全部模式：逐个清空所有已注册服务器
+        const servers: ServerEntry[] = this.getAllRegisteredServers();
+        let failCount = 0;
+        for (let i = 0; i < servers.length; i++) {
+          const errMsg: string = await svc.deleteAllMessages(null, servers[i]);
+          if (errMsg.length > 0) {
+            failCount++;
+            hilog.warn(DOMAIN, TAG, '清空服务器 %{public}s 失败：%{public}s', servers[i].name, errMsg);
+          }
+        }
+        await MessageCacheStore.clearAllDevices();
+        if (failCount > 0) {
+          showToast(uiCtx, `清空完成，${failCount} 个服务器失败`);
+        } else {
+          showToast(uiCtx, '已清空全部消息');
+        }
+      } else {
+        const errMsg: string = await svc.deleteAllMessages();
+        if (errMsg.length > 0) {
+          showToast(uiCtx, errMsg);
+          return;
+        }
+        const deviceKey: string = this.findCurrentDeviceKey();
+        if (deviceKey && deviceKey.length > 0) {
+          await MessageCacheStore.clearDevice(deviceKey);
+        }
+        showToast(uiCtx, '已清空全部消息');
       }
       this.exitEditMode();
       this.messages = [];
       this.expandedGroups = [];
       this.groupCardHeights = new Map<string, number>();
-      showToast(uiCtx, '已清空全部消息');
+      this.groupTotals = new Map<string, number>();
+      this.groupLoadingMore = new Set<string>();
     });
   }
 
   private refresh(): void {
+    if (this.viewAll) {
+      this.title = '全部通知';
+      return;
+    }
     const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
     if (cur && cur.name && cur.name.length > 0) {
       this.title = cur.name;
     } else {
       this.title = ServerManager.getInstance().getCurrentHostDisplay();
     }
+  }
+
+  /** 获取所有已注册（有 deviceKey）的服务器列表，用于"全部"视图模式同步与查询 */
+  private getAllRegisteredServers(): ServerEntry[] {
+    const list: ServerEntry[] = ServerManager.getInstance().getList();
+    const result: ServerEntry[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].deviceKey && list[i].deviceKey.length > 0) {
+        result.push(list[i]);
+      }
+    }
+    return result;
+  }
+
+  /** 获取所有已注册服务器的 deviceKey 列表 */
+  private getAllDeviceKeys(): string[] {
+    const servers: ServerEntry[] = this.getAllRegisteredServers();
+    const keys: string[] = [];
+    for (let i = 0; i < servers.length; i++) {
+      keys.push(servers[i].deviceKey);
+    }
+    return keys;
+  }
+
+  /** 根据 deviceKey 查找对应的 ServerEntry（删除时定位来源服务器用） */
+  private findServerByDeviceKey(deviceKey: string): ServerEntry | null {
+    const list: ServerEntry[] = ServerManager.getInstance().getList();
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].deviceKey === deviceKey) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 切换视图模式（全部 / 单服务器）。
+   * 通过 ServerManager 统一管理，onChange 回调会处理列表刷新。
+   */
+  setViewAll(viewAll: boolean): void {
+    ServerManager.getInstance().setViewAllMode(viewAll);
   }
 
   private async loadMessages(): Promise<void> {
@@ -759,7 +992,26 @@ export struct NotifyView {
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
     try {
-      await this.syncFromServer(true, seq);
+      await ServerManager.getInstance().ensureLoaded();
+      if (this.viewAll) {
+        // 全部模式：并行同步所有已注册服务器
+        await this.syncAllServers(seq);
+      } else {
+        // 单服务器模式：只同步当前服务器
+        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+        if (cur) {
+          const changed: boolean = await this.syncSingleServer(cur, false, seq);
+          // 同步完成后从缓存回填列表（onChange 已清空 this.messages，必须回填）
+          if (changed || this.messages.length === 0) {
+            const deviceKey: string = cur.deviceKey;
+            if (deviceKey && deviceKey.length > 0) {
+              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+              this.messages = refreshed.messages;
+              this.groupTotals = refreshed.totals;
+            }
+          }
+        }
+      }
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -778,22 +1030,22 @@ export struct NotifyView {
   }
 
   /**
-   * 与服务端同步（增量协议）。
-   * - forceFull=true：清空本地缓存，从 after=0 重新播种最新一页（下拉刷新/切服务器用）
-   * - forceFull=false：以本地 maxId 为 after、delCursor 为 deletedSince，只拉新消息 + 删除事件
-   * expectedSeq：请求代际，与 this.loadSeq 不符则丢弃结果（服务器切换防串数据）
+   * 同步单个服务器（增量协议）。
+   * 返回 true 表示本地数据有变化（新消息/删除/reset），调用方需刷新列表；
+   * 返回 false 表示无变化。
+   * server：目标服务器；forceFull：是否清空重播种；expectedSeq：代际校验。
    */
-  private async syncFromServer(forceFull: boolean, expectedSeq: number = -1): Promise<void> {
+  private async syncSingleServer(server: ServerEntry, forceFull: boolean,
+    expectedSeq: number = -1): Promise<boolean> {
     const svc = NotifyMessageService.getInstance();
-    await ServerManager.getInstance().ensureLoaded();
-    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+    const deviceKey: string = server.deviceKey;
     if (!deviceKey || deviceKey.length === 0) {
-      return;
+      return false;
     }
 
-    // 代际校验：期间已切换服务器 → 丢弃
+    // 代际校验
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-      return;
+      return false;
     }
 
     // 读取同步基线
@@ -812,30 +1064,38 @@ export struct NotifyView {
 
     let newMaxId: number = after;
     let newDelCursor: number = delCursor;
+    let hasNewMessages: boolean = false;
+    const deletedIds: number[] = [];
+    let purgeCeiling: number = 0;
+    let didReset: boolean = false;
 
     const MAX_PAGES: number = 20;
     for (let page = 0; page < MAX_PAGES; page++) {
       if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-        return;
+        return false;
       }
-      const result = await svc.getMessages(null, 0, 100, after, newDelCursor);
+      const result = await svc.getMessages(null, 0, 100, after, newDelCursor, server);
       if (!result.ok) {
-        hilog.warn(DOMAIN, TAG, 'syncFromServer 失败：%{public}s', result.errorMsg);
-        if (forceFull && this.messages.length === 0) {
+        hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
+        // 本地无消息时透出错误，有消息时静默保留
+        if (this.messages.length === 0 && expectedSeq >= 0) {
           this.errorMsg = result.errorMsg;
         }
-        return;
+        return false;
       }
 
-      // 处理删除事件
       if (result.reset) {
-        hilog.info(DOMAIN, TAG, 'syncFromServer reset：清空本地缓存重新播种');
+        hilog.info(DOMAIN, TAG, 'syncSingleServer reset：%{public}s', deviceKey);
         await MessageCacheStore.clearDevice(deviceKey);
         after = 0;
         newMaxId = 0;
+        didReset = true;
       } else {
         if (result.deletionIds.length > 0) {
           await MessageCacheStore.deleteByIds(deviceKey, result.deletionIds);
+          for (let i = 0; i < result.deletionIds.length; i++) {
+            deletedIds.push(result.deletionIds[i]);
+          }
         }
         if (result.purges.length > 0) {
           let maxCeiling: number = 0;
@@ -846,6 +1106,9 @@ export struct NotifyView {
           }
           if (maxCeiling > 0) {
             await MessageCacheStore.purgeBefore(deviceKey, maxCeiling);
+            if (maxCeiling > purgeCeiling) {
+              purgeCeiling = maxCeiling;
+            }
           }
         }
       }
@@ -853,9 +1116,9 @@ export struct NotifyView {
         newDelCursor = result.delCursor;
       }
 
-      // 写入新消息并推进 maxId
       if (result.messages.length > 0) {
         await MessageCacheStore.upsertMessages(deviceKey, result.messages);
+        hasNewMessages = true;
         for (let i = 0; i < result.messages.length; i++) {
           if (result.messages[i].id > newMaxId) {
             newMaxId = result.messages[i].id;
@@ -873,76 +1136,122 @@ export struct NotifyView {
     await MessageCacheStore.saveMeta(deviceKey, newMaxId, newDelCursor);
 
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-      return;
+      return false;
     }
-    const refreshed: NotifyMessage[] = await MessageCacheStore.loadLatest(deviceKey, 100);
-    this.messages = refreshed;
-    this.hasMore = refreshed.length > 0;
+
     this.errorMsg = '';
+    const hasDeletions: boolean = deletedIds.length > 0 || purgeCeiling > 0;
+    return hasNewMessages || hasDeletions || didReset;
   }
 
-  private async loadMore(): Promise<void> {
-    if (this.loadingMore || !this.hasMore || this.messages.length === 0) {
+  /**
+   * "全部"视图模式：并行同步所有已注册服务器。
+   * 任一服务器有数据变化时，从本地缓存重新加载全部消息（跨服务器分组聚合）。
+   */
+  private async syncAllServers(expectedSeq: number): Promise<void> {
+    const servers: ServerEntry[] = this.getAllRegisteredServers();
+    if (servers.length === 0) {
+      this.messages = [];
+      this.groupTotals = new Map<string, number>();
       return;
     }
-    const oldest: NotifyMessage = this.messages[this.messages.length - 1];
-    if (!oldest || oldest.id <= 0) {
-      this.hasMore = false;
+
+    // 并行同步所有服务器
+    const tasks: Promise<boolean>[] = [];
+    for (let i = 0; i < servers.length; i++) {
+      tasks.push(this.syncSingleServer(servers[i], false, expectedSeq));
+    }
+    const results: boolean[] = await Promise.all(tasks);
+
+    // 代际失效：若列表已被清空（onChange 清空），需从缓存兜底回填，避免显示"暂无消息"
+    if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
+      if (this.messages.length === 0) {
+        const deviceKeys: string[] = this.getAllDeviceKeys();
+        const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
+        this.messages = refreshed.messages;
+        this.groupTotals = refreshed.totals;
+      }
       return;
     }
-    this.loadingMore = true;
-    const PAGE_SIZE: number = 100;
+
+    let anyChanged: boolean = false;
+    for (let i = 0; i < results.length; i++) {
+      if (results[i]) {
+        anyChanged = true;
+        break;
+      }
+    }
+
+    // 无变化且内存非空：不刷新，避免轮询空转闪烁
+    if (!anyChanged && this.messages.length > 0) {
+      return;
+    }
+
+    // 有变化或内存为空：从本地缓存重新加载所有服务器的消息
+    const deviceKeys: string[] = this.getAllDeviceKeys();
+    const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
+    this.messages = refreshed.messages;
+    this.groupTotals = refreshed.totals;
+  }
+
+  /**
+   * 组内"加载更多"：加载某 group_key 下比当前内存中最老 id 更老的 100 条。
+   * 数据源为本地 DB（首次播种已拉取足够消息，组内分页只读本地）。
+   * append 到 this.messages 末尾，buildNotifySections 会自动聚合到已有 section。
+   */
+  private async loadMoreInGroup(groupKey: string): Promise<void> {
+    if (this.groupLoadingMore.has(groupKey)) {
+      return;
+    }
+    // 找到该 group 在内存中的最老消息 id（id 最小）
+    let oldestId: number = Number.MAX_SAFE_INTEGER;
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].group === groupKey && this.messages[i].id < oldestId) {
+        oldestId = this.messages[i].id;
+      }
+    }
+    if (oldestId === Number.MAX_SAFE_INTEGER) {
+      return;
+    }
+    this.groupLoadingMore = new Set<string>(this.groupLoadingMore).add(groupKey);
     try {
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      const existingIds: Set<number> = new Set<number>();
-      for (let i = 0; i < this.messages.length; i++) {
-        existingIds.add(this.messages[i].id);
-      }
-
-      // 1) 优先从本地缓存读更老的消息
-      let cached: NotifyMessage[] = [];
-      if (deviceKey && deviceKey.length > 0) {
-        cached = await MessageCacheStore.loadOlder(deviceKey, oldest.id, PAGE_SIZE);
-      }
-      const cachedDeduped: NotifyMessage[] = [];
-      for (let i = 0; i < cached.length; i++) {
-        if (!existingIds.has(cached[i].id)) {
-          cachedDeduped.push(cached[i]);
-          existingIds.add(cached[i].id);
+      const PAGE_SIZE: number = 100;
+      let older: NotifyMessage[] = [];
+      if (this.viewAll) {
+        // 全部模式：跨所有服务器加载该 group 的更老消息
+        const deviceKeys: string[] = this.getAllDeviceKeys();
+        older = await MessageCacheStore.loadAllGroupOlder(deviceKeys, groupKey, oldestId, PAGE_SIZE);
+      } else {
+        const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+        if (!deviceKey || deviceKey.length === 0) {
+          return;
         }
+        older = await MessageCacheStore.loadGroupOlder(deviceKey, groupKey, oldestId, PAGE_SIZE);
       }
-      if (cachedDeduped.length > 0) {
-        this.messages = this.messages.concat(cachedDeduped);
-      }
-
-      if (cached.length < PAGE_SIZE) {
-        const result = await NotifyMessageService.getInstance().getMessages(null, oldest.id, PAGE_SIZE);
-        if (result.ok) {
-          const newItems: NotifyMessage[] =
-            result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
-          const deduped: NotifyMessage[] = [];
-          for (let i = 0; i < newItems.length; i++) {
-            if (!existingIds.has(newItems[i].id)) {
-              deduped.push(newItems[i]);
-              existingIds.add(newItems[i].id);
-            }
+      if (older.length > 0) {
+        // 去重后 append
+        const existingIds: Set<number> = new Set<number>();
+        for (let i = 0; i < this.messages.length; i++) {
+          existingIds.add(this.messages[i].id);
+        }
+        const deduped: NotifyMessage[] = [];
+        for (let i = 0; i < older.length; i++) {
+          if (!existingIds.has(older[i].id)) {
+            deduped.push(older[i]);
+            existingIds.add(older[i].id);
           }
-          if (deduped.length > 0) {
-            this.messages = this.messages.concat(deduped);
-            if (deviceKey && deviceKey.length > 0) {
-              await MessageCacheStore.upsertMessages(deviceKey, deduped);
-            }
-          }
-          if (newItems.length < PAGE_SIZE) {
-            this.hasMore = false;
-          }
+        }
+        if (deduped.length > 0) {
+          this.messages = this.messages.concat(deduped);
         }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, 'loadMore 异常：%{public}s', msg);
+      hilog.warn(DOMAIN, TAG, 'loadMoreInGroup 异常：%{public}s', msg);
     } finally {
-      this.loadingMore = false;
+      const next = new Set<string>(this.groupLoadingMore);
+      next.delete(groupKey);
+      this.groupLoadingMore = next;
     }
   }
 

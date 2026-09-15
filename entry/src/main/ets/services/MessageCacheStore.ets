@@ -27,6 +27,8 @@ const SQL_CREATE_MSG: string =
   'inbox_content TEXT NOT NULL DEFAULT \'\', ' +
   // 通知分组标识（对应 NotifyMessage.group；不能用 group 命名，SQL 保留字）
   'group_key TEXT NOT NULL DEFAULT \'\', ' +
+  // 点击跳转 URL（对应 NotifyMessage.url，来自 extras.url）
+  'url TEXT NOT NULL DEFAULT \'\', ' +
   'PRIMARY KEY (device_key, id)' +
   ')';
 
@@ -46,6 +48,18 @@ const SQL_CREATE_META: string =
 export class SyncMeta {
   maxId: number = 0;
   delCursor: number = 0;
+}
+
+/** 分组加载结果：合并后的消息列表 + 每个 group_key 的真实总数 */
+export interface GroupedLoadResult {
+  messages: NotifyMessage[];
+  totals: Map<string, number>;
+}
+
+/** (deviceKey, id) 对，用于跨服务器精确删除（不同服务器 id 空间独立） */
+export interface DeviceIdPair {
+  deviceKey: string;
+  id: number;
 }
 
 function formatError(err: Object): string {
@@ -71,6 +85,7 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'image': m.image,
     'inbox_content': JSON.stringify(m.inboxContent),
     'group_key': m.group,
+    'url': m.url,
   };
   return bucket;
 }
@@ -92,6 +107,8 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.timestamp = rs.getLong(rs.getColumnIndex('timestamp'));
     m.image = rs.getString(rs.getColumnIndex('image'));
     m.group = rs.getString(rs.getColumnIndex('group_key'));
+    m.url = rs.getString(rs.getColumnIndex('url'));
+    m.deviceKey = rs.getString(rs.getColumnIndex('device_key'));
     const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
     if (inboxStr && inboxStr.length > 0) {
       try {
@@ -129,34 +146,44 @@ export class MessageCacheStore {
 
   /**
    * 旧库结构迁移。
-   * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效。
-   * 检测到 group_key 缺失时：ADD COLUMN 补列，并清空消息与同步元信息，
-   * 让下次同步走 after=0 全量重新播种（增量同步无法回填旧行的 group）。
+   * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效；
+   * v2 补充跳转链接 url 列。
+   * 检测到缺失列时逐列补齐：
+   * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
+   * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
    */
   private static async migrateSchema(db: relationalStore.RdbStore): Promise<void> {
     try {
       const rs: relationalStore.ResultSet =
         await db.querySql(`PRAGMA table_info(${TABLE_MSG})`);
       let hasGroupKey: boolean = false;
+      let hasUrl: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
-          if (rs.getString(nameIndex) === 'group_key') {
+          const col: string = rs.getString(nameIndex);
+          if (col === 'group_key') {
             hasGroupKey = true;
-            break;
+          } else if (col === 'url') {
+            hasUrl = true;
           }
         } while (rs.goToNextRow());
       }
       rs.close();
-      if (hasGroupKey) {
-        return;
+      // group_key 缺失：清空本地缓存重新播种（元信息一并清空，等价于一次 forceFull）
+      if (!hasGroupKey) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 group_key 列并清空旧缓存');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN group_key TEXT NOT NULL DEFAULT ''`);
+        await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
+        await db.executeSql(`DELETE FROM ${TABLE_META}`);
       }
-      hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 group_key 列并清空旧缓存');
-      await db.executeSql(
-        `ALTER TABLE ${TABLE_MSG} ADD COLUMN group_key TEXT NOT NULL DEFAULT ''`);
-      // 旧行 group 无法回填，作废本地缓存重新播种（元信息一并清空，等价于一次 forceFull）
-      await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
-      await db.executeSql(`DELETE FROM ${TABLE_META}`);
+      // url 缺失：仅补列，保留已有数据
+      if (!hasUrl) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 url 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN url TEXT NOT NULL DEFAULT ''`);
+      }
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'migrateSchema 失败：%{public}s', formatError(err));
     }
@@ -212,8 +239,85 @@ export class MessageCacheStore {
     return list;
   }
 
-  // 加载某设备比 beforeId 更老的 N 条消息（id < beforeId，按 id 倒序），用于触底加载
-  static async loadOlder(deviceKey: string, beforeId: number, limit: number): Promise<NotifyMessage[]> {
+  /**
+   * 分组加载：每个 group_key 取最新 perGroupLimit 条，合并按 timestamp DESC 排序。
+   * 同时返回每个 group_key 的真实总数，用于徽标显示。
+   * 无 group_key（空串）的消息也按 perGroupLimit 截断，作为单条 section 展示。
+   */
+  static async loadGroupedLatest(deviceKey: string, perGroupLimit: number): Promise<GroupedLoadResult> {
+    const db = await MessageCacheStore.getStore();
+    const emptyResult: GroupedLoadResult = {
+      messages: [] as NotifyMessage[],
+      totals: new Map<string, number>(),
+    };
+    if (!db) {
+      return emptyResult;
+    }
+    try {
+      // 1) 查询所有 distinct group_key（含空串代表无分组）
+      const keys: string[] = [];
+      const rsKeys: relationalStore.ResultSet = await db.querySql(
+        `SELECT DISTINCT group_key FROM ${TABLE_MSG} WHERE device_key=?`, [deviceKey]);
+      if (rsKeys.goToFirstRow()) {
+        const idx: number = rsKeys.getColumnIndex('group_key');
+        do {
+          keys.push(rsKeys.getString(idx));
+        } while (rsKeys.goToNextRow());
+      }
+      rsKeys.close();
+      if (keys.length === 0) {
+        return emptyResult;
+      }
+
+      // 2) 对每个 group_key 查询最新 perGroupLimit 条 + 总数
+      const totals: Map<string, number> = new Map<string, number>();
+      const all: NotifyMessage[] = [];
+      for (let i = 0; i < keys.length; i++) {
+        const gk: string = keys[i];
+        // 最新 perGroupLimit 条
+        const rs: relationalStore.ResultSet = await db.querySql(
+          `SELECT * FROM ${TABLE_MSG} WHERE device_key=? AND group_key=? ` +
+          `ORDER BY timestamp DESC, id DESC LIMIT ?`,
+          [deviceKey, gk, perGroupLimit]);
+        if (rs.goToFirstRow()) {
+          do {
+            all.push(rowToMessage(rs));
+          } while (rs.goToNextRow());
+        }
+        rs.close();
+        // 该 group_key 总数
+        const rsCnt: relationalStore.ResultSet = await db.querySql(
+          `SELECT COUNT(*) AS cnt FROM ${TABLE_MSG} WHERE device_key=? AND group_key=?`,
+          [deviceKey, gk]);
+        let cnt: number = 0;
+        if (rsCnt.goToFirstRow()) {
+          cnt = rsCnt.getLong(rsCnt.getColumnIndex('cnt'));
+        }
+        rsCnt.close();
+        totals.set(gk, cnt);
+      }
+
+      // 3) 合并后按 timestamp DESC（新→旧）整体排序
+      all.sort((a: NotifyMessage, b: NotifyMessage) => {
+        if (b.timestamp !== a.timestamp) {
+          return b.timestamp - a.timestamp;
+        }
+        return b.id - a.id;
+      });
+      const result: GroupedLoadResult = { messages: all, totals };
+      return result;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadGroupedLatest 失败：%{public}s', formatError(err));
+      return emptyResult;
+    }
+  }
+
+  /**
+   * 加载某 group_key 下比 beforeId 更老的 N 条（id < beforeId，按 id 倒序）。
+   * 用于组内"加载更多"按钮。
+   */
+  static async loadGroupOlder(deviceKey: string, groupKey: string,
+    beforeId: number, limit: number): Promise<NotifyMessage[]> {
     const db = await MessageCacheStore.getStore();
     if (!db || beforeId <= 0) {
       return [];
@@ -221,8 +325,10 @@ export class MessageCacheStore {
     const list: NotifyMessage[] = [];
     try {
       const sql: string =
-        `SELECT * FROM ${TABLE_MSG} WHERE device_key=? AND id < ? ORDER BY id DESC LIMIT ?`;
-      const rs: relationalStore.ResultSet = await db.querySql(sql, [deviceKey, beforeId, limit]);
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key=? AND group_key=? AND id < ? ` +
+        `ORDER BY id DESC LIMIT ?`;
+      const rs: relationalStore.ResultSet =
+        await db.querySql(sql, [deviceKey, groupKey, beforeId, limit]);
       if (rs.goToFirstRow()) {
         do {
           list.push(rowToMessage(rs));
@@ -230,9 +336,37 @@ export class MessageCacheStore {
       }
       rs.close();
     } catch (err) {
-      hilog.warn(DOMAIN, TAG, 'loadOlder 失败：%{public}s', formatError(err));
+      hilog.warn(DOMAIN, TAG, 'loadGroupOlder 失败：%{public}s', formatError(err));
     }
     return list;
+  }
+
+  /**
+   * 查询某设备所有 group_key 的真实总数（含空串代表无分组）。
+   * 用于增量同步后刷新 groupTotals，而不重拉消息。
+   */
+  static async getGroupTotals(deviceKey: string): Promise<Map<string, number>> {
+    const totals: Map<string, number> = new Map<string, number>();
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return totals;
+    }
+    try {
+      const sql: string =
+        `SELECT group_key, COUNT(*) AS cnt FROM ${TABLE_MSG} WHERE device_key=? GROUP BY group_key`;
+      const rs: relationalStore.ResultSet = await db.querySql(sql, [deviceKey]);
+      if (rs.goToFirstRow()) {
+        const keyIdx: number = rs.getColumnIndex('group_key');
+        const cntIdx: number = rs.getColumnIndex('cnt');
+        do {
+          totals.set(rs.getString(keyIdx), rs.getLong(cntIdx));
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'getGroupTotals 失败：%{public}s', formatError(err));
+    }
+    return totals;
   }
 
   // 批量写入消息（主键冲突时替换，upsert 语义）
@@ -367,6 +501,179 @@ export class MessageCacheStore {
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'getMaxId 失败：%{public}s', formatError(err));
       return 0;
+    }
+  }
+
+  /**
+   * 跨多个 device_key 分组加载（"全部"视图模式）。
+   * 与 loadGroupedLatest 逻辑一致，但 device_key 用 IN (...) 匹配多个服务器。
+   * 不同服务器的相同 group_key 会被聚合到同一分组（UI 不标注来源）。
+   */
+  static async loadAllGroupedLatest(deviceKeys: string[], perGroupLimit: number): Promise<GroupedLoadResult> {
+    const db = await MessageCacheStore.getStore();
+    const emptyResult: GroupedLoadResult = {
+      messages: [] as NotifyMessage[],
+      totals: new Map<string, number>(),
+    };
+    if (!db || deviceKeys.length === 0) {
+      return emptyResult;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const args: string[] = deviceKeys.slice();
+
+      // 1) 查询所有 distinct group_key（含空串代表无分组）
+      const keys: string[] = [];
+      const rsKeys: relationalStore.ResultSet = await db.querySql(
+        `SELECT DISTINCT group_key FROM ${TABLE_MSG} WHERE device_key IN (${placeholders})`, args);
+      if (rsKeys.goToFirstRow()) {
+        const idx: number = rsKeys.getColumnIndex('group_key');
+        do {
+          keys.push(rsKeys.getString(idx));
+        } while (rsKeys.goToNextRow());
+      }
+      rsKeys.close();
+      if (keys.length === 0) {
+        return emptyResult;
+      }
+
+      // 2) 对每个 group_key 查询最新 perGroupLimit 条 + 总数（跨所有 device_key）
+      const totals: Map<string, number> = new Map<string, number>();
+      const all: NotifyMessage[] = [];
+      for (let i = 0; i < keys.length; i++) {
+        const gk: string = keys[i];
+        const msgArgs: Array<string | number> = deviceKeys.slice();
+        msgArgs.push(gk);
+        msgArgs.push(perGroupLimit);
+        const rs: relationalStore.ResultSet = await db.querySql(
+          `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND group_key=? ` +
+          `ORDER BY timestamp DESC, id DESC LIMIT ?`,
+          msgArgs);
+        if (rs.goToFirstRow()) {
+          do {
+            all.push(rowToMessage(rs));
+          } while (rs.goToNextRow());
+        }
+        rs.close();
+        // 该 group_key 总数（跨所有 device_key）
+        const cntArgs: string[] = deviceKeys.slice();
+        cntArgs.push(gk);
+        const rsCnt: relationalStore.ResultSet = await db.querySql(
+          `SELECT COUNT(*) AS cnt FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND group_key=?`,
+          cntArgs);
+        let cnt: number = 0;
+        if (rsCnt.goToFirstRow()) {
+          cnt = rsCnt.getLong(rsCnt.getColumnIndex('cnt'));
+        }
+        rsCnt.close();
+        totals.set(gk, cnt);
+      }
+
+      // 3) 合并后按 timestamp DESC（新→旧）整体排序
+      all.sort((a: NotifyMessage, b: NotifyMessage) => {
+        if (b.timestamp !== a.timestamp) {
+          return b.timestamp - a.timestamp;
+        }
+        return b.id - a.id;
+      });
+      return { messages: all, totals };
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadAllGroupedLatest 失败：%{public}s', formatError(err));
+      return emptyResult;
+    }
+  }
+
+  /** 跨多个 device_key 查询所有 group_key 的真实总数（"全部"视图模式下徽标刷新用） */
+  static async getAllGroupTotals(deviceKeys: string[]): Promise<Map<string, number>> {
+    const totals: Map<string, number> = new Map<string, number>();
+    const db = await MessageCacheStore.getStore();
+    if (!db || deviceKeys.length === 0) {
+      return totals;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const sql: string =
+        `SELECT group_key, COUNT(*) AS cnt FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) GROUP BY group_key`;
+      const rs: relationalStore.ResultSet = await db.querySql(sql, deviceKeys);
+      if (rs.goToFirstRow()) {
+        const keyIdx: number = rs.getColumnIndex('group_key');
+        const cntIdx: number = rs.getColumnIndex('cnt');
+        do {
+          totals.set(rs.getString(keyIdx), rs.getLong(cntIdx));
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'getAllGroupTotals 失败：%{public}s', formatError(err));
+    }
+    return totals;
+  }
+
+  /**
+   * 跨多个 device_key 加载某 group_key 下比 beforeId 更老的 N 条（"全部"视图模式组内加载更多）。
+   * 不同服务器 id 空间独立，beforeId 取内存中该组最小 id，查询所有 device_key 中 id < beforeId 的消息。
+   */
+  static async loadAllGroupOlder(deviceKeys: string[], groupKey: string,
+    beforeId: number, limit: number): Promise<NotifyMessage[]> {
+    const db = await MessageCacheStore.getStore();
+    if (!db || deviceKeys.length === 0 || beforeId <= 0) {
+      return [];
+    }
+    const list: NotifyMessage[] = [];
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const args: Array<string | number> = deviceKeys.slice();
+      args.push(groupKey);
+      args.push(beforeId);
+      args.push(limit);
+      const sql: string =
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND group_key=? AND id < ? ` +
+        `ORDER BY id DESC LIMIT ?`;
+      const rs: relationalStore.ResultSet = await db.querySql(sql, args);
+      if (rs.goToFirstRow()) {
+        do {
+          list.push(rowToMessage(rs));
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadAllGroupOlder 失败：%{public}s', formatError(err));
+    }
+    return list;
+  }
+
+  /** 按 (deviceKey, id) 对列表删除（跨服务器多选删除用，避免不同服务器同 id 误删） */
+  static async deleteByDeviceIdPairs(pairs: DeviceIdPair[]): Promise<void> {
+    if (!pairs || pairs.length === 0) {
+      return;
+    }
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return;
+    }
+    try {
+      // 逐条删除：不同 deviceKey 的 id 可能相同，无法用单条 IN 语句
+      for (let i = 0; i < pairs.length; i++) {
+        await db.executeSql(
+          `DELETE FROM ${TABLE_MSG} WHERE device_key=? AND id=?`,
+          [pairs[i].deviceKey, pairs[i].id]);
+      }
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'deleteByDeviceIdPairs 失败：%{public}s', formatError(err));
+    }
+  }
+
+  /** 清空所有设备的缓存与元信息（"全部"视图模式下清空全部消息用） */
+  static async clearAllDevices(): Promise<void> {
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return;
+    }
+    try {
+      await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
+      await db.executeSql(`DELETE FROM ${TABLE_META}`);
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'clearAllDevices 失败：%{public}s', formatError(err));
     }
   }
 }

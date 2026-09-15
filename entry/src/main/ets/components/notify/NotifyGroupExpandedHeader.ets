@@ -1,10 +1,10 @@
-import { NotifySection } from './NotifyViewTypes';
+import { displayGroupTitle, NotifySection } from './NotifyViewTypes';
 import { NotifyGroupCountBadge } from './NotifyGroupVisuals';
 
 /** 展开态分组头；选择与收起行为由 NotifyView 回调处理。 */
 @Component
 export struct NotifyGroupExpandedHeader {
-  @Prop section: NotifySection = { key: '', groupKey: '', messages: [], grouped: false };
+  @Prop section: NotifySection = { key: '', groupKey: '', messages: [], grouped: false, total: 0 };
   @Prop isEditing: boolean = false;
   @Prop groupSelected: boolean = false;
   onToggle: () => void = () => {};
@@ -19,9 +19,9 @@ export struct NotifyGroupExpandedHeader {
         } else {
           Image($r('app.media.app_icon')).width(24).height(24).borderRadius(6).objectFit(ImageFit.Cover);
         }
-        Text(this.section.groupKey).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color'))
+        Text(displayGroupTitle(this.section.groupKey)).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1);
-        Row() { NotifyGroupCountBadge({ count: this.section.messages.length }); }
+        Row() { NotifyGroupCountBadge({ count: this.section.total }); }
           .flexShrink(0).geometryTransition(`gmb:${this.section.groupKey}`)
           .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
         Image($r('app.media.arrow_right')).width(20).height(20).fillColor($r('app.color.text_quinary_color'))

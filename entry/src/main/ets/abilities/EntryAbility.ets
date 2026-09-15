@@ -46,6 +46,8 @@ export default class EntryAbility extends UIAbility {
     // 在 onCreate 中触发无感注册（Push Kit 文档推荐时机），内部会 await ServerManager.ensureLoaded()
     // 然后调用 pushService.getToken() 拿 token 并写入服务端
     this.silentRegister();
+    // 点击系统通知冷启动：服务端推送 clickAction.data 携带的跳转 url 在 want.parameters 里，直接打开
+    this.openPushUrl(want);
   }
 
   onDestroy(): void {
@@ -100,6 +102,36 @@ export default class EntryAbility extends UIAbility {
     this.bumpNotifyRefreshSignal();
     // 应用已在前台时点击通知只走这里，同样清除桌面图标角标
     this.clearBadgeNumber();
+    // 点击系统通知温启动：同样解析并打开 clickAction.data 携带的跳转 url
+    this.openPushUrl(want);
+  }
+
+  /**
+   * 打开系统通知点击透传的跳转 url。
+   * 服务端推送时把消息 extras.url 写入华为 clickAction.data（键 url），
+   * 点击通知拉起应用时随 want.parameters 透传；无该参数（普通启动）则不处理。
+   */
+  private openPushUrl(want: Want): void {
+    try {
+      const params: Record<string, Object> | undefined = want.parameters;
+      if (!params) {
+        return;
+      }
+      const urlVal: Object | undefined = params['url'];
+      if (typeof urlVal !== 'string' || (urlVal as string).length === 0) {
+        return;
+      }
+      const openWant: Want = {
+        action: 'ohos.want.action.viewData',
+        uri: urlVal as string,
+      };
+      this.context.startAbility(openWant).catch((err: BusinessError) => {
+        hilog.warn(DOMAIN, TAG, '打开推送链接失败：code=%{public}d msg=%{public}s', err.code, err.message);
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, 'openPushUrl 异常：%{public}s', msg);
+    }
   }
 
   /** 自增通知列表刷新信号：NotifyView 通过 @StorageProp + @Watch 监听变化后拉取最新消息 */

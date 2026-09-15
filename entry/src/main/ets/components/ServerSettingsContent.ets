@@ -30,6 +30,7 @@ export struct ServerSettingsContent {
   @Prop maxListHeight: number = 0; // 列表最大高度（0 = 不限制，Page 模式）
   @State serverList: ServerEntry[] = [];
   @State currentId: string = '';
+  @State viewAll: boolean = true;
   @State inputURL: string = '';
   @State inputName: string = '';
   // 当前操作目标服务器（操作菜单/重命名/删除共用）
@@ -218,6 +219,31 @@ export struct ServerSettingsContent {
       .width('100%');
 
       Column({ space: 8 }) {
+        // 显示所有服务器通知的开关
+        Row() {
+          Column({ space: 2 }) {
+            Text('显示所有服务器通知')
+              .fontSize(15)
+              .fontColor($r('app.color.text_primary_color'));
+            Text('开启后将聚合展示所有服务器的通知')
+              .fontSize(12)
+              .fontColor($r('app.color.text_quinary_color'));
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1);
+
+          Toggle({ type: ToggleType.Switch, isOn: this.viewAll })
+            .selectedColor($r('app.color.text_accent_color'))
+            .onChange((isOn: boolean) => {
+              ServerManager.getInstance().setViewAllMode(isOn);
+            });
+        }
+        .width('100%')
+        .padding(12)
+        .backgroundColor($r('app.color.card_background'))
+        .borderRadius(10)
+        .border({ width: 1, color: $r('app.color.divider_color') });
+
         Text('已保存的服务器（点击切换）')
           .fontSize(13)
           .fontColor($r('app.color.text_tertiary_color'))
@@ -254,6 +280,8 @@ export struct ServerSettingsContent {
     const list: ServerEntry[] = mgr.getList();
     const cur: ServerEntry | null = mgr.getCurrentServer();
     this.currentId = cur ? cur.id : '';
+    // 同步视图模式
+    this.viewAll = mgr.getViewAllMode();
 
     // 强制把当前服务器放在列表第一个
     if (cur) {
@@ -385,6 +413,7 @@ export struct ServerSettingsContent {
   }
 
   private async handleSwitch(id: string): Promise<void> {
+    // 开关状态独立：切换服务器不改变"显示所有服务器通知"开关
     if (id === this.currentId) {
       return;
     }

@@ -51,6 +51,8 @@ export class PreferencesUtil {
   static readonly KEY_COLOR_MODE: string = 'color_mode';
   /** 沉浸光感开关：'true'（开启，默认）/ 'false'（关闭，走 blur 降级）。仅 API 26+ 生效 */
   static readonly KEY_IMMERSIVE_LIGHT_ENABLED: string = 'immersive_light_enabled';
+  /** 通知列表是否按 group 分组显示：'true'（分组，默认）/ 'false'（平铺不分组） */
+  static readonly KEY_GROUP_ENABLED: string = 'group_enabled';
   private static readonly STORE_NAME: string = 'timelynotify_prefs';
   private static instance: preferences.Preferences | null = null;
 
