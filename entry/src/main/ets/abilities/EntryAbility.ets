@@ -189,7 +189,8 @@ export default class EntryAbility extends UIAbility {
       const bottomVp: number = indicator.bottomRect.height / density;
       AppStorage.setOrCreate(KEY_STATUS_BAR_HEIGHT, topVp);
       AppStorage.setOrCreate(KEY_NAV_BAR_HEIGHT, bottomVp);
-      hilog.info(DOMAIN, TAG, '安全区高度：状态栏=%{public}fvp 导航条=%{public}fvp', topVp, bottomVp);
+      hilog.info(DOMAIN, TAG, '安全区高度：状态栏=%{public}s vp 导航条=%{public}s vp',
+        String(topVp), String(bottomVp));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '获取避让区高度失败：%{public}s', msg);

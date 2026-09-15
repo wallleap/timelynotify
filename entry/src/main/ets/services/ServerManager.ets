@@ -307,7 +307,7 @@ export class ServerManager {
         DOMAIN,
         TAG,
         '服务器列表加载完成：总数=%{public}d 当前=%{public}s baseURL=%{public}s',
-        String(this.servers.length),
+        this.servers.length,
         this.currentId,
         this.getCurrentBaseURL(),
       );
