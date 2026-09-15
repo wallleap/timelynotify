@@ -62,7 +62,13 @@ export struct NotifyMessageList {
                   selected: this.isSelected(message.id), contentTransitionId: index === 0 ? `gmc:${section.groupKey}` : '',
                   onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
                   onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code) });
-              }.swipeAction({ end: { builder: () => { this.deleteOne(message); } } });
+              }
+              // 左滑操作区由 ListItem 承载；保持组内行的白色表面与末行圆角，避免露出列表底色。
+              .backgroundColor($r('app.color.card_background'))
+              .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: index === section.messages.length - 1 ? 12 : 0,
+                bottomRight: index === section.messages.length - 1 ? 12 : 0 })
+              .clip(true)
+              .swipeAction({ end: { builder: () => { this.deleteOne(message); } } });
             }, (message: NotifyMessage) => `group-child:${section.groupKey}:${message.id}`);
           }
         } else {
