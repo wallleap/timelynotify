@@ -10,7 +10,8 @@ import { MessageCacheStore } from '../services/MessageCacheStore';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  SUPPORTS_IMMERSIVE_MATERIAL,
+  resolveBlurStyle
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
 import {
@@ -53,9 +54,6 @@ export struct NotifyView {
   @State errorMsg: string = '';
   @State refreshing: boolean = false;
   @State hasClientToken: boolean = false;
-  // 触底分页加载更老消息
-  @State loadingMore: boolean = false;
-  @State hasMore: boolean = true;
   // 点击查看的消息详情（bindContentCover 全屏模态）
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
@@ -65,6 +63,10 @@ export struct NotifyView {
   @State exportingSelected: boolean = false;
   @State expandedGroups: string[] = [];
   @State groupCardHeights: Map<string, number> = new Map<string, number>();
+  // 每个 group_key 的真实总数（含未加载到内存的部分），用于徽标显示和"加载更多"按钮
+  @State groupTotals: Map<string, number> = new Map<string, number>();
+  // 组内加载更多进行中的 group_key 集合，用于按钮显示 loading 态
+  @State groupLoadingMore: Set<string> = new Set<string>();
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -97,10 +99,11 @@ export struct NotifyView {
       this.refresh();
       // 并递增代际使飞行中的旧请求响应过期丢弃
       this.messages = [];
-      this.hasMore = false;
       // 展开状态属于当前服务器，切换后一并清空
       this.expandedGroups = [];
       this.groupCardHeights = new Map<string, number>();
+      this.groupTotals = new Map<string, number>();
+      this.groupLoadingMore = new Set<string>();
       this.loadSeq++;
       // 服务器切换后重新拉取消息
       this.loadMessages();
@@ -163,8 +166,18 @@ export struct NotifyView {
   @Builder
   viewportBody() {
     Column() {
-      Column() {
-        this.refreshContentBody();
+      Stack({ alignContent: Alignment.BottomEnd }) {
+        Column() {
+          this.refreshContentBody();
+        }
+        .width('100%')
+        .layoutWeight(1);
+
+        // 右下角全部展开/折叠浮动按钮组
+        // 仅在非编辑模式、存在分组、有消息时显示
+        if (!this.isEditing && this.messages.length > 0 && this.hasGroupedSections()) {
+          this.groupToggleFab();
+        }
       }
       .width('100%')
       .layoutWeight(1);
@@ -176,6 +189,29 @@ export struct NotifyView {
     }
     .width('100%')
     .height('100%');
+  }
+
+  /** 右下角分组切换按钮：全部折叠时显示展开图标，否则显示折叠图标；点击切换 */
+  @Builder
+  private groupToggleFab() {
+    Row() {
+      Image(this.allGroupsCollapsed() ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
+        .width(20).height(20).objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.text_primary_color'));
+    }
+    .width(44).height(44).borderRadius(22)
+    .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+    .backgroundColor($r('app.color.glass_button_background'))
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .border({ width: 1, color: $r('app.color.glass_button_border') })
+    .margin({ right: 16, bottom: this.navBarHeight + 56 + 16 })
+    .onClick(() => {
+      if (this.allGroupsCollapsed()) {
+        this.expandAllGroups();
+      } else {
+        this.collapseAllGroups();
+      }
+    });
   }
 
   build() {
@@ -236,9 +272,18 @@ export struct NotifyView {
       .backgroundColor($r('app.color.index_page_body_background'));
     } else {
       Column() {
-        Stack({ alignContent: Alignment.Top }) {
-          this.refreshContentBody();
-          this.fallbackTitleBar();
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          Stack({ alignContent: Alignment.Top }) {
+            this.refreshContentBody();
+            this.fallbackTitleBar();
+          }
+          .width('100%')
+          .height('100%')
+
+          // 非沉浸式分支的右下角浮动按钮组
+          if (!this.isEditing && this.messages.length > 0 && this.hasGroupedSections()) {
+            this.groupToggleFab();
+          }
         }
         .width('100%')
         .layoutWeight(1);
@@ -268,10 +313,12 @@ export struct NotifyView {
   @Builder
   listView() {
     NotifyMessageList({ messages: this.messages, isEditing: this.isEditing, selectedIds: this.selectedIds,
-      expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights, loadingMore: this.loadingMore,
-      hasMore: this.hasMore, statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
+      expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights,
+      groupTotals: this.groupTotals, groupLoadingMore: this.groupLoadingMore,
+      statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
-      onLoadMore: () => this.loadMore(), onToggleSelect: (id: number) => this.toggleSelect(id),
+      onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
+      onToggleSelect: (id: number) => this.toggleSelect(id),
       onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
       onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
       onOpenMessage: (message: NotifyMessage) => this.openMessageDetail(message),
@@ -353,10 +400,11 @@ export struct NotifyView {
       this.refresh();
       const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
       if (deviceKey && deviceKey.length > 0) {
-        const cached: NotifyMessage[] = await MessageCacheStore.loadLatest(deviceKey, 100);
-        if (cached.length > 0) {
-          this.messages = cached;
-          this.hasMore = true;
+        // 分组加载：每个 group_key 取最新 100 条，同时拿到真实总数
+        const grouped = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+        if (grouped.messages.length > 0) {
+          this.messages = grouped.messages;
+          this.groupTotals = grouped.totals;
         }
       }
       this.syncFromServer(false);
@@ -472,7 +520,7 @@ export struct NotifyView {
 
   // 不清空列表/不重置分页；失败静默，等下一轮
   private async pollNewMessages(): Promise<void> {
-    if (this.pollInFlight || this.loading || this.loadingMore || this.needGuideToConfig()) {
+    if (this.pollInFlight || this.loading || this.needGuideToConfig()) {
       return;
     }
     this.pollInFlight = true;
@@ -557,6 +605,71 @@ export struct NotifyView {
     });
   }
 
+  // ====== 全部展开/折叠浮动按钮 ======
+
+  // 是否存在可折叠/展开的分组（至少一个 section 的 grouped=true，即该 group 有 ≥2 条消息）
+  private hasGroupedSections(): boolean {
+    const groups: Map<string, number> = new Map<string, number>();
+    for (let i = 0; i < this.messages.length; i++) {
+      const g: string = this.messages[i].group;
+      groups.set(g, (groups.get(g) ?? 0) + 1);
+    }
+    for (const cnt of groups.values()) {
+      if (cnt >= 2) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // 是否所有分组都已展开（expandedGroups 覆盖所有 distinct group_key）
+  private allGroupsExpanded(): boolean {
+    const keys: Set<string> = new Set<string>();
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].group.length > 0) {
+        keys.add(this.messages[i].group);
+      }
+    }
+    if (keys.size === 0) {
+      return false;
+    }
+    for (const k of keys) {
+      if (!this.isGroupExpanded(k)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // 是否所有分组都已折叠（expandedGroups 为空或不含任何当前 group_key）
+  private allGroupsCollapsed(): boolean {
+    return this.expandedGroups.length === 0;
+  }
+
+  // 全部展开：补齐所有 group_key 到 expandedGroups
+  private expandAllGroups(): void {
+    const keys: Set<string> = new Set<string>();
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].group.length > 0) {
+        keys.add(this.messages[i].group);
+      }
+    }
+    const next: string[] = [];
+    for (const k of keys) {
+      next.push(k);
+    }
+    this.getUIContext().animateTo({ duration: 280, curve: Curve.EaseInOut }, () => {
+      this.expandedGroups = next;
+    });
+  }
+
+  // 全部折叠：清空 expandedGroups
+  private collapseAllGroups(): void {
+    this.getUIContext().animateTo({ duration: 280, curve: Curve.EaseInOut }, () => {
+      this.expandedGroups = [];
+    });
+  }
+
   private handleGroupHeaderClick(section: NotifySection): void {
     if (this.isEditing) {
       this.toggleGroupSelection(section.messages);
@@ -620,6 +733,8 @@ export struct NotifyView {
       const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
       if (deviceKey && deviceKey.length > 0) {
         await MessageCacheStore.deleteByIds(deviceKey, [m.id]);
+        // 刷新分组总数（徽标和"加载更多"按钮依赖）
+        this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKey);
       }
       this.removeFromList([m.id]);
       this.exitEditMode();
@@ -655,6 +770,11 @@ export struct NotifyView {
         }
       }
       this.removeFromList(ids);
+      // 刷新分组总数（被删 group 可能仍存在部分消息，或整个 group 消失）
+      const deviceKeyAfter = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      if (deviceKeyAfter && deviceKeyAfter.length > 0) {
+        this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKeyAfter);
+      }
       if (failCount > 0) {
         showToast(uiCtx, `删除完成，${failCount} 条失败`);
       } else {
@@ -691,6 +811,8 @@ export struct NotifyView {
       const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
       if (deviceKey && deviceKey.length > 0) {
         await MessageCacheStore.deleteByIds(deviceKey, ids);
+        // 刷新分组总数
+        this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKey);
       }
       this.removeFromList(ids);
       this.exitEditMode();
@@ -735,6 +857,8 @@ export struct NotifyView {
       this.messages = [];
       this.expandedGroups = [];
       this.groupCardHeights = new Map<string, number>();
+      this.groupTotals = new Map<string, number>();
+      this.groupLoadingMore = new Set<string>();
       showToast(uiCtx, '已清空全部消息');
     });
   }
@@ -759,7 +883,9 @@ export struct NotifyView {
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
     try {
-      await this.syncFromServer(true, seq);
+      // 统一走增量同步：保留本地历史，仅拉取 maxId 之后的新消息 + 处理删除事件
+      // forceFull=true 会 clearDevice 清空本地缓存重播种，违背"只同步上次之后"的需求，弃用
+      await this.syncFromServer(false, seq);
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -779,8 +905,10 @@ export struct NotifyView {
 
   /**
    * 与服务端同步（增量协议）。
-   * - forceFull=true：清空本地缓存，从 after=0 重新播种最新一页（下拉刷新/切服务器用）
-   * - forceFull=false：以本地 maxId 为 after、delCursor 为 deletedSince，只拉新消息 + 删除事件
+   * - forceFull=true：清空本地缓存，从 after=0 重新播种（当前已无调用方使用；
+   *   服务端 reset 信号由协议内部兜底触发 clearDevice）
+   * - forceFull=false：以本地 maxId 为 after、delCursor 为 deletedSince，只拉新消息 + 删除事件，
+   *   保留本地历史，符合"只同步上次之后"的需求
    * expectedSeq：请求代际，与 this.loadSeq 不符则丢弃结果（服务器切换防串数据）
    */
   private async syncFromServer(forceFull: boolean, expectedSeq: number = -1): Promise<void> {
@@ -812,6 +940,12 @@ export struct NotifyView {
 
     let newMaxId: number = after;
     let newDelCursor: number = delCursor;
+    // 追踪本次同步是否真的发生数据变化，无变化时不刷新 UI，避免轮询空转导致列表闪烁
+    let hasNewMessages: boolean = false;
+    const deletedIds: number[] = [];
+    let purgeCeiling: number = 0;
+    let didReset: boolean = false;
+    const incoming: NotifyMessage[] = [];
 
     const MAX_PAGES: number = 20;
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -821,7 +955,9 @@ export struct NotifyView {
       const result = await svc.getMessages(null, 0, 100, after, newDelCursor);
       if (!result.ok) {
         hilog.warn(DOMAIN, TAG, 'syncFromServer 失败：%{public}s', result.errorMsg);
-        if (forceFull && this.messages.length === 0) {
+        // 本地已有消息时静默保留旧数据（不打断用户浏览历史）
+        // 本地无消息时才透出错误提示，避免首次进入/切服务器失败时空白无反馈
+        if (this.messages.length === 0) {
           this.errorMsg = result.errorMsg;
         }
         return;
@@ -833,9 +969,13 @@ export struct NotifyView {
         await MessageCacheStore.clearDevice(deviceKey);
         after = 0;
         newMaxId = 0;
+        didReset = true;
       } else {
         if (result.deletionIds.length > 0) {
           await MessageCacheStore.deleteByIds(deviceKey, result.deletionIds);
+          for (let i = 0; i < result.deletionIds.length; i++) {
+            deletedIds.push(result.deletionIds[i]);
+          }
         }
         if (result.purges.length > 0) {
           let maxCeiling: number = 0;
@@ -846,6 +986,9 @@ export struct NotifyView {
           }
           if (maxCeiling > 0) {
             await MessageCacheStore.purgeBefore(deviceKey, maxCeiling);
+            if (maxCeiling > purgeCeiling) {
+              purgeCeiling = maxCeiling;
+            }
           }
         }
       }
@@ -856,7 +999,9 @@ export struct NotifyView {
       // 写入新消息并推进 maxId
       if (result.messages.length > 0) {
         await MessageCacheStore.upsertMessages(deviceKey, result.messages);
+        hasNewMessages = true;
         for (let i = 0; i < result.messages.length; i++) {
+          incoming.push(result.messages[i]);
           if (result.messages[i].id > newMaxId) {
             newMaxId = result.messages[i].id;
           }
@@ -875,74 +1020,125 @@ export struct NotifyView {
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
       return;
     }
-    const refreshed: NotifyMessage[] = await MessageCacheStore.loadLatest(deviceKey, 100);
-    this.messages = refreshed;
-    this.hasMore = refreshed.length > 0;
+
     this.errorMsg = '';
+
+    // reset：数据被服务端整体重置，内存不可信，重新分组播种
+    if (didReset) {
+      const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+      this.messages = refreshed.messages;
+      this.groupTotals = refreshed.totals;
+      return;
+    }
+
+    const hasDeletions: boolean = deletedIds.length > 0 || purgeCeiling > 0;
+    const dataChanged: boolean = hasNewMessages || hasDeletions;
+
+    // 无任何变化（轮询空转）：完全不碰列表数据，避免重建闪烁和打断滚动位置
+    if (!dataChanged && this.messages.length > 0) {
+      return;
+    }
+
+    if (!dataChanged) {
+      // 内存为空（首次播种/切服务器）：从本地分组加载
+      const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+      this.messages = refreshed.messages;
+      this.groupTotals = refreshed.totals;
+      return;
+    }
+
+    // 有变化：增量合并，不整体重建（保留滚动位置、展开态、组内手动加载的老消息）
+    const deletedSet: Set<number> = new Set<number>();
+    for (let i = 0; i < deletedIds.length; i++) {
+      deletedSet.add(deletedIds[i]);
+    }
+    const merged: NotifyMessage[] = [];
+    const mergedIds: Set<number> = new Set<number>();
+    // 1) 保留内存中未被删除/purge 的消息
+    for (let i = 0; i < this.messages.length; i++) {
+      const m: NotifyMessage = this.messages[i];
+      if (deletedSet.has(m.id)) {
+        continue;
+      }
+      if (purgeCeiling > 0 && m.id <= purgeCeiling) {
+        continue;
+      }
+      if (!mergedIds.has(m.id)) {
+        merged.push(m);
+        mergedIds.add(m.id);
+      }
+    }
+    // 2) 追加本次新拉到的消息（去重）
+    for (let i = 0; i < incoming.length; i++) {
+      if (!mergedIds.has(incoming[i].id)) {
+        merged.push(incoming[i]);
+        mergedIds.add(incoming[i].id);
+      }
+    }
+    // 3) 整体按时间倒序（与 loadGroupedLatest 排序口径一致）
+    merged.sort((a: NotifyMessage, b: NotifyMessage) => {
+      if (b.timestamp !== a.timestamp) {
+        return b.timestamp - a.timestamp;
+      }
+      return b.id - a.id;
+    });
+    this.messages = merged;
+    // 刷新各 group 真实总数（删除/新增都会改变）
+    this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKey);
   }
 
-  private async loadMore(): Promise<void> {
-    if (this.loadingMore || !this.hasMore || this.messages.length === 0) {
+  /**
+   * 组内"加载更多"：加载某 group_key 下比当前内存中最老 id 更老的 100 条。
+   * 数据源为本地 DB（首次播种已拉取足够消息，组内分页只读本地）。
+   * append 到 this.messages 末尾，buildNotifySections 会自动聚合到已有 section。
+   */
+  private async loadMoreInGroup(groupKey: string): Promise<void> {
+    if (this.groupLoadingMore.has(groupKey)) {
       return;
     }
-    const oldest: NotifyMessage = this.messages[this.messages.length - 1];
-    if (!oldest || oldest.id <= 0) {
-      this.hasMore = false;
+    // 找到该 group 在内存中的最老消息 id（id 最小）
+    let oldestId: number = Number.MAX_SAFE_INTEGER;
+    for (let i = 0; i < this.messages.length; i++) {
+      if (this.messages[i].group === groupKey && this.messages[i].id < oldestId) {
+        oldestId = this.messages[i].id;
+      }
+    }
+    if (oldestId === Number.MAX_SAFE_INTEGER) {
       return;
     }
-    this.loadingMore = true;
-    const PAGE_SIZE: number = 100;
+    this.groupLoadingMore = new Set<string>(this.groupLoadingMore).add(groupKey);
     try {
       const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      const existingIds: Set<number> = new Set<number>();
-      for (let i = 0; i < this.messages.length; i++) {
-        existingIds.add(this.messages[i].id);
+      if (!deviceKey || deviceKey.length === 0) {
+        return;
       }
-
-      // 1) 优先从本地缓存读更老的消息
-      let cached: NotifyMessage[] = [];
-      if (deviceKey && deviceKey.length > 0) {
-        cached = await MessageCacheStore.loadOlder(deviceKey, oldest.id, PAGE_SIZE);
-      }
-      const cachedDeduped: NotifyMessage[] = [];
-      for (let i = 0; i < cached.length; i++) {
-        if (!existingIds.has(cached[i].id)) {
-          cachedDeduped.push(cached[i]);
-          existingIds.add(cached[i].id);
+      const PAGE_SIZE: number = 100;
+      const older: NotifyMessage[] =
+        await MessageCacheStore.loadGroupOlder(deviceKey, groupKey, oldestId, PAGE_SIZE);
+      if (older.length > 0) {
+        // 去重后 append
+        const existingIds: Set<number> = new Set<number>();
+        for (let i = 0; i < this.messages.length; i++) {
+          existingIds.add(this.messages[i].id);
         }
-      }
-      if (cachedDeduped.length > 0) {
-        this.messages = this.messages.concat(cachedDeduped);
-      }
-
-      if (cached.length < PAGE_SIZE) {
-        const result = await NotifyMessageService.getInstance().getMessages(null, oldest.id, PAGE_SIZE);
-        if (result.ok) {
-          const newItems: NotifyMessage[] =
-            result.messages.sort((a: NotifyMessage, b: NotifyMessage) => b.timestamp - a.timestamp);
-          const deduped: NotifyMessage[] = [];
-          for (let i = 0; i < newItems.length; i++) {
-            if (!existingIds.has(newItems[i].id)) {
-              deduped.push(newItems[i]);
-              existingIds.add(newItems[i].id);
-            }
+        const deduped: NotifyMessage[] = [];
+        for (let i = 0; i < older.length; i++) {
+          if (!existingIds.has(older[i].id)) {
+            deduped.push(older[i]);
+            existingIds.add(older[i].id);
           }
-          if (deduped.length > 0) {
-            this.messages = this.messages.concat(deduped);
-            if (deviceKey && deviceKey.length > 0) {
-              await MessageCacheStore.upsertMessages(deviceKey, deduped);
-            }
-          }
-          if (newItems.length < PAGE_SIZE) {
-            this.hasMore = false;
-          }
+        }
+        if (deduped.length > 0) {
+          this.messages = this.messages.concat(deduped);
         }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, 'loadMore 异常：%{public}s', msg);
+      hilog.warn(DOMAIN, TAG, 'loadMoreInGroup 异常：%{public}s', msg);
     } finally {
-      this.loadingMore = false;
+      const next = new Set<string>(this.groupLoadingMore);
+      next.delete(groupKey);
+      this.groupLoadingMore = next;
     }
   }
 

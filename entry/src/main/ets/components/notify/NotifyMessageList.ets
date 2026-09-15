@@ -15,13 +15,13 @@ export struct NotifyMessageList {
   @Prop selectedIds: number[] = [];
   @Prop expandedGroups: string[] = [];
   @Prop groupCardHeights: Map<string, number> = new Map<string, number>();
-  @Prop loadingMore: boolean = false;
-  @Prop hasMore: boolean = true;
+  @Prop groupTotals: Map<string, number> = new Map<string, number>();
+  @Prop groupLoadingMore: Set<string> = new Set<string>();
   @Prop statusBarHeight: number = 0;
   @Prop navBarHeight: number = 0;
   @Prop immersiveLightEnabled: boolean = true;
   listScroller: Scroller = new Scroller();
-  onLoadMore: () => void = () => {};
+  onLoadMoreInGroup: (groupKey: string) => void = (_groupKey: string) => {};
   onToggleSelect: (id: number) => void = (_id: number) => {};
   onToggleGroupSelection: (messages: NotifyMessage[]) => void = (_messages: NotifyMessage[]) => {};
   onToggleGroupExpanded: (groupKey: string) => void = (_groupKey: string) => {};
@@ -38,16 +38,37 @@ export struct NotifyMessageList {
   private groupSelected(messages: NotifyMessage[]): boolean {
     return messages.length > 0 && messages.every((message: NotifyMessage) => this.isSelected(message.id));
   }
+  // 组内是否还有更多未加载的消息（内存数量 < 真实总数）
+  private groupHasMore(section: NotifySection): boolean {
+    return section.grouped && section.total > section.messages.length;
+  }
+  // 组内是否正在加载更多
+  private groupLoading(section: NotifySection): boolean {
+    return this.groupLoadingMore.has(section.groupKey);
+  }
 
   @Builder
   private deleteOne(message: NotifyMessage) { NotifySwipeDelete({ onDelete: () => this.onDeleteOne(message) }); }
   @Builder
   private deleteGroup(section: NotifySection) { NotifySwipeDelete({ onDelete: () => this.onDeleteGroup(section) }); }
 
+  @Builder
+  private groupLoadMoreFooter(section: NotifySection) {
+    Row() {
+      if (this.groupLoading(section)) {
+        LoadingProgress().width(16).height(16).color($r('app.color.text_accent_color'));
+        Text('加载中...').fontSize(13).fontColor($r('app.color.text_quinary_color')).margin({ left: 6 });
+      } else {
+        Text('加载更多').fontSize(13).fontColor($r('app.color.text_accent_color'));
+      }
+    }
+    .width('100%').height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center);
+  }
+
   build() {
     List({ space: 10, scroller: this.listScroller }) {
       ListItem() { Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 4 : this.statusBarHeight + 78); }
-      ForEach(buildNotifySections(this.messages), (section: NotifySection) => {
+      ForEach(buildNotifySections(this.messages, this.groupTotals), (section: NotifySection) => {
         if (!section.grouped) {
           ListItem() {
             NotifyMessageCard({ message: section.messages[0], isEditing: this.isEditing, selected: this.isSelected(section.messages[0].id),
@@ -58,18 +79,33 @@ export struct NotifyMessageList {
           ListItemGroup({ space: 0, header: this.expandedHeader(section) }) {
             ForEach(section.messages, (message: NotifyMessage, index: number) => {
               ListItem() {
-                NotifyGroupMessageRow({ message: message, isLast: index === section.messages.length - 1, isEditing: this.isEditing,
+                NotifyGroupMessageRow({ message: message, isLast: index === section.messages.length - 1 && !this.groupHasMore(section),
+                  isEditing: this.isEditing,
                   selected: this.isSelected(message.id), contentTransitionId: index === 0 ? `gmc:${section.groupKey}` : '',
                   onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
                   onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code) });
               }
-              // 左滑操作区由 ListItem 承载；保持组内行的白色表面与末行圆角，避免露出列表底色。
               .backgroundColor($r('app.color.card_background'))
-              .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: index === section.messages.length - 1 ? 12 : 0,
-                bottomRight: index === section.messages.length - 1 ? 12 : 0 })
+              .borderRadius({ topLeft: 0, topRight: 0,
+                bottomLeft: (index === section.messages.length - 1 && !this.groupHasMore(section)) ? 12 : 0,
+                bottomRight: (index === section.messages.length - 1 && !this.groupHasMore(section)) ? 12 : 0 })
               .clip(true)
               .swipeAction({ end: { builder: () => { this.deleteOne(message); } } });
             }, (message: NotifyMessage) => `group-child:${section.groupKey}:${message.id}`);
+
+            // 组内"加载更多"按钮：组内末尾子 ListItem，与消息行同级（消息行点击可正常触发）
+            if (this.groupHasMore(section)) {
+              ListItem() {
+                this.groupLoadMoreFooter(section);
+              }.backgroundColor($r('app.color.card_background'))
+               .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: 12, bottomRight: 12 })
+               .clip(true)
+               .onClick(() => {
+                 if (!this.groupLoading(section)) {
+                   this.onLoadMoreInGroup(section.groupKey);
+                 }
+               });
+            }
           }
         } else {
           ListItem() {
@@ -80,14 +116,9 @@ export struct NotifyMessageList {
           }.swipeAction({ end: { builder: () => { this.deleteGroup(section); } } });
         }
       }, (section: NotifySection) => section.key);
-      if (this.loadingMore) {
-        ListItem() { LoadingProgress().width(18).height(18).color($r('app.color.text_accent_color')); }.height(44);
-      } else if (!this.hasMore && this.messages.length > 0) {
-        ListItem() { Text('没有更多了').fontSize(12).fontColor($r('app.color.text_quinary_color')).width('100%').textAlign(TextAlign.Center); }.height(40);
-      }
       ListItem() { Row().width('100%').height(this.navBarHeight + (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 72 : 64)); }
     }
-    .width('100%').height('100%').padding({ left: 16, right: 16 }).align(Alignment.Top).clip(false).onReachEnd(() => this.onLoadMore());
+    .width('100%').height('100%').padding({ left: 16, right: 16 }).align(Alignment.Top).clip(false);
   }
 
   @Builder

@@ -19,6 +19,15 @@ export interface NotifySection {
   groupKey: string;
   messages: NotifyMessage[];
   grouped: boolean;
+  // 该 group_key 在数据库中的真实总数（含未加载到内存的部分）。
+  // 用于徽标显示和"加载更多"按钮是否展示。无 group 的单条消息 total = messages.length。
+  total: number;
+}
+
+/** buildNotifySections 内部聚合用的中间结构（ArkTS 禁止匿名对象类型）。 */
+interface GroupAggregation {
+  groupKey: string;
+  messages: NotifyMessage[];
 }
 
 /** 文本匹配阶段的内部位置信息。 */
@@ -67,31 +76,50 @@ export function parseNotifyTextSegments(text: string): NotifyTextSegment[] {
   return segments;
 }
 
-/** 依据消息当前顺序生成稳定的列表分组，避免渲染层重复维护排序逻辑。 */
-export function buildNotifySections(messages: NotifyMessage[]): NotifySection[] {
-  const counts: Map<string, number> = new Map<string, number>();
-  for (let i = 0; i < messages.length; i++) {
-    if (messages[i].group.length > 0) {
-      counts.set(messages[i].group, (counts.get(messages[i].group) ?? 0) + 1);
-    }
-  }
-  const sections: NotifySection[] = [];
+/** 无 group 消息聚合后的虚拟 groupKey（空串在 RDB 中作为 group_key 存储） */
+export const UNGROUPED_GROUP_KEY: string = '';
+
+/** 虚拟 groupKey 对应的展示名称（展开态顶栏标题 + 折叠态卡片标题） */
+export function displayGroupTitle(groupKey: string): string {
+  return groupKey.length === 0 ? '未分组' : groupKey;
+}
+
+/**
+ * 依据消息当前顺序生成稳定的列表分组，避免渲染层重复维护排序逻辑。
+ * 无 group（空串）的消息也会聚合到"未分组"虚拟 section。
+ * totals 参数：每个 group_key 的真实总数，用于徽标和"加载更多"按钮。
+ * 不传 totals 时回退到内存中 messages 数量（旧逻辑兼容）。
+ */
+export function buildNotifySections(messages: NotifyMessage[],
+  totals?: Map<string, number>): NotifySection[] {
+  // 第一遍：聚合消息到各 group（保持首次出现顺序）
+  const raw: GroupAggregation[] = [];
   const positions: Map<string, number> = new Map<string, number>();
   for (let i = 0; i < messages.length; i++) {
     const message: NotifyMessage = messages[i];
-    if (message.group.length === 0) {
-      sections.push({ key: `single:${message.id}`, groupKey: '', messages: [message], grouped: false });
-      continue;
-    }
     const position: number | undefined = positions.get(message.group);
     if (position === undefined) {
-      positions.set(message.group, sections.length);
-      sections.push({ key: `group:${message.group}:${counts.get(message.group) ?? 0}`, groupKey: message.group,
-        messages: [message], grouped: false });
+      positions.set(message.group, raw.length);
+      const agg: GroupAggregation = { groupKey: message.group, messages: [message] };
+      raw.push(agg);
     } else {
-      sections[position].messages.push(message);
-      sections[position].grouped = true;
+      raw[position].messages.push(message);
     }
+  }
+  // 第二遍：生成 section，key 同时含 total（删除/同步时变）和内存 size（组内加载更多 append 时变），
+  // 两者任一变化都强制 ForEach 重建子树，否则新增子项不会渲染
+  const sections: NotifySection[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const groupKey: string = raw[i].groupKey;
+    const groupMessages: NotifyMessage[] = raw[i].messages;
+    const total: number = totals ? (totals.get(groupKey) ?? groupMessages.length) : groupMessages.length;
+    sections.push({
+      key: `group:${groupKey}:${total}:${groupMessages.length}`,
+      groupKey,
+      messages: groupMessages,
+      grouped: groupMessages.length > 1,
+      total
+    });
   }
   return sections;
 }
