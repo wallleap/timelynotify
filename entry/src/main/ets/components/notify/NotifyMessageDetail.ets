@@ -61,15 +61,18 @@ export struct NotifyMessageDetail {
   @Builder
   private linkRow(url: string) {
     if (url.length > 0) {
-      Row({ space: 10 }) {
-        Image($r('app.media.url')).width(20).height(20).fillColor($r('app.color.text_accent_color')).draggable(false)
-          .objectFit(ImageFit.Contain).flexShrink(0);
-        Column({ space: 3 }) {
-          Text(this.linkHost(url)).fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary_color'))
-            .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
-          Text(url).fontSize(12).fontColor($r('app.color.text_tertiary_color')).width('100%').maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis });
-        }.layoutWeight(1).alignItems(HorizontalAlign.Start);
+      Row({ space: 8 }) {
+        // 除复制按钮外的卡片主区域均用于打开链接，保持足够大的点击面积。
+        Row({ space: 10 }) {
+          Image($r('app.media.url')).width(20).height(20).fillColor($r('app.color.text_accent_color')).draggable(false)
+            .objectFit(ImageFit.Contain).flexShrink(0);
+          Column({ space: 3 }) {
+            Text(this.linkHost(url)).fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary_color'))
+              .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+            Text(url).fontSize(12).fontColor($r('app.color.text_tertiary_color')).width('100%').maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis });
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start);
+        }.layoutWeight(1).alignItems(VerticalAlign.Center).onClick(() => this.onOpenUrl(url));
         Row() {
           Image($r('app.media.copy')).width(17).height(17).fillColor($r('app.color.text_secondary_color')).draggable(false)
             .objectFit(ImageFit.Contain);
@@ -78,8 +81,7 @@ export struct NotifyMessageDetail {
         .backgroundColor($r('app.color.index_page_body_background')).onClick(() => this.onCopyUrl(url));
       }
       .width('100%').padding(12).borderRadius(12).backgroundColor($r('app.color.card_background'))
-      .border({ width: 1, color: $r('app.color.divider_color') }).alignItems(VerticalAlign.Center)
-      .onClick(() => this.onOpenUrl(url));
+      .border({ width: 1, color: $r('app.color.divider_color') }).alignItems(VerticalAlign.Center);
     }
   }
 
