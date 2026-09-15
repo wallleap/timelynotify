@@ -17,6 +17,7 @@ export struct NotifyMessageDetail {
   onDismiss: () => void = () => {};
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
+  onCopyUrl: (url: string) => void = (_url: string) => {};
 
   @Builder
   private textSpans(text: string) {
@@ -48,16 +49,39 @@ export struct NotifyMessageDetail {
     }.width('100%').alignItems(HorizontalAlign.Start);
   }
 
-  /** extras.url 链接行：非空时展示完整链接，点击直接打开 */
+  /** 提取链接主机名，用作链接卡片的易读主标题。 */
+  private linkHost(url: string): string {
+    const protocolIndex: number = url.indexOf('://');
+    const hostStart: number = protocolIndex >= 0 ? protocolIndex + 3 : 0;
+    const pathIndex: number = url.indexOf('/', hostStart);
+    return pathIndex >= 0 ? url.substring(hostStart, pathIndex) : url.substring(hostStart);
+  }
+
+  /** extras.url 链接信息卡：点击卡片打开，右侧按钮复制完整 URL。 */
   @Builder
   private linkRow(url: string) {
     if (url.length > 0) {
-      Row({ space: 5 }) {
-        Image($r('app.media.url')).width(15).height(15).fillColor($r('app.color.text_accent_color')).draggable(false)
-          .objectFit(ImageFit.Contain).flexShrink(0);
-        Text(url).fontSize(15).fontColor($r('app.color.text_accent_color'))
-          .lineHeight(22.5).onClick(() => this.onOpenUrl(url));
-      }.width('100%').alignItems(VerticalAlign.Top);
+      Row({ space: 8 }) {
+        // 除复制按钮外的卡片主区域均用于打开链接，保持足够大的点击面积。
+        Row({ space: 10 }) {
+          Image($r('app.media.url')).width(20).height(20).fillColor($r('app.color.text_accent_color')).draggable(false)
+            .objectFit(ImageFit.Contain).flexShrink(0);
+          Column({ space: 3 }) {
+            Text(this.linkHost(url)).fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.text_primary_color'))
+              .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+            Text(url).fontSize(12).fontColor($r('app.color.text_tertiary_color')).width('100%').maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis });
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start);
+        }.layoutWeight(1).alignItems(VerticalAlign.Center).onClick(() => this.onOpenUrl(url));
+        Row() {
+          Image($r('app.media.copy')).width(17).height(17).fillColor($r('app.color.text_secondary_color')).draggable(false)
+            .objectFit(ImageFit.Contain);
+        }
+        .width(36).height(36).borderRadius(18).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+        .backgroundColor($r('app.color.index_page_body_background')).onClick(() => this.onCopyUrl(url));
+      }
+      .width('100%').padding(12).borderRadius(12).backgroundColor($r('app.color.card_background'))
+      .border({ width: 1, color: $r('app.color.divider_color') }).alignItems(VerticalAlign.Center);
     }
   }
 

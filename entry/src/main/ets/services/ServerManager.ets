@@ -288,6 +288,10 @@ export class ServerManager {
       } else {
         this.currentId = '';
       }
+      // 恢复通知视图范围；老版本未写入时维持原有默认（聚合全部服务器）。
+      const savedViewAllMode: string = await PreferencesUtil.getString(
+        ctx, PreferencesUtil.KEY_SERVER_VIEW_ALL_MODE, 'true');
+      this.viewAllMode = savedViewAllMode !== 'false';
       // 迁移：旧版全局 client_token → 当前 server 的 per-server clientToken
       // 旧版所有 server 共享一个全局 token，迁移到当前 server（用户正在使用的那个）；
       // 其余 server 留空走内置默认。迁移后清除全局 key，避免重复迁移
@@ -347,6 +351,8 @@ export class ServerManager {
       return;
     }
     this.viewAllMode = viewAll;
+    // 视图范围与服务器列表独立保存，切换后无需等待即可刷新页面。
+    PreferencesUtil.putString(null, PreferencesUtil.KEY_SERVER_VIEW_ALL_MODE, viewAll ? 'true' : 'false');
     hilog.info(DOMAIN, TAG, '视图模式切换：%{public}s', viewAll ? '全部' : '单服务器');
     this.emitChange();
   }
