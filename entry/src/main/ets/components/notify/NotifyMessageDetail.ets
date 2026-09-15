@@ -48,6 +48,19 @@ export struct NotifyMessageDetail {
     }.width('100%').alignItems(HorizontalAlign.Start);
   }
 
+  /** extras.url 链接行：非空时展示完整链接，点击直接打开 */
+  @Builder
+  private linkRow(url: string) {
+    if (url.length > 0) {
+      Row({ space: 5 }) {
+        Image($r('app.media.url')).width(15).height(15).fillColor($r('app.color.text_accent_color'))
+          .objectFit(ImageFit.Contain).flexShrink(0);
+        Text(url).fontSize(15).fontColor($r('app.color.text_accent_color'))
+          .lineHeight(22.5).onClick(() => this.onOpenUrl(url));
+      }.width('100%').alignItems(VerticalAlign.Top);
+    }
+  }
+
   @Builder
   private titleBar() {
     Column() {
@@ -86,6 +99,7 @@ export struct NotifyMessageDetail {
             } else if (this.message.body.length > 0) {
               this.body(this.message.body);
             }
+            this.linkRow(this.message.url);
             Text(formatNotifyTime(this.message.timestamp)).fontSize(12).fontColor($r('app.color.text_quinary_color'))
               .width('100%').textAlign(TextAlign.End);
           }

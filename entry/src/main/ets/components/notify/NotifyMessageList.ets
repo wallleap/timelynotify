@@ -34,6 +34,7 @@ export struct NotifyMessageList {
   onDeleteGroup: (section: NotifySection) => void = (_section: NotifySection) => {};
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
+  onCopyUrl: (url: string) => void = (_url: string) => {};
 
   private isSelected(id: number): boolean { return this.selectedIds.indexOf(id) >= 0; }
   private isExpanded(groupKey: string): boolean { return this.expandedGroups.indexOf(groupKey) >= 0; }
@@ -75,7 +76,8 @@ export struct NotifyMessageList {
           ListItem() {
             NotifyMessageCard({ message: section.messages[0], isEditing: this.isEditing, selected: this.isSelected(section.messages[0].id),
               onSelect: (id: number) => this.onToggleSelect(id), onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
-              onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code) });
+              onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code),
+              onCopyUrl: (url: string) => this.onCopyUrl(url) });
           }.swipeAction({ end: { builder: () => { this.deleteOne(section.messages[0]); } } });
         } else if (this.isExpanded(section.groupKey)) {
           ListItemGroup({ space: 0, header: this.expandedHeader(section) }) {
@@ -85,7 +87,8 @@ export struct NotifyMessageList {
                   isEditing: this.isEditing,
                   selected: this.isSelected(message.id), contentTransitionId: index === 0 ? `gmc:${section.groupKey}` : '',
                   onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
-                  onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code) });
+                  onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code),
+                  onCopyUrl: (url: string) => this.onCopyUrl(url) });
               }
               .backgroundColor($r('app.color.card_background'))
               .borderRadius({ topLeft: 0, topRight: 0,

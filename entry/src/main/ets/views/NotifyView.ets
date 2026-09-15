@@ -335,7 +335,8 @@ export struct NotifyView {
       onHeightChange: (groupKey: string, height: number) => this.updateGroupCardHeight(groupKey, height),
       onDeleteOne: (message: NotifyMessage) => this.confirmDeleteOne(message),
       onDeleteGroup: (section: NotifySection) => this.confirmDeleteGroup(section),
-      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
+      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code),
+      onCopyUrl: (url: string) => this.copyUrl(url) });
   }
 
   /** 打开消息详情，供列表卡片统一回调。 */
@@ -451,6 +452,20 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制验证码失败：%{public}s', msg);
+      showToast(this.getUIContext(), '复制失败');
+    }
+  }
+
+  /** 复制消息 extras.url 到剪贴板，供列表卡片链接 action 使用 */
+  private async copyUrl(url: string): Promise<void> {
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, url);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      await sys.setData(data);
+      showToast(this.getUIContext(), '链接已复制', 1500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '复制链接失败：%{public}s', msg);
       showToast(this.getUIContext(), '复制失败');
     }
   }

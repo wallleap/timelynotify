@@ -12,6 +12,8 @@ const EXPORT_TAG: string = 'NotifyExportSvc';
 class NotifyExportExtras {
   device_key: string = '';
   subtitle: string = '';
+  // 点击跳转 URL（对应消息 extras.url）
+  url: string = '';
 }
 
 /** 导出文件中单条通知的显式结构。 */
@@ -161,6 +163,9 @@ export class NotifyExportService {
     raw.extras.device_key = deviceKey;
     if (message.subtitle.length > 0) {
       raw.extras.subtitle = message.subtitle;
+    }
+    if (message.url.length > 0) {
+      raw.extras.url = message.url;
     }
     return raw;
   }

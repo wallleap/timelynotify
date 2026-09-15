@@ -11,6 +11,7 @@ export struct NotifyMessageCard {
   onOpen: (message: NotifyMessage) => void = (_message: NotifyMessage) => {};
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
+  onCopyUrl: (url: string) => void = (_url: string) => {};
 
   @Builder
   private spans(text: string) {
@@ -23,6 +24,28 @@ export struct NotifyMessageCard {
         Span(segment.text).fontSize(14).fontColor($r('app.color.text_secondary_color'));
       }
     }, (segment: NotifyTextSegment, index: number) => `${index}_${segment.type}_${segment.text}`)
+  }
+
+  @Builder
+  private linkActions(url: string) {
+    if (url.length > 0) {
+      // 时间行下方的链接 action 行：复制（灰）/打开（主色）两项平分宽度，中间分割线，各自居中
+      Row() {
+        Row({ space: 4 }) {
+          Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.text_secondary_color'))
+            .objectFit(ImageFit.Contain).flexShrink(0);
+          Text('复制链接').fontSize(13).fontColor($r('app.color.text_secondary_color'));
+        }.layoutWeight(1).justifyContent(FlexAlign.Center)
+          .onClick(() => this.onCopyUrl(url));
+        Divider().vertical(true).strokeWidth(1).color($r('app.color.text_quinary_color')).height(16).opacity(0.35);
+        Row({ space: 4 }) {
+          Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.text_accent_color'))
+            .objectFit(ImageFit.Contain).flexShrink(0);
+          Text('打开链接').fontSize(13).fontColor($r('app.color.text_accent_color'));
+        }.layoutWeight(1).justifyContent(FlexAlign.Center)
+          .onClick(() => this.onOpenUrl(url));
+      }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 4 });
+    }
   }
 
   @Builder
@@ -65,6 +88,7 @@ export struct NotifyMessageCard {
         }.width('100%').alignItems(VerticalAlign.Top);
         Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.text_quinary_color'))
           .width('100%').textAlign(TextAlign.End);
+        this.linkActions(this.message.url);
       }.layoutWeight(1).alignItems(HorizontalAlign.Start);
     }
     .width('100%').padding(12).backgroundColor($r('app.color.card_background')).borderRadius(12).alignItems(VerticalAlign.Top)

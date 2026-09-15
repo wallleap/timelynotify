@@ -27,6 +27,8 @@ const SQL_CREATE_MSG: string =
   'inbox_content TEXT NOT NULL DEFAULT \'\', ' +
   // 通知分组标识（对应 NotifyMessage.group；不能用 group 命名，SQL 保留字）
   'group_key TEXT NOT NULL DEFAULT \'\', ' +
+  // 点击跳转 URL（对应 NotifyMessage.url，来自 extras.url）
+  'url TEXT NOT NULL DEFAULT \'\', ' +
   'PRIMARY KEY (device_key, id)' +
   ')';
 
@@ -77,6 +79,7 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'image': m.image,
     'inbox_content': JSON.stringify(m.inboxContent),
     'group_key': m.group,
+    'url': m.url,
   };
   return bucket;
 }
@@ -98,6 +101,7 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.timestamp = rs.getLong(rs.getColumnIndex('timestamp'));
     m.image = rs.getString(rs.getColumnIndex('image'));
     m.group = rs.getString(rs.getColumnIndex('group_key'));
+    m.url = rs.getString(rs.getColumnIndex('url'));
     const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
     if (inboxStr && inboxStr.length > 0) {
       try {
@@ -135,34 +139,44 @@ export class MessageCacheStore {
 
   /**
    * 旧库结构迁移。
-   * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效。
-   * 检测到 group_key 缺失时：ADD COLUMN 补列，并清空消息与同步元信息，
-   * 让下次同步走 after=0 全量重新播种（增量同步无法回填旧行的 group）。
+   * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效；
+   * v2 补充跳转链接 url 列。
+   * 检测到缺失列时逐列补齐：
+   * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
+   * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
    */
   private static async migrateSchema(db: relationalStore.RdbStore): Promise<void> {
     try {
       const rs: relationalStore.ResultSet =
         await db.querySql(`PRAGMA table_info(${TABLE_MSG})`);
       let hasGroupKey: boolean = false;
+      let hasUrl: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
-          if (rs.getString(nameIndex) === 'group_key') {
+          const col: string = rs.getString(nameIndex);
+          if (col === 'group_key') {
             hasGroupKey = true;
-            break;
+          } else if (col === 'url') {
+            hasUrl = true;
           }
         } while (rs.goToNextRow());
       }
       rs.close();
-      if (hasGroupKey) {
-        return;
+      // group_key 缺失：清空本地缓存重新播种（元信息一并清空，等价于一次 forceFull）
+      if (!hasGroupKey) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 group_key 列并清空旧缓存');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN group_key TEXT NOT NULL DEFAULT ''`);
+        await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
+        await db.executeSql(`DELETE FROM ${TABLE_META}`);
       }
-      hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 group_key 列并清空旧缓存');
-      await db.executeSql(
-        `ALTER TABLE ${TABLE_MSG} ADD COLUMN group_key TEXT NOT NULL DEFAULT ''`);
-      // 旧行 group 无法回填，作废本地缓存重新播种（元信息一并清空，等价于一次 forceFull）
-      await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
-      await db.executeSql(`DELETE FROM ${TABLE_META}`);
+      // url 缺失：仅补列，保留已有数据
+      if (!hasUrl) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 url 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN url TEXT NOT NULL DEFAULT ''`);
+      }
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'migrateSchema 失败：%{public}s', formatError(err));
     }

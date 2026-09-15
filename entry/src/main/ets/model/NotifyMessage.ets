@@ -21,6 +21,8 @@ export class NotifyMessage extends Object {
   inboxContent: string[] = [];
   // 通知分组标识（来自 extras.group）：非空且相同的消息在列表中折叠为一组
   group: string = '';
+  // 点击跳转 URL（来自 extras.url，Bark 语义：点击通知跳转）：非空时点击卡片/系统通知直接打开
+  url: string = '';
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {
@@ -66,11 +68,19 @@ export class NotifyMessage extends Object {
       // 分组标识从 extras.group 取，纯空白视为未分组
       const groupVal: Object | undefined = extras['group'];
       m.group = typeof groupVal === 'string' ? groupVal.trim() : '';
+      // 跳转 URL 从 extras.url 取，纯空白视为无链接
+      const urlVal: Object | undefined = extras['url'];
+      m.url = typeof urlVal === 'string' ? urlVal.trim() : '';
     }
     // 兼容部分推送通道把 group 放在消息顶层的情况
     if (m.group.length === 0) {
       const topGroupVal: Object | undefined = raw['group'];
       m.group = typeof topGroupVal === 'string' ? topGroupVal.trim() : '';
+    }
+    // 兼容部分推送通道把 url 放在消息顶层的情况
+    if (m.url.length === 0) {
+      const topUrlVal: Object | undefined = raw['url'];
+      m.url = typeof topUrlVal === 'string' ? topUrlVal.trim() : '';
     }
 
     const dateVal: Object | undefined = raw['date'];
