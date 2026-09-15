@@ -18,18 +18,22 @@ export struct NotifyMessageDetail {
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
   onCopyUrl: (url: string) => void = (_url: string) => {};
+  // 非链接、非验证码文本点击时复制对应原文，便于直接复用通知内容。
+  onCopyText: (text: string) => void = (_text: string) => {};
 
   @Builder
   private textSpans(text: string) {
     ForEach(parseNotifyTextSegments(text), (segment: NotifyTextSegment, index: number) => {
       if (segment.type === NOTIFY_SEGMENT_URL) {
-        Span(segment.text).fontColor($r('app.color.text_accent_color')).fontSize(15)
+        Span(segment.text).fontColor($r('app.color.link_color')).fontSize(15)
           .onClick(() => this.onOpenUrl(segment.text));
       } else if (segment.type === NOTIFY_SEGMENT_CODE) {
         Span(segment.text).fontColor($r('app.color.text_accent_color')).fontSize(15)
           .onClick(() => this.onCopyCode(segment.text));
       } else {
-        Span(segment.text).fontColor($r('app.color.text_secondary_color')).fontSize(15);
+        // 普通文本可直接复制该连续片段；空白区域由外层 Text 复制整段内容。
+        Span(segment.text).fontColor($r('app.color.text_secondary_color')).fontSize(15)
+          .onClick(() => this.onCopyText(segment.text));
       }
     }, (segment: NotifyTextSegment, index: number) => `${index}_${segment.type}_${segment.text}`)
   }
@@ -37,16 +41,112 @@ export struct NotifyMessageDetail {
   @Builder
   private body(text: string) {
     Text() { this.textSpans(text) }
-      .width('100%').lineHeight(24);
+      .width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
+      .onClick(() => this.onCopyText(text));
   }
 
   @Builder
   private inbox(items: string[]) {
     Column({ space: 8 }) {
       ForEach(items, (line: string, index: number) => {
-        Text() { this.textSpans(line) }.width('100%').lineHeight(24);
+        // 点击每一条收件箱内容的非识别区域时，复制该条完整文本。
+        Text() { this.textSpans(line) }.width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
+          .onClick(() => this.onCopyText(line));
       }, (line: string, index: number) => `${index}_${line}`)
     }.width('100%').alignItems(HorizontalAlign.Start);
+  }
+
+  /** 收集正文中所有可交互的链接和验证码，去重后在正文下方以图标化操作项展示。 */
+  private recognizedSegments(): NotifyTextSegment[] {
+    if (!this.message) {
+      return [];
+    }
+    const sourceTexts: string[] = [];
+    if (this.message.inboxContent.length > 0) {
+      for (let i = 0; i < this.message.inboxContent.length; i++) {
+        sourceTexts.push(this.message.inboxContent[i]);
+      }
+    } else if (this.message.body.length > 0) {
+      sourceTexts.push(this.message.body);
+    }
+    const result: NotifyTextSegment[] = [];
+    for (let i = 0; i < sourceTexts.length; i++) {
+      const segments: NotifyTextSegment[] = parseNotifyTextSegments(sourceTexts[i]);
+      for (let j = 0; j < segments.length; j++) {
+        if (segments[j].type !== NOTIFY_SEGMENT_URL && segments[j].type !== NOTIFY_SEGMENT_CODE) {
+          continue;
+        }
+        let duplicated: boolean = false;
+        for (let k = 0; k < result.length; k++) {
+          if (result[k].type === segments[j].type && result[k].text === segments[j].text) {
+            duplicated = true;
+            break;
+          }
+        }
+        if (!duplicated) {
+          result.push(segments[j]);
+        }
+      }
+    }
+    return result;
+  }
+
+  /** 识别结果类型判断，供 ArkUI 构建闭包复用，避免闭包内声明局部变量。 */
+  private isUrlSegment(segment: NotifyTextSegment): boolean {
+    return segment.type === NOTIFY_SEGMENT_URL;
+  }
+
+  /** 链接优先展示域名和路径，避免窄屏省略后只剩无辨识度的“https://…”。 */
+  private displayRecognizedText(segment: NotifyTextSegment): string {
+    if (!this.isUrlSegment(segment)) {
+      return segment.text;
+    }
+    return segment.text.replace(/^https?:\/\//i, '');
+  }
+
+  /** 正文识别结果：信息在左、按钮在右；仅按钮可触发打开或复制，避免误触。 */
+  @Builder
+  private recognizedActions(segments: NotifyTextSegment[]) {
+    if (segments.length > 0) {
+      Column({ space: 8 }) {
+        ForEach(segments, (segment: NotifyTextSegment, index: number) => {
+          Row({ space: 12 }) {
+            Column({ space: 2 }) {
+              Text(this.isUrlSegment(segment) ? '识别到链接' : '识别到验证码').fontSize(12)
+                .fontColor($r('app.color.text_tertiary_color')).width('100%');
+              Text(this.displayRecognizedText(segment)).fontSize(14).fontWeight(FontWeight.Medium)
+                .fontColor(this.isUrlSegment(segment) ? $r('app.color.link_color') : $r('app.color.text_primary_color'))
+                .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+            }
+            .layoutWeight(1).alignItems(HorizontalAlign.Start);
+            // 右侧图标和文案用于说明整张识别卡片的动作。
+            Row({ space: 4 }) {
+              Image(this.isUrlSegment(segment) ? $r('app.media.url') : $r('app.media.copy'))
+                .width(14).height(14).objectFit(ImageFit.Contain).draggable(false)
+                .fillColor(this.isUrlSegment(segment) ? $r('app.color.link_color') : $r('app.color.text_accent_color'));
+              Text(this.isUrlSegment(segment) ? '访问' : '复制').fontSize(13).fontWeight(FontWeight.Medium)
+                .fontColor(this.isUrlSegment(segment) ? $r('app.color.link_color') : $r('app.color.text_accent_color'));
+            }
+            .padding({ left: 10, right: 10, top: 8, bottom: 8 }).borderRadius(16)
+            .alignItems(VerticalAlign.Center);
+          }
+          .width('100%').padding(10).borderRadius(12).backgroundColor($r('app.color.link_action_background'))
+          // 整条识别结果均可操作，降低窄屏下仅点小按钮的误触成本。
+          .stateStyles({ pressed: {
+            backgroundColor: this.isUrlSegment(segment) ? $r('app.color.link_action_pressed_background') :
+              $r('app.color.selected_row_background')
+          } })
+          .alignItems(VerticalAlign.Center).onClick(() => {
+            if (this.isUrlSegment(segment)) {
+              this.onOpenUrl(segment.text);
+            } else {
+              this.onCopyCode(segment.text);
+            }
+          });
+        }, (segment: NotifyTextSegment, index: number) => `${index}_${segment.type}_${segment.text}`)
+      }
+      .width('100%').margin({ top: 14 });
+    }
   }
 
   /** 卡片贴底操作区：复制/打开两项等宽排列，与正文共享同一张卡片。 */
@@ -106,12 +206,14 @@ export struct NotifyMessageDetail {
                 Column() {
                   if (this.message.title.length > 0) {
                     Text(this.message.title).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
-                      .fontColor($r('app.color.text_primary_color')).width('100%');
+                      .fontColor($r('app.color.text_primary_color')).width('100%').copyOption(CopyOptions.InApp)
+                      .onClick(() => this.onCopyText(this.message ? this.message.title : ''));
                   }
                   if (this.message.subtitle.length > 0) {
                     Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.text_accent_color'))
                       .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-                      .margin({ top: this.message.title.length > 0 ? 6 : 0 });
+                      .margin({ top: this.message.title.length > 0 ? 6 : 0 }).copyOption(CopyOptions.InApp)
+                      .onClick(() => this.onCopyText(this.message ? this.message.subtitle : ''));
                   }
                 }
                 .layoutWeight(1).alignItems(HorizontalAlign.Start);
@@ -126,9 +228,10 @@ export struct NotifyMessageDetail {
               } else if (this.message.body.length > 0) {
                 this.body(this.message.body);
               }
-              // 时间保留在正文元信息区；链接操作以独立浅灰圆角容器承载。
+              // 时间作为正文元信息的收尾；识别结果紧随其后，避免打断内容阅读。
               Text(formatNotifyTime(this.message.timestamp)).fontSize(12).fontColor($r('app.color.text_quinary_color'))
                 .width('100%').maxLines(1).textAlign(TextAlign.End).margin({ top: 14 });
+              this.recognizedActions(this.recognizedSegments());
               }
               .width('100%').padding(20);
               if (this.message.url.length > 0) {

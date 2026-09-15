@@ -19,7 +19,7 @@ export struct NotifyGroupMessageRow {
   private spans(text: string) {
     ForEach(parseNotifyTextSegments(text), (segment: NotifyTextSegment, index: number) => {
       if (segment.type === NOTIFY_SEGMENT_URL) {
-        Span(segment.text).fontSize(14).fontColor($r('app.color.text_accent_color')).onClick(() => this.onOpenUrl(segment.text));
+        Span(segment.text).fontSize(14).fontColor($r('app.color.link_color')).onClick(() => this.onOpenUrl(segment.text));
       } else if (segment.type === NOTIFY_SEGMENT_CODE) {
         Span(segment.text).fontSize(14).fontColor($r('app.color.text_accent_color')).onClick(() => this.onCopyCode(segment.text));
       } else {

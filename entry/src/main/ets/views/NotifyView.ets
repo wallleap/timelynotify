@@ -410,7 +410,8 @@ export struct NotifyView {
       onDismiss: () => { this.showDetail = false; },
       onOpenUrl: (url: string) => { this.openUrl(url); },
       onCopyCode: (code: string) => { this.copyCode(code); },
-      onCopyUrl: (url: string) => { this.copyUrl(url); }
+      onCopyUrl: (url: string) => { this.copyUrl(url); },
+      onCopyText: (text: string) => { this.copyText(text); }
     });
   }
 
@@ -464,9 +465,12 @@ export struct NotifyView {
   private openUrl(url: string): void {
     try {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      // 正文识别允许无协议域名和邮箱：前者补 HTTPS，后者交由系统邮件应用处理。
+      const isEmail: boolean = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(url);
+      const targetUrl: string = isEmail ? `mailto:${url}` : (url.indexOf('://') >= 0 ? url : `https://${url}`);
       const want: Want = {
         action: 'ohos.want.action.viewData',
-        uri: url,
+        uri: targetUrl,
       };
       ctx.startAbility(want).catch((err: BusinessError) => {
         hilog.warn(DOMAIN, TAG, '打开链接失败：code=%{public}d msg=%{public}s', err.code, err.message);
@@ -489,6 +493,23 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制验证码失败：%{public}s', msg);
+      showToast(this.getUIContext(), '复制失败');
+    }
+  }
+
+  /** 复制普通通知文字，供详情页中非识别文本及其空白区域点击使用。 */
+  private async copyText(text: string): Promise<void> {
+    if (text.length === 0) {
+      return;
+    }
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      await sys.setData(data);
+      showToast(this.getUIContext(), '内容已复制', 1500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '复制普通文本失败：%{public}s', msg);
       showToast(this.getUIContext(), '复制失败');
     }
   }
