@@ -23,6 +23,9 @@ export class NotifyMessage extends Object {
   group: string = '';
   // 点击跳转 URL（来自 extras.url，Bark 语义：点击通知跳转）：非空时点击卡片/系统通知直接打开
   url: string = '';
+  // 运行时字段：消息所属服务器的 device_key（从本地缓存读出时赋值，不参与服务端 JSON 解析）。
+  // 用于跨服务器场景下精确定位删除目标（不同服务器 id 空间独立，仅靠 id 会误删）
+  deviceKey: string = '';
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {

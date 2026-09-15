@@ -7,6 +7,7 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
+import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
@@ -70,6 +71,8 @@ export struct NotifyView {
   @State groupLoadingMore: Set<string> = new Set<string>();
   // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
   @State groupEnabled: boolean = true;
+  // 视图模式：true=显示所有服务器的通知，false=只显示当前服务器
+  @State viewAll: boolean = true;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -104,16 +107,20 @@ export struct NotifyView {
       });
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.exitEditMode();
+      // 从 ServerManager 同步视图模式（ServerSettingsContent 切换全部/单服务器时触发）
+      const newViewAll: boolean = ServerManager.getInstance().getViewAllMode();
+      const viewModeChanged: boolean = this.viewAll !== newViewAll;
+      this.viewAll = newViewAll;
       this.refresh();
-      // 并递增代际使飞行中的旧请求响应过期丢弃
-      this.messages = [];
-      // 展开状态属于当前服务器，切换后一并清空
-      this.expandedGroups = [];
-      this.groupCardHeights = new Map<string, number>();
-      this.groupTotals = new Map<string, number>();
-      this.groupLoadingMore = new Set<string>();
+      // 视图模式变化或单服务器模式下切换服务器：清空列表重建
+      if (viewModeChanged || !this.viewAll) {
+        this.messages = [];
+        this.expandedGroups = [];
+        this.groupCardHeights = new Map<string, number>();
+        this.groupTotals = new Map<string, number>();
+        this.groupLoadingMore = new Set<string>();
+      }
       this.loadSeq++;
-      // 服务器切换后重新拉取消息
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
@@ -407,17 +414,43 @@ export struct NotifyView {
   private async initAfterServerManagerReady(): Promise<void> {
     try {
       await ServerManager.getInstance().ensureLoaded();
+      // 从 ServerManager 同步初始视图模式
+      this.viewAll = ServerManager.getInstance().getViewAllMode();
       this.refresh();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        // 分组加载：每个 group_key 取最新 100 条，同时拿到真实总数
-        const grouped = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
-        if (grouped.messages.length > 0) {
-          this.messages = grouped.messages;
-          this.groupTotals = grouped.totals;
+      const seq: number = ++this.loadSeq;
+      if (this.viewAll) {
+        // 全部模式：先从本地缓存加载所有服务器的消息
+        const deviceKeys: string[] = this.getAllDeviceKeys();
+        if (deviceKeys.length > 0) {
+          const grouped = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
+          if (grouped.messages.length > 0) {
+            this.messages = grouped.messages;
+            this.groupTotals = grouped.totals;
+          }
+        }
+        await this.syncAllServers(seq);
+      } else {
+        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+        if (cur && cur.deviceKey && cur.deviceKey.length > 0) {
+          const grouped = await MessageCacheStore.loadGroupedLatest(cur.deviceKey, 100);
+          if (grouped.messages.length > 0) {
+            this.messages = grouped.messages;
+            this.groupTotals = grouped.totals;
+          }
+        }
+        if (cur) {
+          const changed: boolean = await this.syncSingleServer(cur, false, seq);
+          if (changed || this.messages.length === 0) {
+            const deviceKey: string = cur.deviceKey;
+            if (deviceKey && deviceKey.length > 0) {
+              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+              this.messages = refreshed.messages;
+              this.groupTotals = refreshed.totals;
+            }
+          }
         }
       }
-      this.syncFromServer(false);
+      this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
@@ -549,7 +582,24 @@ export struct NotifyView {
     }
     this.pollInFlight = true;
     try {
-      await this.syncFromServer(false);
+      await ServerManager.getInstance().ensureLoaded();
+      if (this.viewAll) {
+        await this.syncAllServers(-1);
+      } else {
+        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+        if (cur) {
+          const changed: boolean = await this.syncSingleServer(cur, false, -1);
+          // 单服务器模式有变化时从本地重新加载（保持与 syncFromServer 原行为一致）
+          if (changed || this.messages.length === 0) {
+            const deviceKey: string = cur.deviceKey;
+            if (deviceKey && deviceKey.length > 0) {
+              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+              this.messages = refreshed.messages;
+              this.groupTotals = refreshed.totals;
+            }
+          }
+        }
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '轮询异常：%{public}s', msg);
@@ -696,18 +746,20 @@ export struct NotifyView {
         return;
       }
       const svc = NotifyMessageService.getInstance();
-      const errMsg: string = await svc.deleteMessage(m.id);
+      // 用消息自带的 deviceKey 定位来源服务器，避免跨服务器同 id 误删
+      const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
+      const errMsg: string = await svc.deleteMessage(m.id, null, server);
       if (errMsg.length > 0) {
         showToast(uiCtx, errMsg);
         return;
       }
-      // 同步删除本地缓存
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        await MessageCacheStore.deleteByIds(deviceKey, [m.id]);
-        // 刷新分组总数（徽标和"加载更多"按钮依赖）
-        this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKey);
+      // 同步删除本地缓存（按 deviceKey + id 精确删除）
+      if (m.deviceKey && m.deviceKey.length > 0) {
+        const pair: DeviceIdPair = { deviceKey: m.deviceKey, id: m.id };
+        await MessageCacheStore.deleteByDeviceIdPairs([pair]);
+        this.groupTotals = this.viewAll
+          ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
+          : await MessageCacheStore.getGroupTotals(m.deviceKey);
       }
       this.removeFromList([m.id]);
       this.exitEditMode();
@@ -717,11 +769,8 @@ export struct NotifyView {
 
   private confirmDeleteGroup(section: NotifySection): void {
     const uiCtx: UIContext = this.getUIContext();
-    const ids: number[] = [];
-    for (let i = 0; i < section.messages.length; i++) {
-      ids.push(section.messages[i].id);
-    }
-    const count: number = ids.length;
+    const messages: NotifyMessage[] = section.messages;
+    const count: number = messages.length;
     uiCtx.getPromptAction().showDialog({
       title: '删除整个分组',
       message: `确定要删除该分组的 ${count} 条消息吗？此操作不可恢复。`,
@@ -735,25 +784,39 @@ export struct NotifyView {
       }
       const svc = NotifyMessageService.getInstance();
       let failCount = 0;
-      for (let i = 0; i < ids.length; i++) {
-        const errMsg: string = await svc.deleteMessage(ids[i]);
+      // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
+      const pairs: DeviceIdPair[] = [];
+      for (let i = 0; i < messages.length; i++) {
+        const m: NotifyMessage = messages[i];
+        const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
+        const errMsg: string = await svc.deleteMessage(m.id, null, server);
         if (errMsg.length > 0) {
           failCount++;
-          hilog.warn(DOMAIN, TAG, '删除分组消息 %{public}d 失败：%{public}s', ids[i], errMsg);
+          hilog.warn(DOMAIN, TAG, '删除分组消息 %{public}d 失败：%{public}s', m.id, errMsg);
+        } else if (m.deviceKey && m.deviceKey.length > 0) {
+          pairs.push({ deviceKey: m.deviceKey, id: m.id });
         }
       }
-      this.removeFromList(ids);
-      // 刷新分组总数（被删 group 可能仍存在部分消息，或整个 group 消失）
-      const deviceKeyAfter = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKeyAfter && deviceKeyAfter.length > 0) {
-        this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKeyAfter);
+      if (pairs.length > 0) {
+        await MessageCacheStore.deleteByDeviceIdPairs(pairs);
       }
+      this.removeFromList(section.messages.map((m: NotifyMessage) => m.id));
+      // 刷新分组总数
+      this.groupTotals = this.viewAll
+        ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
+        : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
       if (failCount > 0) {
         showToast(uiCtx, `删除完成，${failCount} 条失败`);
       } else {
         showToast(uiCtx, `已删除 ${count} 条`);
       }
     });
+  }
+
+  /** 获取当前服务器 deviceKey（单服务器模式刷新分组总数用） */
+  private findCurrentDeviceKey(): string {
+    const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+    return cur ? cur.deviceKey : '';
   }
 
   private confirmDeleteSelected(): void {
@@ -773,20 +836,28 @@ export struct NotifyView {
       const ids: number[] = [...this.selectedIds];
       const svc = NotifyMessageService.getInstance();
       let failCount = 0;
-      for (let i = 0; i < ids.length; i++) {
-        const errMsg: string = await svc.deleteMessage(ids[i]);
+      // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
+      const pairs: DeviceIdPair[] = [];
+      for (let i = 0; i < this.messages.length; i++) {
+        const m: NotifyMessage = this.messages[i];
+        if (ids.indexOf(m.id) < 0) {
+          continue;
+        }
+        const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
+        const errMsg: string = await svc.deleteMessage(m.id, null, server);
         if (errMsg.length > 0) {
           failCount++;
-          hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', ids[i], errMsg);
+          hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', m.id, errMsg);
+        } else if (m.deviceKey && m.deviceKey.length > 0) {
+          pairs.push({ deviceKey: m.deviceKey, id: m.id });
         }
       }
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        await MessageCacheStore.deleteByIds(deviceKey, ids);
-        // 刷新分组总数
-        this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKey);
+      if (pairs.length > 0) {
+        await MessageCacheStore.deleteByDeviceIdPairs(pairs);
       }
+      this.groupTotals = this.viewAll
+        ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
+        : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
       this.removeFromList(ids);
       this.exitEditMode();
       if (failCount > 0) {
@@ -806,7 +877,9 @@ export struct NotifyView {
     }
     uiCtx.getPromptAction().showDialog({
       title: '清空全部消息',
-      message: `将删除当前设备的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！`,
+      message: this.viewAll
+        ? '将删除所有服务器的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！'
+        : '将删除当前设备的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！',
       buttons: [
         { text: '取消', color: '#666666' },
         { text: '全部删除', color: '#F53F3F' },
@@ -816,15 +889,34 @@ export struct NotifyView {
         return;
       }
       const svc = NotifyMessageService.getInstance();
-      const errMsg: string = await svc.deleteAllMessages();
-      if (errMsg.length > 0) {
-        showToast(uiCtx, errMsg);
-        return;
-      }
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey && deviceKey.length > 0) {
-        await MessageCacheStore.clearDevice(deviceKey);
+      if (this.viewAll) {
+        // 全部模式：逐个清空所有已注册服务器
+        const servers: ServerEntry[] = this.getAllRegisteredServers();
+        let failCount = 0;
+        for (let i = 0; i < servers.length; i++) {
+          const errMsg: string = await svc.deleteAllMessages(null, servers[i]);
+          if (errMsg.length > 0) {
+            failCount++;
+            hilog.warn(DOMAIN, TAG, '清空服务器 %{public}s 失败：%{public}s', servers[i].name, errMsg);
+          }
+        }
+        await MessageCacheStore.clearAllDevices();
+        if (failCount > 0) {
+          showToast(uiCtx, `清空完成，${failCount} 个服务器失败`);
+        } else {
+          showToast(uiCtx, '已清空全部消息');
+        }
+      } else {
+        const errMsg: string = await svc.deleteAllMessages();
+        if (errMsg.length > 0) {
+          showToast(uiCtx, errMsg);
+          return;
+        }
+        const deviceKey: string = this.findCurrentDeviceKey();
+        if (deviceKey && deviceKey.length > 0) {
+          await MessageCacheStore.clearDevice(deviceKey);
+        }
+        showToast(uiCtx, '已清空全部消息');
       }
       this.exitEditMode();
       this.messages = [];
@@ -832,17 +924,61 @@ export struct NotifyView {
       this.groupCardHeights = new Map<string, number>();
       this.groupTotals = new Map<string, number>();
       this.groupLoadingMore = new Set<string>();
-      showToast(uiCtx, '已清空全部消息');
     });
   }
 
   private refresh(): void {
+    if (this.viewAll) {
+      this.title = '全部通知';
+      return;
+    }
     const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
     if (cur && cur.name && cur.name.length > 0) {
       this.title = cur.name;
     } else {
       this.title = ServerManager.getInstance().getCurrentHostDisplay();
     }
+  }
+
+  /** 获取所有已注册（有 deviceKey）的服务器列表，用于"全部"视图模式同步与查询 */
+  private getAllRegisteredServers(): ServerEntry[] {
+    const list: ServerEntry[] = ServerManager.getInstance().getList();
+    const result: ServerEntry[] = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].deviceKey && list[i].deviceKey.length > 0) {
+        result.push(list[i]);
+      }
+    }
+    return result;
+  }
+
+  /** 获取所有已注册服务器的 deviceKey 列表 */
+  private getAllDeviceKeys(): string[] {
+    const servers: ServerEntry[] = this.getAllRegisteredServers();
+    const keys: string[] = [];
+    for (let i = 0; i < servers.length; i++) {
+      keys.push(servers[i].deviceKey);
+    }
+    return keys;
+  }
+
+  /** 根据 deviceKey 查找对应的 ServerEntry（删除时定位来源服务器用） */
+  private findServerByDeviceKey(deviceKey: string): ServerEntry | null {
+    const list: ServerEntry[] = ServerManager.getInstance().getList();
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].deviceKey === deviceKey) {
+        return list[i];
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 切换视图模式（全部 / 单服务器）。
+   * 通过 ServerManager 统一管理，onChange 回调会处理列表刷新。
+   */
+  setViewAll(viewAll: boolean): void {
+    ServerManager.getInstance().setViewAllMode(viewAll);
   }
 
   private async loadMessages(): Promise<void> {
@@ -856,9 +992,26 @@ export struct NotifyView {
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
     try {
-      // 统一走增量同步：保留本地历史，仅拉取 maxId 之后的新消息 + 处理删除事件
-      // forceFull=true 会 clearDevice 清空本地缓存重播种，违背"只同步上次之后"的需求，弃用
-      await this.syncFromServer(false, seq);
+      await ServerManager.getInstance().ensureLoaded();
+      if (this.viewAll) {
+        // 全部模式：并行同步所有已注册服务器
+        await this.syncAllServers(seq);
+      } else {
+        // 单服务器模式：只同步当前服务器
+        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+        if (cur) {
+          const changed: boolean = await this.syncSingleServer(cur, false, seq);
+          // 同步完成后从缓存回填列表（onChange 已清空 this.messages，必须回填）
+          if (changed || this.messages.length === 0) {
+            const deviceKey: string = cur.deviceKey;
+            if (deviceKey && deviceKey.length > 0) {
+              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+              this.messages = refreshed.messages;
+              this.groupTotals = refreshed.totals;
+            }
+          }
+        }
+      }
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -877,24 +1030,22 @@ export struct NotifyView {
   }
 
   /**
-   * 与服务端同步（增量协议）。
-   * - forceFull=true：清空本地缓存，从 after=0 重新播种（当前已无调用方使用；
-   *   服务端 reset 信号由协议内部兜底触发 clearDevice）
-   * - forceFull=false：以本地 maxId 为 after、delCursor 为 deletedSince，只拉新消息 + 删除事件，
-   *   保留本地历史，符合"只同步上次之后"的需求
-   * expectedSeq：请求代际，与 this.loadSeq 不符则丢弃结果（服务器切换防串数据）
+   * 同步单个服务器（增量协议）。
+   * 返回 true 表示本地数据有变化（新消息/删除/reset），调用方需刷新列表；
+   * 返回 false 表示无变化。
+   * server：目标服务器；forceFull：是否清空重播种；expectedSeq：代际校验。
    */
-  private async syncFromServer(forceFull: boolean, expectedSeq: number = -1): Promise<void> {
+  private async syncSingleServer(server: ServerEntry, forceFull: boolean,
+    expectedSeq: number = -1): Promise<boolean> {
     const svc = NotifyMessageService.getInstance();
-    await ServerManager.getInstance().ensureLoaded();
-    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+    const deviceKey: string = server.deviceKey;
     if (!deviceKey || deviceKey.length === 0) {
-      return;
+      return false;
     }
 
-    // 代际校验：期间已切换服务器 → 丢弃
+    // 代际校验
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-      return;
+      return false;
     }
 
     // 读取同步基线
@@ -913,32 +1064,28 @@ export struct NotifyView {
 
     let newMaxId: number = after;
     let newDelCursor: number = delCursor;
-    // 追踪本次同步是否真的发生数据变化，无变化时不刷新 UI，避免轮询空转导致列表闪烁
     let hasNewMessages: boolean = false;
     const deletedIds: number[] = [];
     let purgeCeiling: number = 0;
     let didReset: boolean = false;
-    const incoming: NotifyMessage[] = [];
 
     const MAX_PAGES: number = 20;
     for (let page = 0; page < MAX_PAGES; page++) {
       if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-        return;
+        return false;
       }
-      const result = await svc.getMessages(null, 0, 100, after, newDelCursor);
+      const result = await svc.getMessages(null, 0, 100, after, newDelCursor, server);
       if (!result.ok) {
-        hilog.warn(DOMAIN, TAG, 'syncFromServer 失败：%{public}s', result.errorMsg);
-        // 本地已有消息时静默保留旧数据（不打断用户浏览历史）
-        // 本地无消息时才透出错误提示，避免首次进入/切服务器失败时空白无反馈
-        if (this.messages.length === 0) {
+        hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
+        // 本地无消息时透出错误，有消息时静默保留
+        if (this.messages.length === 0 && expectedSeq >= 0) {
           this.errorMsg = result.errorMsg;
         }
-        return;
+        return false;
       }
 
-      // 处理删除事件
       if (result.reset) {
-        hilog.info(DOMAIN, TAG, 'syncFromServer reset：清空本地缓存重新播种');
+        hilog.info(DOMAIN, TAG, 'syncSingleServer reset：%{public}s', deviceKey);
         await MessageCacheStore.clearDevice(deviceKey);
         after = 0;
         newMaxId = 0;
@@ -969,12 +1116,10 @@ export struct NotifyView {
         newDelCursor = result.delCursor;
       }
 
-      // 写入新消息并推进 maxId
       if (result.messages.length > 0) {
         await MessageCacheStore.upsertMessages(deviceKey, result.messages);
         hasNewMessages = true;
         for (let i = 0; i < result.messages.length; i++) {
-          incoming.push(result.messages[i]);
           if (result.messages[i].id > newMaxId) {
             newMaxId = result.messages[i].id;
           }
@@ -991,73 +1136,62 @@ export struct NotifyView {
     await MessageCacheStore.saveMeta(deviceKey, newMaxId, newDelCursor);
 
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-      return;
+      return false;
     }
 
     this.errorMsg = '';
-
-    // reset：数据被服务端整体重置，内存不可信，重新分组播种
-    if (didReset) {
-      const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
-      this.messages = refreshed.messages;
-      this.groupTotals = refreshed.totals;
-      return;
-    }
-
     const hasDeletions: boolean = deletedIds.length > 0 || purgeCeiling > 0;
-    const dataChanged: boolean = hasNewMessages || hasDeletions;
+    return hasNewMessages || hasDeletions || didReset;
+  }
 
-    // 无任何变化（轮询空转）：完全不碰列表数据，避免重建闪烁和打断滚动位置
-    if (!dataChanged && this.messages.length > 0) {
+  /**
+   * "全部"视图模式：并行同步所有已注册服务器。
+   * 任一服务器有数据变化时，从本地缓存重新加载全部消息（跨服务器分组聚合）。
+   */
+  private async syncAllServers(expectedSeq: number): Promise<void> {
+    const servers: ServerEntry[] = this.getAllRegisteredServers();
+    if (servers.length === 0) {
+      this.messages = [];
+      this.groupTotals = new Map<string, number>();
       return;
     }
 
-    if (!dataChanged) {
-      // 内存为空（首次播种/切服务器）：从本地分组加载
-      const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
-      this.messages = refreshed.messages;
-      this.groupTotals = refreshed.totals;
+    // 并行同步所有服务器
+    const tasks: Promise<boolean>[] = [];
+    for (let i = 0; i < servers.length; i++) {
+      tasks.push(this.syncSingleServer(servers[i], false, expectedSeq));
+    }
+    const results: boolean[] = await Promise.all(tasks);
+
+    // 代际失效：若列表已被清空（onChange 清空），需从缓存兜底回填，避免显示"暂无消息"
+    if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
+      if (this.messages.length === 0) {
+        const deviceKeys: string[] = this.getAllDeviceKeys();
+        const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
+        this.messages = refreshed.messages;
+        this.groupTotals = refreshed.totals;
+      }
       return;
     }
 
-    // 有变化：增量合并，不整体重建（保留滚动位置、展开态、组内手动加载的老消息）
-    const deletedSet: Set<number> = new Set<number>();
-    for (let i = 0; i < deletedIds.length; i++) {
-      deletedSet.add(deletedIds[i]);
-    }
-    const merged: NotifyMessage[] = [];
-    const mergedIds: Set<number> = new Set<number>();
-    // 1) 保留内存中未被删除/purge 的消息
-    for (let i = 0; i < this.messages.length; i++) {
-      const m: NotifyMessage = this.messages[i];
-      if (deletedSet.has(m.id)) {
-        continue;
-      }
-      if (purgeCeiling > 0 && m.id <= purgeCeiling) {
-        continue;
-      }
-      if (!mergedIds.has(m.id)) {
-        merged.push(m);
-        mergedIds.add(m.id);
+    let anyChanged: boolean = false;
+    for (let i = 0; i < results.length; i++) {
+      if (results[i]) {
+        anyChanged = true;
+        break;
       }
     }
-    // 2) 追加本次新拉到的消息（去重）
-    for (let i = 0; i < incoming.length; i++) {
-      if (!mergedIds.has(incoming[i].id)) {
-        merged.push(incoming[i]);
-        mergedIds.add(incoming[i].id);
-      }
+
+    // 无变化且内存非空：不刷新，避免轮询空转闪烁
+    if (!anyChanged && this.messages.length > 0) {
+      return;
     }
-    // 3) 整体按时间倒序（与 loadGroupedLatest 排序口径一致）
-    merged.sort((a: NotifyMessage, b: NotifyMessage) => {
-      if (b.timestamp !== a.timestamp) {
-        return b.timestamp - a.timestamp;
-      }
-      return b.id - a.id;
-    });
-    this.messages = merged;
-    // 刷新各 group 真实总数（删除/新增都会改变）
-    this.groupTotals = await MessageCacheStore.getGroupTotals(deviceKey);
+
+    // 有变化或内存为空：从本地缓存重新加载所有服务器的消息
+    const deviceKeys: string[] = this.getAllDeviceKeys();
+    const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
+    this.messages = refreshed.messages;
+    this.groupTotals = refreshed.totals;
   }
 
   /**
@@ -1081,13 +1215,19 @@ export struct NotifyView {
     }
     this.groupLoadingMore = new Set<string>(this.groupLoadingMore).add(groupKey);
     try {
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (!deviceKey || deviceKey.length === 0) {
-        return;
-      }
       const PAGE_SIZE: number = 100;
-      const older: NotifyMessage[] =
-        await MessageCacheStore.loadGroupOlder(deviceKey, groupKey, oldestId, PAGE_SIZE);
+      let older: NotifyMessage[] = [];
+      if (this.viewAll) {
+        // 全部模式：跨所有服务器加载该 group 的更老消息
+        const deviceKeys: string[] = this.getAllDeviceKeys();
+        older = await MessageCacheStore.loadAllGroupOlder(deviceKeys, groupKey, oldestId, PAGE_SIZE);
+      } else {
+        const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+        if (!deviceKey || deviceKey.length === 0) {
+          return;
+        }
+        older = await MessageCacheStore.loadGroupOlder(deviceKey, groupKey, oldestId, PAGE_SIZE);
+      }
       if (older.length > 0) {
         // 去重后 append
         const existingIds: Set<number> = new Set<number>();

@@ -119,6 +119,8 @@ export class ServerManager {
   private static readonly KEY_BUILTIN_CLIENT_TOKENS: string = 'server_builtin_client_tokens';
   private servers: ServerEntry[] = [];
   private currentId: string = '';
+  // 视图模式：true=显示所有服务器通知，false=只显示当前服务器
+  private viewAllMode: boolean = true;
   // 内置项：baseURL 不持久化、不缓存，每次获取都从 ApiConfig 动态取值，
   // 保证 ApiConfig.PROD_BASE_URL 修改后内置项地址立即跟随
   private deletedBuiltInIds: string[] = [];
@@ -332,6 +334,21 @@ export class ServerManager {
 
   getCurrentServer(): ServerEntry | null {
     return this.findById(this.currentId);
+  }
+
+  /** 获取视图模式：true=全部服务器，false=仅当前服务器 */
+  getViewAllMode(): boolean {
+    return this.viewAllMode;
+  }
+
+  /** 设置视图模式并通知监听者（NotifyView 据此切换列表数据范围） */
+  setViewAllMode(viewAll: boolean): void {
+    if (this.viewAllMode === viewAll) {
+      return;
+    }
+    this.viewAllMode = viewAll;
+    hilog.info(DOMAIN, TAG, '视图模式切换：%{public}s', viewAll ? '全部' : '单服务器');
+    this.emitChange();
   }
 
   /** private isBuiltInId(id: string): boolean {
