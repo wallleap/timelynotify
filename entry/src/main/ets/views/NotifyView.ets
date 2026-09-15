@@ -44,6 +44,7 @@ import { NotifyEditActionBar } from '../components/notify/NotifyEditActionBar';
 import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
+import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 
 const TAG: string = 'NotifyView';
 
@@ -1248,7 +1249,7 @@ export struct NotifyView {
   }
 
   private isGroupExpanded(groupKey: string): boolean {
-    return this.expandedGroups.indexOf(groupKey) >= 0;
+    return NotifyGroupStateUtils.isExpanded(this.expandedGroups, groupKey);
   }
 
   // 缓存某个分组主卡片的实测高度（vp）；不可变更新 Map 以触发空壳层重渲染
@@ -1256,27 +1257,15 @@ export struct NotifyView {
     if (heightVp <= 0) {
       return;
     }
-    const prev: number = this.groupCardHeights.get(groupKey) ?? 0;
-    // 亚像素级抖动不更新，避免无意义重渲染
-    if (Math.abs(prev - heightVp) < 0.5) {
-      return;
-    }
-    const next: Map<string, number> = new Map<string, number>(this.groupCardHeights);
-    next.set(groupKey, heightVp);
-    this.groupCardHeights = next;
+    this.groupCardHeights = NotifyGroupStateUtils.updateCardHeight(this.groupCardHeights, groupKey, heightVp);
   }
 
   // 设置某个分组的展开状态（展开态数组不可变更新，确保 ForEach 刷新）
   private setGroupExpanded(groupKey: string, expanded: boolean): void {
-    const exists: boolean = this.isGroupExpanded(groupKey);
-    if (exists === expanded) {
+    if (this.isGroupExpanded(groupKey) === expanded) {
       return;
     }
-    if (expanded) {
-      this.expandedGroups = [...this.expandedGroups, groupKey];
-    } else {
-      this.expandedGroups = this.expandedGroups.filter((g: string) => g !== groupKey);
-    }
+    this.expandedGroups = NotifyGroupStateUtils.toggleExpanded(this.expandedGroups, groupKey);
   }
 
   // 切换分组展开/收起，并在动画上下文中更新状态：
