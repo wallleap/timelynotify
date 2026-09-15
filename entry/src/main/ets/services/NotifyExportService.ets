@@ -60,11 +60,28 @@ export class NotifyExportService {
     if (uris.length === 0) {
       return 0;
     }
-    const file = fileIo.openSync(uris[0], fileIo.OpenMode.READ_WRITE);
+    // fileIo.openSync/writeSync/closeSync 均可能抛异常（URI 无效 / 权限缺失 / IO 错误），
+    // 用 try/catch/finally 三段处理：打开失败直接返回；写入失败关闭后返回；最终确保 fd 关闭
+    let file: fileIo.File;
+    try {
+      file = fileIo.openSync(uris[0], fileIo.OpenMode.READ_WRITE);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, EXPORT_TAG, '导出文件打开失败：%{public}s', msg);
+      return 0;
+    }
     try {
       fileIo.writeSync(file.fd, JSON.stringify(raw, null, 2));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, EXPORT_TAG, '导出文件写入失败：%{public}s', msg);
+      return 0;
     } finally {
-      fileIo.closeSync(file);
+      try {
+        fileIo.closeSync(file);
+      } catch (_ignore) {
+        // 忽略关闭失败（fd 已无效或已关闭）
+      }
     }
     return selected.length;
   }
@@ -101,12 +118,18 @@ export class NotifyExportService {
         return result;
       }
 
-      // Picker 返回的 URI 需以 READ_WRITE 模式打开后写入
+      // Picker 返回的 URI 需以 READ_WRITE 模式打开后写入。
+      // openSync/writeSync/closeSync 均可能抛异常，统一走外层 try/catch；
+      // closeSync 在 finally 中再包一层 try，避免关闭失败掩盖原始错误
       const file = fileIo.openSync(uris[0], fileIo.OpenMode.READ_WRITE);
       try {
         fileIo.writeSync(file.fd, text);
       } finally {
-        fileIo.closeSync(file);
+        try {
+          fileIo.closeSync(file);
+        } catch (_ignore) {
+          // 忽略关闭失败（fd 已无效或已关闭）
+        }
       }
 
       result.ok = true;

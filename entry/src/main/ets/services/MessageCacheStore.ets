@@ -76,36 +76,45 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
 }
 
 // 从 ResultSet 当前行构造 NotifyMessage
+// ResultSet.getXxx / getColumnIndex 等方法可能抛异常（列缺失/类型不匹配/游标失效），
+// 包裹整个读取过程：异常时记录日志并抛出，让调用方感知数据损坏而非静默返回半截对象
 function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
   const m: NotifyMessage = new NotifyMessage();
-  m.id = rs.getLong(rs.getColumnIndex('id'));
-  m.appid = rs.getLong(rs.getColumnIndex('appid'));
-  m.title = rs.getString(rs.getColumnIndex('title'));
-  m.body = rs.getString(rs.getColumnIndex('body'));
-  m.subtitle = rs.getString(rs.getColumnIndex('subtitle'));
-  m.priority = rs.getLong(rs.getColumnIndex('priority'));
-  m.date = rs.getString(rs.getColumnIndex('date'));
-  m.createdAt = rs.getString(rs.getColumnIndex('created_at'));
-  m.timestamp = rs.getLong(rs.getColumnIndex('timestamp'));
-  m.image = rs.getString(rs.getColumnIndex('image'));
-  m.group = rs.getString(rs.getColumnIndex('group_key'));
-  const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
-  if (inboxStr && inboxStr.length > 0) {
-    try {
-      const parsed: Object = JSON.parse(inboxStr);
-      if (parsed instanceof Array) {
-        const parsedArr: Object[] = parsed as Object[];
-        const arr: string[] = [];
-        for (let i = 0; i < parsedArr.length; i++) {
-          if (typeof parsedArr[i] === 'string') {
-            arr.push(parsedArr[i] as string);
+  try {
+    m.id = rs.getLong(rs.getColumnIndex('id'));
+    m.appid = rs.getLong(rs.getColumnIndex('appid'));
+    m.title = rs.getString(rs.getColumnIndex('title'));
+    m.body = rs.getString(rs.getColumnIndex('body'));
+    m.subtitle = rs.getString(rs.getColumnIndex('subtitle'));
+    m.priority = rs.getLong(rs.getColumnIndex('priority'));
+    m.date = rs.getString(rs.getColumnIndex('date'));
+    m.createdAt = rs.getString(rs.getColumnIndex('created_at'));
+    m.timestamp = rs.getLong(rs.getColumnIndex('timestamp'));
+    m.image = rs.getString(rs.getColumnIndex('image'));
+    m.group = rs.getString(rs.getColumnIndex('group_key'));
+    const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
+    if (inboxStr && inboxStr.length > 0) {
+      try {
+        const parsed: Object = JSON.parse(inboxStr);
+        if (parsed instanceof Array) {
+          const parsedArr: Object[] = parsed as Object[];
+          const arr: string[] = [];
+          for (let i = 0; i < parsedArr.length; i++) {
+            if (typeof parsedArr[i] === 'string') {
+              arr.push(parsedArr[i] as string);
+            }
           }
+          m.inboxContent = arr;
         }
-        m.inboxContent = arr;
+      } catch (_ignore) {
+        m.inboxContent = [];
       }
-    } catch (_ignore) {
-      m.inboxContent = [];
     }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    hilog.error(DOMAIN, TAG, 'rowToMessage 读取失败：%{public}s', msg);
+    // arkts-limited-throw：仅允许 throw Error 实例
+    throw err instanceof Error ? err : new Error(msg);
   }
   return m;
 }
