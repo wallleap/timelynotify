@@ -73,6 +73,14 @@
       "value": "#F8F9FA"
     },
     {
+      "name": "link_color",
+      "value": "#2678E8"
+    },
+    {
+      "name": "link_action_pressed_background",
+      "value": "#182678E8"
+    },
+    {
       "name": "selected_row_background",
       "value": "#FFF3E8"
     },

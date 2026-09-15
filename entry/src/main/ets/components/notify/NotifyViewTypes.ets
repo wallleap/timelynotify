@@ -8,7 +8,7 @@ export interface NotifyTextSegment {
 
 /** 普通文本片段。 */
 export const NOTIFY_SEGMENT_NORMAL: number = 0;
-/** 可打开的 HTTP(S) 链接片段。 */
+/** 可打开的 HTTP(S) 链接或邮箱地址片段。 */
 export const NOTIFY_SEGMENT_URL: number = 1;
 /** 可复制的 4 至 8 位验证码片段。 */
 export const NOTIFY_SEGMENT_CODE: number = 2;
@@ -36,28 +36,91 @@ interface NotifyTextMatch extends NotifyTextSegment {
   end: number;
 }
 
-/** 将正文切为普通文本、链接和验证码，供列表与详情复用。 */
+/** 移除消息正文中紧随 URL 的常见句末标点，避免将标点一并带入打开链接。 */
+function trimUrlTrailingPunctuation(url: string): string {
+  let end: number = url.length;
+  while (end > 0) {
+    const last: string = url.charAt(end - 1);
+    if (last === '.' || last === ',' || last === '!' || last === '?' || last === '。' ||
+      last === '，' || last === '！' || last === '？' || last === '；' || last === '：' ||
+      last === '、' || last === '（' || last === '）' || last === '【' || last === '】' ||
+      last === '《' || last === '》' || last === '「' || last === '」' || last === '『' ||
+      last === '』' || last === '“' || last === '”' || last === '‘' || last === '’' ||
+      last === '{' || last === '}') {
+      end--;
+    } else {
+      break;
+    }
+  }
+  return url.substring(0, end);
+}
+
+/** 无协议域名不能紧跟邮箱用户名或单词字符，避免把 email / 普通标识的一部分误识别为链接。 */
+function isEmbeddedDomain(text: string, start: number): boolean {
+  if (start <= 0) {
+    return false;
+  }
+  const previous: string = text.charAt(start - 1);
+  return /[a-z0-9@._-]/i.test(previous);
+}
+
+/** 验证码必须至少含一个数字，避免将“验证码 Apple”这类普通英文文本误识别为验证码。 */
+function hasVerificationCodeDigit(code: string): boolean {
+  return /\d/.test(code);
+}
+
+/**
+ * 将正文切为普通文本、链接、邮箱和验证码，供列表与详情复用。
+ * 链接支持 HTTP(S)、无协议常见域名和 IPv4；邮箱可拉起邮件应用；验证码仅在明确的验证码语义词后识别，避免误判订单号/日期。
+ */
 export function parseNotifyTextSegments(text: string): NotifyTextSegment[] {
   if (!text || text.length === 0) {
     return [];
   }
   const matches: NotifyTextMatch[] = [];
-  const urlPattern: RegExp = /https?:\/\/[^\s<>"'\])]+/g;
-  const codePattern: RegExp = /\b\d{4,8}\b/g;
+  // 无协议域名要求常见顶级域名，避免将普通“名称.版本”文本误识别为链接。
+  // 中文文案中常用的顿号、括号和引号同时作为链接边界，避免连续链接或引用文本被合并。
+  const urlPattern: RegExp =
+    /https?:\/\/[^\s<>"'\])，。！？；：、（）【】《》「」『』“”‘’{}]+|(?:www\.)?(?:[a-z0-9-]+\.)+(?:com|net|org|cn|io|app|dev|ai|xyz|me|cc|tv|info|biz|co|uk|jp|de|edu|gov)(?::\d{2,5})?(?:\/[^\s<>"'\])，。！？；：、（）【】《》「」『』“”‘’{}]+)?|(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?::\d{2,5})?(?:\/[^\s<>"'\])，。！？；：、（）【】《》「」『』“”‘’{}]+)?/gi;
+  // 邮箱单独识别为可打开项；域名部分将被 urlPattern 的嵌入检查排除，避免重复匹配。
+  const emailPattern: RegExp =
+    /[a-z0-9._%+-]+@(?:[a-z0-9-]+\.)+[a-z]{2,63}/gi;
+  // 只识别有明确语义词引导的验证码：支持“验证码为 123456”与“123456 快手验证码”两种常见句式。
+  // 捕获组 1/2 均为实际应复制的验证码：支持 4–10 位数字与字母混合，且必须至少含一个数字。
+  // 验证码后最多允许 16 个品牌名字符再出现验证码语义词。
+  const codePattern: RegExp =
+    /(?:验证码|校验码|动态码|动态口令|一次性密码|确认码|安全码|提取码|登录码|授权码|verification\s*code|verify\s*code|otp|pin)(?:\s*(?:为|是|:|：|-))*\s*([a-z0-9]{4,10})(?![a-z0-9])|([a-z0-9]{4,10})(?![a-z0-9])(?:[\u4e00-\u9fa5a-z]{0,16})(?:验证码|校验码|动态码|动态口令|一次性密码|确认码|安全码|提取码|登录码|授权码)/gi;
   let match: RegExpExecArray | null;
-  while ((match = urlPattern.exec(text)) !== null) {
+  while ((match = emailPattern.exec(text)) !== null) {
     matches.push({ text: match[0], type: NOTIFY_SEGMENT_URL, start: match.index, end: match.index + match[0].length });
   }
+  while ((match = urlPattern.exec(text)) !== null) {
+    const url: string = trimUrlTrailingPunctuation(match[0]);
+    const hasProtocol: boolean = url.toLowerCase().indexOf('http://') === 0 ||
+      url.toLowerCase().indexOf('https://') === 0;
+    if (!hasProtocol && isEmbeddedDomain(text, match.index)) {
+      continue;
+    }
+    if (url.length > 0) {
+      matches.push({ text: url, type: NOTIFY_SEGMENT_URL, start: match.index, end: match.index + url.length });
+    }
+  }
   while ((match = codePattern.exec(text)) !== null) {
+    const code: string = match[1] && match[1].length > 0 ? match[1] : match[2];
+    if (!hasVerificationCodeDigit(code)) {
+      continue;
+    }
+    const codeOffset: number = match[0].lastIndexOf(code);
+    const codeStart: number = match.index + codeOffset;
     let overlaps: boolean = false;
     for (let i = 0; i < matches.length; i++) {
-      if (match.index < matches[i].end && match.index + match[0].length > matches[i].start) {
+      if (codeStart < matches[i].end && codeStart + code.length > matches[i].start) {
         overlaps = true;
         break;
       }
     }
     if (!overlaps) {
-      matches.push({ text: match[0], type: NOTIFY_SEGMENT_CODE, start: match.index, end: match.index + match[0].length });
+      matches.push({ text: code, type: NOTIFY_SEGMENT_CODE, start: codeStart, end: codeStart + code.length });
     }
   }
   matches.sort((a, b) => a.start - b.start);
