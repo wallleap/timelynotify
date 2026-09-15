@@ -35,19 +35,29 @@ const SQL_CREATE_MSG: string =
 const SQL_CREATE_MSG_INDEX: string =
   `CREATE INDEX IF NOT EXISTS idx_msg_dev_ts ON ${TABLE_MSG}(device_key, timestamp DESC)`;
 
-// 同步元信息：每设备的最大已同步消息 id 与删除流水游标
+// 同步元信息：每设备的最大消息 id、删除流水游标与一次性历史播种进度
 const SQL_CREATE_META: string =
   `CREATE TABLE IF NOT EXISTS ${TABLE_META} (` +
   'device_key TEXT PRIMARY KEY, ' +
   'max_id INTEGER NOT NULL DEFAULT 0, ' +
   'del_cursor INTEGER NOT NULL DEFAULT 0, ' +
+  'history_cursor INTEGER NOT NULL DEFAULT 0, ' +
+  'history_complete INTEGER NOT NULL DEFAULT 0, ' +
   'last_sync_at INTEGER NOT NULL DEFAULT 0' +
   ')';
 
-/** 同步元信息：maxId=已同步到本地的最大消息 id；delCursor=删除流水游标 */
+/**
+ * 同步元信息：
+ * - maxId：已写入本地的最大消息 id，历史播种完成后用于增量同步；
+ * - delCursor：服务端删除流水游标；
+ * - historyCursor：首次历史播种已安全落盘的最后一条 id；
+ * - historyComplete：服务端明确返回历史末尾后才置为 true。
+ */
 export class SyncMeta {
   maxId: number = 0;
   delCursor: number = 0;
+  historyCursor: number = 0;
+  historyComplete: boolean = false;
 }
 
 /** 分组加载结果：合并后的消息列表 + 每个 group_key 的真实总数 */
@@ -147,7 +157,7 @@ export class MessageCacheStore {
   /**
    * 旧库结构迁移。
    * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效；
-   * v2 补充跳转链接 url 列。
+   * v2 补充跳转链接 url 列；v3 为同步元信息增加一次性历史播种进度。
    * 检测到缺失列时逐列补齐：
    * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
    * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
@@ -183,6 +193,35 @@ export class MessageCacheStore {
         hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 url 列');
         await db.executeSql(
           `ALTER TABLE ${TABLE_MSG} ADD COLUMN url TEXT NOT NULL DEFAULT ''`);
+      }
+
+      // 旧版本的 max_id 只代表“已拉到的最新消息”，不能证明历史已完整。
+      // 因此迁移后默认 history_complete=0，保留缓存并从 id=0 补齐一次完整历史。
+      const metaRs: relationalStore.ResultSet =
+        await db.querySql(`PRAGMA table_info(${TABLE_META})`);
+      let hasHistoryCursor: boolean = false;
+      let hasHistoryComplete: boolean = false;
+      if (metaRs.goToFirstRow()) {
+        const nameIndex: number = metaRs.getColumnIndex('name');
+        do {
+          const col: string = metaRs.getString(nameIndex);
+          if (col === 'history_cursor') {
+            hasHistoryCursor = true;
+          } else if (col === 'history_complete') {
+            hasHistoryComplete = true;
+          }
+        } while (metaRs.goToNextRow());
+      }
+      metaRs.close();
+      if (!hasHistoryCursor) {
+        hilog.info(DOMAIN, TAG, '迁移：sync_meta 补充 history_cursor 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_META} ADD COLUMN history_cursor INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (!hasHistoryComplete) {
+        hilog.info(DOMAIN, TAG, '迁移：sync_meta 补充 history_complete 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_META} ADD COLUMN history_complete INTEGER NOT NULL DEFAULT 0`);
       }
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'migrateSchema 失败：%{public}s', formatError(err));
@@ -371,21 +410,23 @@ export class MessageCacheStore {
 
   // 批量写入消息（主键冲突时替换，upsert 语义）
   // 注：batchInsert 不支持冲突解决参数，故用 insert 循环 + ON_CONFLICT_REPLACE
-  static async upsertMessages(deviceKey: string, messages: NotifyMessage[]): Promise<void> {
+  static async upsertMessages(deviceKey: string, messages: NotifyMessage[]): Promise<boolean> {
     if (!messages || messages.length === 0) {
-      return;
+      return true;
     }
     const db = await MessageCacheStore.getStore();
     if (!db) {
-      return;
+      return false;
     }
     try {
       for (let i = 0; i < messages.length; i++) {
         const bucket: relationalStore.ValuesBucket = toBucket(deviceKey, messages[i]);
         await db.insert(TABLE_MSG, bucket, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
       }
+      return true;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'upsertMessages 失败：%{public}s', formatError(err));
+      return false;
     }
   }
 
@@ -451,11 +492,14 @@ export class MessageCacheStore {
       return meta;
     }
     try {
-      const sql: string = `SELECT max_id, del_cursor FROM ${TABLE_META} WHERE device_key=?`;
+      const sql: string =
+        `SELECT max_id, del_cursor, history_cursor, history_complete FROM ${TABLE_META} WHERE device_key=?`;
       const rs: relationalStore.ResultSet = await db.querySql(sql, [deviceKey]);
       if (rs.goToFirstRow()) {
         meta.maxId = rs.getLong(rs.getColumnIndex('max_id'));
         meta.delCursor = rs.getLong(rs.getColumnIndex('del_cursor'));
+        meta.historyCursor = rs.getLong(rs.getColumnIndex('history_cursor'));
+        meta.historyComplete = rs.getLong(rs.getColumnIndex('history_complete')) === 1;
       }
       rs.close();
     } catch (err) {
@@ -464,22 +508,30 @@ export class MessageCacheStore {
     return meta;
   }
 
-  // 写入某设备的同步元信息（maxId/delCursor）；已存在则替换
-  static async saveMeta(deviceKey: string, maxId: number, delCursor: number): Promise<void> {
+  /**
+   * 写入某设备的同步元信息；仅在当前页消息已落库后推进 historyCursor，
+   * 从而在应用退出或网络中断后可以安全地从上次成功页继续。
+   */
+  static async saveMeta(deviceKey: string, maxId: number, delCursor: number,
+    historyCursor: number, historyComplete: boolean): Promise<boolean> {
     const db = await MessageCacheStore.getStore();
     if (!db) {
-      return;
+      return false;
     }
     try {
       const bucket: relationalStore.ValuesBucket = {
         'device_key': deviceKey,
         'max_id': maxId,
         'del_cursor': delCursor,
+        'history_cursor': historyCursor,
+        'history_complete': historyComplete ? 1 : 0,
         'last_sync_at': Date.now(),
       };
       await db.insert(TABLE_META, bucket, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+      return true;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'saveMeta 失败：%{public}s', formatError(err));
+      return false;
     }
   }
 

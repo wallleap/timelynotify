@@ -45,6 +45,8 @@ const TAG: string = 'NotifyView';
 
 // 补齐"用户停留列表页时新消息不及时出现"的场景
 const POLL_INTERVAL_MS: number = 15000;
+// 服务端单页上限；首次历史播种持续分页，直到服务端明确返回 hasMore=false。
+const SYNC_PAGE_SIZE: number = 100;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -1032,7 +1034,7 @@ export struct NotifyView {
   }
 
   /**
-   * 同步单个服务器（增量协议）。
+   * 同步单个服务器（首次完整历史播种 + 后续增量协议）。
    * 返回 true 表示本地数据有变化（新消息/删除/reset），调用方需刷新列表；
    * 返回 false 表示无变化。
    * server：目标服务器；forceFull：是否清空重播种；expectedSeq：代际校验。
@@ -1050,33 +1052,44 @@ export struct NotifyView {
       return false;
     }
 
-    // 读取同步基线
+    // 读取同步基线。未完成首次播种时，只能使用已安全落盘的历史游标；
+    // 不能使用 maxId，否则旧的“仅拉到最新部分”缓存会永久跳过更早消息。
     let after: number = 0;
     let delCursor: number = 0;
+    let historyCursor: number = 0;
+    let historyComplete: boolean = false;
+    let newMaxId: number = 0;
     if (forceFull) {
       await MessageCacheStore.clearDevice(deviceKey);
     } else {
       const meta = await MessageCacheStore.getMeta(deviceKey);
-      after = meta.maxId;
       delCursor = meta.delCursor;
-      if (after === 0) {
+      newMaxId = meta.maxId;
+      historyCursor = meta.historyCursor;
+      historyComplete = meta.historyComplete;
+      if (historyComplete) {
+        after = meta.maxId;
+      } else {
+        after = historyCursor;
+      }
+      // 兼容早期已完整写入、但 max_id 曾因异常未持久化的缓存。
+      if (historyComplete && after === 0) {
         after = await MessageCacheStore.getMaxId(deviceKey);
+        newMaxId = after;
       }
     }
 
-    let newMaxId: number = after;
     let newDelCursor: number = delCursor;
     let hasNewMessages: boolean = false;
     const deletedIds: number[] = [];
     let purgeCeiling: number = 0;
     let didReset: boolean = false;
 
-    const MAX_PAGES: number = 20;
-    for (let page = 0; page < MAX_PAGES; page++) {
+    while (true) {
       if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
         return false;
       }
-      const result = await svc.getMessages(null, 0, 100, after, newDelCursor, server);
+      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, newDelCursor, server);
       if (!result.ok) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
         // 本地无消息时透出错误，有消息时静默保留
@@ -1091,6 +1104,9 @@ export struct NotifyView {
         await MessageCacheStore.clearDevice(deviceKey);
         after = 0;
         newMaxId = 0;
+        newDelCursor = 0;
+        historyCursor = 0;
+        historyComplete = false;
         didReset = true;
       } else {
         if (result.deletionIds.length > 0) {
@@ -1118,24 +1134,52 @@ export struct NotifyView {
         newDelCursor = result.delCursor;
       }
 
+      let nextAfter: number = after;
       if (result.messages.length > 0) {
-        await MessageCacheStore.upsertMessages(deviceKey, result.messages);
+        // 本页先成功写入消息，才允许推进历史游标，保证中断后不会漏页。
+        const written: boolean = await MessageCacheStore.upsertMessages(deviceKey, result.messages);
+        if (!written) {
+          hilog.warn(DOMAIN, TAG, 'syncSingleServer 本地写入失败，保留历史游标：%{public}s', deviceKey);
+          return false;
+        }
         hasNewMessages = true;
         for (let i = 0; i < result.messages.length; i++) {
           if (result.messages[i].id > newMaxId) {
             newMaxId = result.messages[i].id;
           }
+          if (result.messages[i].id > nextAfter) {
+            nextAfter = result.messages[i].id;
+          }
         }
+      }
+
+      // 服务端有下一页却没有推进 id，会导致无限请求；保持未完成状态并下次重试。
+      if (result.hasMore && nextAfter <= after) {
+        hilog.warn(DOMAIN, TAG, 'syncSingleServer 分页游标未推进：%{public}s', deviceKey);
+        return false;
+      }
+
+      const completedThisRound: boolean = !result.hasMore;
+      if (completedThisRound) {
+        historyComplete = true;
+        historyCursor = 0;
+      } else if (!historyComplete) {
+        historyCursor = nextAfter;
+      }
+
+      // 每页都持久化进度；首次历史播种中断后会从 historyCursor 继续。
+      const metaSaved: boolean = await MessageCacheStore.saveMeta(
+        deviceKey, newMaxId, newDelCursor, historyCursor, historyComplete);
+      if (!metaSaved) {
+        hilog.warn(DOMAIN, TAG, 'syncSingleServer 同步进度保存失败：%{public}s', deviceKey);
+        return false;
       }
 
       if (!result.hasMore) {
         break;
       }
-      after = newMaxId;
+      after = nextAfter;
     }
-
-    // 持久化同步元信息
-    await MessageCacheStore.saveMeta(deviceKey, newMaxId, newDelCursor);
 
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
       return false;
