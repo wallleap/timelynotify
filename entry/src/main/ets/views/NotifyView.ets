@@ -45,6 +45,7 @@ import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
+import { NotifyGroupCountBadge, NotifyGroupShellLayer } from '../components/notify/NotifyGroupVisuals';
 
 const TAG: string = 'NotifyView';
 
@@ -479,13 +480,7 @@ export struct NotifyView {
   // geometryTransition 节点内部，否则收起方向的 in 节点 opacity 不会恢复（徽标永久消失）
   @Builder
   groupCountBadge(count: number) {
-    Text(`${count} 条通知`)
-      .fontSize(10)
-      .fontWeight(FontWeight.Medium)
-      .fontColor($r('app.color.group_count_badge_text'))
-      .padding({ left: 8, right: 8, top: 2, bottom: 2 })
-      .borderRadius(10)
-      .backgroundColor($r('app.color.group_count_badge_bg'));
+    NotifyGroupCountBadge({ count: count });
   }
 
   // 分组头卡片内容（主卡片与空壳层共用）：
@@ -615,19 +610,8 @@ export struct NotifyView {
   // 也不渲染 Hidden 占位内容，避免多一层布局。hitTestBehavior(None) 不拦截触摸。
   @Builder
   groupShellLayer(section: NotifySection, inset: number, yOffset: number, bgColor: Resource) {
-    Row() {
-      Column()
-        .layoutWeight(1)
-        .height('100%')
-        .borderRadius(12)
-        .backgroundColor(bgColor);
-    }
-    .width('100%')
-    // 高度 = 主卡片实测高度（vp）；未测量到（0）时由调用方跳过渲染，不会出现高度塌陷
-    .height(this.groupCardHeights.get(section.groupKey) ?? 0)
-    .padding({ left: inset, right: inset })
-    .offset({ y: yOffset })
-    .hitTestBehavior(HitTestMode.None);
+    NotifyGroupShellLayer({ shellHeight: this.groupCardHeights.get(section.groupKey) ?? 0,
+      inset: inset, yOffset: yOffset, shellColor: bgColor });
   }
 
   // 分组头卡片：展示组内最新一条消息，右下角显示组内条数与展开/收起箭头。
