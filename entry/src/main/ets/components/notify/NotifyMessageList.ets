@@ -121,6 +121,17 @@ export struct NotifyMessageList {
           }.swipeAction({ end: { builder: () => { this.deleteGroup(section); } } });
         }
       }, (section: NotifySection) => section.key);
+      // 列表底部"没有更多了"提示（有消息时显示）
+      ListItem() {
+        Row() {
+          Text('没有更多了')
+            .fontSize(13)
+            .fontColor($r('app.color.text_quinary_color'));
+        }
+        .width('100%')
+        .height(40)
+        .justifyContent(FlexAlign.Center);
+      }
       ListItem() { Row().width('100%').height(this.navBarHeight + (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 72 : 64)); }
     }
     .width('100%').height('100%').padding({ left: 16, right: 16 }).align(Alignment.Top).clip(false);
