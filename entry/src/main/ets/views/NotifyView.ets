@@ -46,6 +46,7 @@ import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyGroupCountBadge, NotifyGroupShellLayer } from '../components/notify/NotifyGroupVisuals';
+import { NotifyGroupExpandedHeader } from '../components/notify/NotifyGroupExpandedHeader';
 
 const TAG: string = 'NotifyView';
 
@@ -674,6 +675,20 @@ export struct NotifyView {
   // 展开态分组顶栏：app 图标 + group 名称（左）+ 条数 + 折叠箭头（右），底部分隔线，仅上方圆角
   @Builder
   groupExpandedHeader(section: NotifySection) {
+    NotifyGroupExpandedHeader({ section: section, isEditing: this.isEditing,
+      groupSelected: this.isGroupAllSelected(section.messages),
+      onToggle: () => {
+        if (this.isEditing) {
+          this.toggleGroupSelection(section.messages);
+        } else {
+          this.toggleGroupExpanded(section.groupKey);
+        }
+      } });
+    /*
+     * 已迁移至 NotifyGroupExpandedHeader。保留旧实现仅作为共享元素动画的过渡参照，
+     * 下一步会随折叠卡片主体一并移除。
+     */
+    if (false) {
     Column() {
       Row({ space: 8 }) {
         if (this.isEditing) {
@@ -753,6 +768,7 @@ export struct NotifyView {
     })
     // 顶栏随展开态淡入淡出（徽标本身另有共享元素飞行动画）
     .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+    }
   }
 
   // 展开态分组内的消息行：布局与普通消息卡片完全一致（上方标题/正文+右上 38vp 图标，下方时间居右），
