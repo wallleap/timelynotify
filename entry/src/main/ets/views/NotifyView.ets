@@ -43,6 +43,7 @@ import { NotifyTitleBar } from '../components/notify/NotifyTitleBar';
 import { NotifyEditActionBar } from '../components/notify/NotifyEditActionBar';
 import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
+import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 
 const TAG: string = 'NotifyView';
 
@@ -460,80 +461,16 @@ export struct NotifyView {
 
   @Builder
   messageRow(m: NotifyMessage) {
-    Row({ space: 12 }) {
-      if (this.isEditing) {
-        Checkbox()
-          .select(this.isSelected(m.id))
-          .selectedColor($r('app.color.text_accent_color'))
-          .shape(CheckBoxShape.CIRCLE);
-      }
-      Column({ space: 6 }) {
-        // 上：标题/副标题/正文（左占剩余空间）+ icon（右 42x42）
-        Row({ space: 8 }) {
-          Column() {
-            if (m.title && m.title.length > 0) {
-              Text(m.title)
-                .fontSize(15)
-                .fontWeight(FontWeight.Bold)
-                .fontColor($r('app.color.text_primary_color'))
-                .width('100%')
-                .maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis });
-            }
-            if (m.subtitle && m.subtitle.length > 0) {
-              Text(m.subtitle)
-                .fontSize(13)
-                .fontColor($r('app.color.text_accent_color'))
-                .width('100%')
-                .maxLines(2)
-                .textOverflow({ overflow: TextOverflow.Ellipsis });
-            }
-            // 正文优先展示 extras.inboxcontent 多行摘要（每行一条），无则回退普通正文
-            if (m.inboxContent.length > 0) {
-              this.inboxRichTextList(m.inboxContent)
-            } else if (m.body && m.body.length > 0) {
-              this.bodyRichTextList(m.body)
-            }
-          }
-          .layoutWeight(1)
-          .alignItems(HorizontalAlign.Start);
+    NotifyMessageCard({ message: m, isEditing: this.isEditing, selected: this.isSelected(m.id),
+      onSelect: (id: number) => this.toggleSelect(id),
+      onOpen: (message: NotifyMessage) => this.openMessageDetail(message),
+      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
+  }
 
-          if (m.image && m.image.length > 0) {
-            Image(m.image)
-              .width(38)
-              .height(38)
-              .borderRadius(12)
-              .objectFit(ImageFit.Cover)
-              .flexShrink(0)
-              .alt($r('app.media.app_icon'));
-          }
-        }
-        .width('100%')
-        .alignItems(VerticalAlign.Top);
-
-        // 下：时间居右
-        Text(this.formatTime(m.timestamp))
-          .fontSize(11)
-          .fontColor($r('app.color.text_quinary_color'))
-          .width('100%')
-          .textAlign(TextAlign.End);
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start);
-    }
-    .width('100%')
-    .padding(12)
-    .backgroundColor($r('app.color.card_background'))
-    .borderRadius(12)
-    .alignItems(VerticalAlign.Top)
-    .onClick(() => {
-      if (this.isEditing) {
-        this.toggleSelect(m.id);
-      } else {
-        this.selectedMessage = m;
-        this.showDetail = true;
-      }
-    });
+  /** 打开消息详情，供列表卡片统一回调。 */
+  private openMessageDetail(message: NotifyMessage): void {
+    this.selectedMessage = message;
+    this.showDetail = true;
   }
 
   // 「N 条通知」灰色胶囊徽标（折叠卡底部与展开态顶栏共用同一视觉，纯视觉无交互）。
