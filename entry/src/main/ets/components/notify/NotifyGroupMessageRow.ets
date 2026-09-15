@@ -34,14 +34,14 @@ export struct NotifyGroupMessageRow {
       // 时间行下方的链接 action 行：复制（灰）/打开（主色）两项平分宽度，中间分割线，各自居中
       Row() {
         Row({ space: 4 }) {
-          Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.text_secondary_color'))
+          Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.text_secondary_color')).draggable(false)
             .objectFit(ImageFit.Contain).flexShrink(0);
           Text('复制链接').fontSize(13).fontColor($r('app.color.text_secondary_color'));
         }.layoutWeight(1).justifyContent(FlexAlign.Center)
           .onClick(() => this.onCopyUrl(url));
         Divider().vertical(true).strokeWidth(1).color($r('app.color.text_quinary_color')).height(16).opacity(0.35);
         Row({ space: 4 }) {
-          Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.text_accent_color'))
+          Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.text_accent_color')).draggable(false)
             .objectFit(ImageFit.Contain).flexShrink(0);
           Text('打开链接').fontSize(13).fontColor($r('app.color.text_accent_color'));
         }.layoutWeight(1).justifyContent(FlexAlign.Center)

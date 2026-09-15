@@ -216,7 +216,8 @@ export struct NotifyView {
     Row() {
       Image(this.groupEnabled ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
         .width(20).height(20).objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.text_primary_color'));
+        .fillColor($r('app.color.text_primary_color'))
+        .draggable(false);
     }
     .width(44).height(44).borderRadius(22)
     .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)

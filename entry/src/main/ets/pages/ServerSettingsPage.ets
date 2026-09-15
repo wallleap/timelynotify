@@ -26,6 +26,7 @@ struct ServerSettingsPage {
       .objectFit(ImageFit.Contain)
       .fillColor($r('app.color.text_primary_color'))
       .padding(4)
+      .draggable(false)
       .onClick(() => {
         this.handleBack();
       });

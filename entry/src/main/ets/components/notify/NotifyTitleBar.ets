@@ -25,7 +25,7 @@ export struct NotifyTitleBar {
   @Builder
   private deletePill() {
     Row() {
-      Image($r('app.media.delete')).width(24).height(24).objectFit(ImageFit.Contain)
+      Image($r('app.media.delete')).width(24).height(24).objectFit(ImageFit.Contain).draggable(false)
         .fillColor($r('app.color.text_primary_color'));
     }
     .height(38).width(38).borderRadius(38).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
@@ -40,7 +40,7 @@ export struct NotifyTitleBar {
         Text(this.title).fontSize(24).fontColor($r('app.color.text_primary_color')).fontWeight(FontWeight.Bold)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
           .onClick(() => this.onOpenSettings());
-        Image($r('app.media.select_more')).width(24).height(24).objectFit(ImageFit.Contain)
+        Image($r('app.media.select_more')).width(24).height(24).objectFit(ImageFit.Contain).draggable(false)
           .fillColor($r('app.color.text_primary_color')).flexShrink(0).onClick(() => this.onOpenSettings());
       }
       .layoutWeight(1).width(0).alignItems(VerticalAlign.Center).onClick(() => this.onOpenSettings())

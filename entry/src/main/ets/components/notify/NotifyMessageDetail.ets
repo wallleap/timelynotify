@@ -53,7 +53,7 @@ export struct NotifyMessageDetail {
   private linkRow(url: string) {
     if (url.length > 0) {
       Row({ space: 5 }) {
-        Image($r('app.media.url')).width(15).height(15).fillColor($r('app.color.text_accent_color'))
+        Image($r('app.media.url')).width(15).height(15).fillColor($r('app.color.text_accent_color')).draggable(false)
           .objectFit(ImageFit.Contain).flexShrink(0);
         Text(url).fontSize(15).fontColor($r('app.color.text_accent_color'))
           .lineHeight(22.5).onClick(() => this.onOpenUrl(url));
@@ -67,7 +67,7 @@ export struct NotifyMessageDetail {
       Row() {
         Text('消息详情').fontSize(18).fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary_color')).layoutWeight(1);
-        Image($r('app.media.close')).width(28).height(28).objectFit(ImageFit.Contain)
+        Image($r('app.media.close')).width(28).height(28).objectFit(ImageFit.Contain).draggable(false)
           .fillColor($r('app.color.text_tertiary_color')).padding(2).onClick(() => this.onDismiss());
       }.width('100%').padding(16).alignItems(VerticalAlign.Center);
     }
