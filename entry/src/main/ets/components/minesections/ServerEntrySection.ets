@@ -40,7 +40,8 @@ export struct ServerEntrySection {
       .width(20)
       .height(20)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_quinary_color'));
+      .fillColor($r('app.color.text_quinary_color'))
+      .draggable(false);
   }
 
   build() {

@@ -46,6 +46,7 @@ export struct ServerActionMenuDialog {
           .objectFit(ImageFit.Contain)
           .fillColor($r('app.color.text_quinary_color'))
           .padding(4)
+          .draggable(false)
           .onClick(() => {
             this.close();
           });

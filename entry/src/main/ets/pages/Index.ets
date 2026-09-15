@@ -47,7 +47,8 @@ struct Index {
         .width(24)
         .height(24)
         .fillColor(
-          this.currentIndex === index ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
+          this.currentIndex === index ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'))
+        .draggable(false);
       Text(item.title)
         .fontSize(12)
         .fontColor(

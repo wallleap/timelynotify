@@ -58,6 +58,7 @@ struct SharePage {
       .objectFit(ImageFit.Contain)
       .fillColor($r('app.color.text_primary_color'))
       .padding(4)
+      .draggable(false)
       .onClick(() => {
         this.handleBack();
       });
@@ -78,6 +79,7 @@ struct SharePage {
       .objectFit(ImageFit.Contain)
       .fillColor($r('app.color.text_primary_color'))
       .padding(4)
+      .draggable(false)
       .onClick(() => {
         this.handleShare();
       });

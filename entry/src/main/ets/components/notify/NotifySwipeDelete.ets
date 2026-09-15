@@ -6,7 +6,7 @@ export struct NotifySwipeDelete {
   build() {
     Row() {
       Row() {
-        Image($r('app.media.delete')).width(22).height(22).objectFit(ImageFit.Contain).fillColor('#FFFFFF');
+        Image($r('app.media.delete')).width(22).height(22).objectFit(ImageFit.Contain).fillColor('#FFFFFF').draggable(false);
       }
       .width(44).height(44).borderRadius(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
       .backgroundColor($r('app.color.text_error_color')).onClick(() => this.onDelete());
