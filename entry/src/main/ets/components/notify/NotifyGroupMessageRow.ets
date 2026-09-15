@@ -31,7 +31,7 @@ export struct NotifyGroupMessageRow {
   @Builder
   private linkActions(url: string) {
     if (url.length > 0) {
-      // 时间行下方的链接 action 行：复制（灰）/打开（主色）两项平分宽度，中间分割线，各自居中
+      // 贴在消息行底部的浅灰操作区，复制（灰）/打开（主色）两项等宽排列。
       Row() {
         Row({ space: 4 }) {
           Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.text_secondary_color')).draggable(false)
@@ -46,7 +46,9 @@ export struct NotifyGroupMessageRow {
           Text('打开链接').fontSize(13).fontColor($r('app.color.text_accent_color'));
         }.layoutWeight(1).justifyContent(FlexAlign.Center)
           .onClick(() => this.onOpenUrl(url));
-      }.width('100%').alignItems(VerticalAlign.Center).margin({ top: 4 });
+      }
+      .width('100%').padding({ top: 10, bottom: 10 })
+      .backgroundColor($r('app.color.link_action_background')).alignItems(VerticalAlign.Center);
     }
   }
 
@@ -67,30 +69,34 @@ export struct NotifyGroupMessageRow {
 
   build() {
     Stack({ alignContent: Alignment.BottomStart }) {
-      Row({ space: 12 }) {
-        if (this.isEditing) {
-          Checkbox().select(this.selected).selectedColor($r('app.color.text_accent_color')).shape(CheckBoxShape.CIRCLE).flexShrink(0);
-        }
-        Column({ space: 6 }) {
-          Row({ space: 8 }) {
-            Column() {
-              if (this.message.title.length > 0) {
-                Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color')).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+      Column() {
+        Row({ space: 12 }) {
+          if (this.isEditing) {
+            Checkbox().select(this.selected).selectedColor($r('app.color.text_accent_color')).shape(CheckBoxShape.CIRCLE).flexShrink(0);
+          }
+          Column({ space: 6 }) {
+            Row({ space: 8 }) {
+              Column() {
+                if (this.message.title.length > 0) {
+                  Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color')).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+                }
+                if (this.message.subtitle.length > 0) {
+                  Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.text_accent_color')).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
+                }
+                this.body();
+              }.layoutWeight(1).alignItems(HorizontalAlign.Start);
+              if (this.message.image.length > 0) {
+                Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).flexShrink(0).alt($r('app.media.app_icon'));
               }
-              if (this.message.subtitle.length > 0) {
-                Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.text_accent_color')).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
-              this.body();
-            }.layoutWeight(1).alignItems(HorizontalAlign.Start);
-            if (this.message.image.length > 0) {
-              Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).flexShrink(0).alt($r('app.media.app_icon'));
-            }
-          }.width('100%').alignItems(VerticalAlign.Top).geometryTransition(this.contentTransitionId)
-            .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-          Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.text_quinary_color')).width('100%').textAlign(TextAlign.End);
+            }.width('100%').alignItems(VerticalAlign.Top).geometryTransition(this.contentTransitionId)
+              .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+            Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.text_quinary_color')).width('100%').textAlign(TextAlign.End);
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start);
+        }.width('100%').alignItems(VerticalAlign.Top).padding({ left: 12, right: 12, top: 12, bottom: 12 });
+        if (this.message.url.length > 0) {
           this.linkActions(this.message.url);
-        }.layoutWeight(1).alignItems(HorizontalAlign.Start);
-      }.width('100%').alignItems(VerticalAlign.Top).padding({ left: 12, right: 12, top: 12, bottom: 22 });
+        }
+      }.width('100%');
       if (!this.isLast) {
         Divider().color($r('app.color.divider_color')).strokeWidth(0.5).width('100%').margin({ left: 12 });
       }

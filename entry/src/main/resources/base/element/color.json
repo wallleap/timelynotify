@@ -69,6 +69,10 @@
       "value": "#F5F5F5"
     },
     {
+      "name": "link_action_background",
+      "value": "#F8F9FA"
+    },
+    {
       "name": "selected_row_background",
       "value": "#FFF3E8"
     },
