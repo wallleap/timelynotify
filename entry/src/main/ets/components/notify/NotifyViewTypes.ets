@@ -86,12 +86,27 @@ export function displayGroupTitle(groupKey: string): string {
 
 /**
  * 依据消息当前顺序生成稳定的列表分组，避免渲染层重复维护排序逻辑。
- * 无 group（空串）的消息也会聚合到"未分组"虚拟 section。
+ * groupEnabled=true（默认）：同 group_key 聚合，无 group（空串）的消息聚合到"未分组"虚拟 section。
+ * groupEnabled=false：关闭分组，每条消息都是独立的平铺 section（grouped=false）。
  * totals 参数：每个 group_key 的真实总数，用于徽标和"加载更多"按钮。
  * 不传 totals 时回退到内存中 messages 数量（旧逻辑兼容）。
  */
 export function buildNotifySections(messages: NotifyMessage[],
-  totals?: Map<string, number>): NotifySection[] {
+  totals?: Map<string, number>, groupEnabled: boolean = true): NotifySection[] {
+  // 平铺模式：每条消息独立渲染，不做任何聚合
+  if (!groupEnabled) {
+    const flat: NotifySection[] = [];
+    for (let i = 0; i < messages.length; i++) {
+      flat.push({
+        key: `flat:${messages[i].id}`,
+        groupKey: '',
+        messages: [messages[i]],
+        grouped: false,
+        total: 1
+      });
+    }
+    return flat;
+  }
   // 第一遍：聚合消息到各 group（保持首次出现顺序）
   const raw: GroupAggregation[] = [];
   const positions: Map<string, number> = new Map<string, number>();

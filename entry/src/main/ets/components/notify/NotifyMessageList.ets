@@ -17,6 +17,8 @@ export struct NotifyMessageList {
   @Prop groupCardHeights: Map<string, number> = new Map<string, number>();
   @Prop groupTotals: Map<string, number> = new Map<string, number>();
   @Prop groupLoadingMore: Set<string> = new Set<string>();
+  // 是否启用分组显示（false 时所有消息平铺）
+  @Prop groupEnabled: boolean = true;
   @Prop statusBarHeight: number = 0;
   @Prop navBarHeight: number = 0;
   @Prop immersiveLightEnabled: boolean = true;
@@ -68,7 +70,7 @@ export struct NotifyMessageList {
   build() {
     List({ space: 10, scroller: this.listScroller }) {
       ListItem() { Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 4 : this.statusBarHeight + 78); }
-      ForEach(buildNotifySections(this.messages, this.groupTotals), (section: NotifySection) => {
+      ForEach(buildNotifySections(this.messages, this.groupTotals, this.groupEnabled), (section: NotifySection) => {
         if (!section.grouped) {
           ListItem() {
             NotifyMessageCard({ message: section.messages[0], isEditing: this.isEditing, selected: this.isSelected(section.messages[0].id),

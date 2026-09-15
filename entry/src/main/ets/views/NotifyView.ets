@@ -7,6 +7,7 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
+import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
@@ -67,6 +68,8 @@ export struct NotifyView {
   @State groupTotals: Map<string, number> = new Map<string, number>();
   // 组内加载更多进行中的 group_key 集合，用于按钮显示 loading 态
   @State groupLoadingMore: Set<string> = new Set<string>();
+  // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
+  @State groupEnabled: boolean = true;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -94,6 +97,11 @@ export struct NotifyView {
 
   aboutToAppear() {
     this.initAfterServerManagerReady();
+    // 读取分组显示开关（默认开启分组）
+    PreferencesUtil.getString(null, PreferencesUtil.KEY_GROUP_ENABLED, 'true')
+      .then((value: string) => {
+        this.groupEnabled = value === 'true';
+      });
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.exitEditMode();
       this.refresh();
@@ -173,10 +181,10 @@ export struct NotifyView {
         .width('100%')
         .layoutWeight(1);
 
-        // 右下角全部展开/折叠浮动按钮组
-        // 仅在非编辑模式、存在分组、有消息时显示
-        if (!this.isEditing && this.messages.length > 0 && this.hasGroupedSections()) {
-          this.groupToggleFab();
+        // 右下角"分组/平铺"模式切换浮动按钮
+        // 仅在非编辑模式、有消息时显示
+        if (!this.isEditing && this.messages.length > 0) {
+          this.groupModeToggleFab();
         }
       }
       .width('100%')
@@ -191,11 +199,15 @@ export struct NotifyView {
     .height('100%');
   }
 
-  /** 右下角分组切换按钮：全部折叠时显示展开图标，否则显示折叠图标；点击切换 */
+  /**
+   * 右下角分组模式切换按钮：
+   * - 当前分组模式：显示 group_expand 图标，点击切为平铺
+   * - 当前平铺模式：显示 group_collapse 图标，点击切为分组
+   */
   @Builder
-  private groupToggleFab() {
+  private groupModeToggleFab() {
     Row() {
-      Image(this.allGroupsCollapsed() ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
+      Image(this.groupEnabled ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
         .width(20).height(20).objectFit(ImageFit.Contain)
         .fillColor($r('app.color.text_primary_color'));
     }
@@ -206,11 +218,7 @@ export struct NotifyView {
     .border({ width: 1, color: $r('app.color.glass_button_border') })
     .margin({ right: 16, bottom: this.navBarHeight + 56 + 16 })
     .onClick(() => {
-      if (this.allGroupsCollapsed()) {
-        this.expandAllGroups();
-      } else {
-        this.collapseAllGroups();
-      }
+      this.toggleGroupEnabled();
     });
   }
 
@@ -280,9 +288,9 @@ export struct NotifyView {
           .width('100%')
           .height('100%')
 
-          // 非沉浸式分支的右下角浮动按钮组
-          if (!this.isEditing && this.messages.length > 0 && this.hasGroupedSections()) {
-            this.groupToggleFab();
+          // 非沉浸式分支的右下角分组模式切换按钮
+          if (!this.isEditing && this.messages.length > 0) {
+            this.groupModeToggleFab();
           }
         }
         .width('100%')
@@ -315,6 +323,7 @@ export struct NotifyView {
     NotifyMessageList({ messages: this.messages, isEditing: this.isEditing, selectedIds: this.selectedIds,
       expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights,
       groupTotals: this.groupTotals, groupLoadingMore: this.groupLoadingMore,
+      groupEnabled: this.groupEnabled,
       statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
       onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
@@ -605,69 +614,18 @@ export struct NotifyView {
     });
   }
 
-  // ====== 全部展开/折叠浮动按钮 ======
+  // ====== 分组/平铺模式切换（右下角浮动按钮） ======
 
-  // 是否存在可折叠/展开的分组（至少一个 section 的 grouped=true，即该 group 有 ≥2 条消息）
-  private hasGroupedSections(): boolean {
-    const groups: Map<string, number> = new Map<string, number>();
-    for (let i = 0; i < this.messages.length; i++) {
-      const g: string = this.messages[i].group;
-      groups.set(g, (groups.get(g) ?? 0) + 1);
-    }
-    for (const cnt of groups.values()) {
-      if (cnt >= 2) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // 是否所有分组都已展开（expandedGroups 覆盖所有 distinct group_key）
-  private allGroupsExpanded(): boolean {
-    const keys: Set<string> = new Set<string>();
-    for (let i = 0; i < this.messages.length; i++) {
-      if (this.messages[i].group.length > 0) {
-        keys.add(this.messages[i].group);
-      }
-    }
-    if (keys.size === 0) {
-      return false;
-    }
-    for (const k of keys) {
-      if (!this.isGroupExpanded(k)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  // 是否所有分组都已折叠（expandedGroups 为空或不含任何当前 group_key）
-  private allGroupsCollapsed(): boolean {
-    return this.expandedGroups.length === 0;
-  }
-
-  // 全部展开：补齐所有 group_key 到 expandedGroups
-  private expandAllGroups(): void {
-    const keys: Set<string> = new Set<string>();
-    for (let i = 0; i < this.messages.length; i++) {
-      if (this.messages[i].group.length > 0) {
-        keys.add(this.messages[i].group);
-      }
-    }
-    const next: string[] = [];
-    for (const k of keys) {
-      next.push(k);
-    }
-    this.getUIContext().animateTo({ duration: 280, curve: Curve.EaseInOut }, () => {
-      this.expandedGroups = next;
-    });
-  }
-
-  // 全部折叠：清空 expandedGroups
-  private collapseAllGroups(): void {
-    this.getUIContext().animateTo({ duration: 280, curve: Curve.EaseInOut }, () => {
-      this.expandedGroups = [];
-    });
+  /**
+   * 切换分组显示模式并持久化。
+   * 切到平铺时清空展开状态（平铺没有分组可展开）；
+   * 切回分组时也清空，让用户重新选择展开哪些组。
+   */
+  private toggleGroupEnabled(): void {
+    this.groupEnabled = !this.groupEnabled;
+    this.expandedGroups = [];
+    PreferencesUtil.putString(null, PreferencesUtil.KEY_GROUP_ENABLED,
+      this.groupEnabled ? 'true' : 'false');
   }
 
   private handleGroupHeaderClick(section: NotifySection): void {
