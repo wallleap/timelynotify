@@ -307,8 +307,8 @@ export class NotifyMessageService {
     result.ok = true;
     hilog.info(DOMAIN, TAG,
       '拉取成功，消息 %{public}d 条，删除 %{public}d 条，purge %{public}d，reset=%{public}s',
-      String(result.messages.length), String(result.deletionIds.length),
-      String(result.purges.length), result.reset ? 'true' : 'false');
+      result.messages.length, result.deletionIds.length,
+      result.purges.length, result.reset ? 'true' : 'false');
     return result;
   }
 
