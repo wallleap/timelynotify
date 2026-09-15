@@ -2,7 +2,6 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { common, Want } from '@kit.AbilityKit';
-import { fileIo, picker } from '@kit.CoreFileKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
@@ -22,15 +21,7 @@ import {
   KEY_NOTIFY_REFRESH_SIGNAL
 } from '../common/Constant';
 import showToast from '../components/showToast';
-import {
-  buildNotifySections,
-  formatNotifyTime,
-  NOTIFY_SEGMENT_CODE,
-  NOTIFY_SEGMENT_URL,
-  NotifySection,
-  NotifyTextSegment,
-  parseNotifyTextSegments
-} from '../components/notify/NotifyViewTypes';
+import { NotifySection } from '../components/notify/NotifyViewTypes';
 import {
   areGroupMessagesSelected,
   hasSelectedMessage,
@@ -43,17 +34,14 @@ import { NotifyTitleBar } from '../components/notify/NotifyTitleBar';
 import { NotifyEditActionBar } from '../components/notify/NotifyEditActionBar';
 import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
-import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
+import { NotifyMessageList } from '../components/notify/NotifyMessageList';
+import { NotifyExportService } from '../services/NotifyExportService';
 
 const TAG: string = 'NotifyView';
 
-// 前台轮询间隔（ms）：「通知」Tab 可见期间静默拉取新消息，
 // 补齐"用户停留列表页时新消息不及时出现"的场景
 const POLL_INTERVAL_MS: number = 15000;
-
-// 列表项 inboxContent 多行摘要最多展示行数（与普通正文 maxLines(4) 保持一致）
-const INBOX_LIST_MAX_LINES: number = 4;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -71,35 +59,21 @@ export struct NotifyView {
   // 点击查看的消息详情（bindContentCover 全屏模态）
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
-  // 多选模式状态：经 @StorageLink 同步到 AppStorage，Index.onBackPress 读取以拦截系统返回退出编辑
   @StorageLink(KEY_NOTIFY_EDITING) @Watch('onIsEditingChanged') isEditing: boolean = false;
   @State selectedIds: number[] = [];
   // 导出选中消息：防重复触发
   @State exportingSelected: boolean = false;
-  // 当前展开的 group 标识集合；折叠状态只属于 UI 展示层，数据源仍以 messages 为准
   @State expandedGroups: string[] = [];
-  // 折叠态分组主卡片的实测高度（vp），按 groupKey 缓存。空壳层高度必须显式与主卡片一致：
-  // 在虚拟化 List 中给空壳设 height('100%') 会被解析成接近整个列表视口的高度，空壳会拉成通屏大面板
   @State groupCardHeights: Map<string, number> = new Map<string, number>();
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
-  // 状态栏高度（vp），详情模态标题栏顶部避让用；EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
-  // 底部导航条高度（vp），编辑操作栏与列表底部占位避让用
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  // 沉浸光感用户开关（API 26+ 生效；MineView Toggle 切换后经 AppStorage 同步，此处自动重渲染切换分支）
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
-  // 主页当前选中 Tab 索引（Index 经 @StorageLink 写入）：切走「通知」Tab 时自动退出多选模式；
   // 切回「通知」Tab（值为 0）时自动刷新列表
   @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
-  // 通知列表刷新信号（EntryAbility 回前台/点击通知拉起时自增）：@Watch 变化后自动拉取最新消息，
-  // 保证用户回到列表/点通知进来时列表始终是最新的
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
-  // 主页页面可见状态（Index onPageShow/onPageHide 写入）：Index 被 router 跳转覆盖/退后台时组件
-  // 自身不会销毁（aboutToDisappear 不触发），需借助页面级显隐信号停止/恢复前台轮询
   @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onPageVisibleChanged') indexPageVisible: boolean = true;
-  // 下拉刷新状态：自定义刷新指示器不会自动隐藏，需按状态控制显隐
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
-  // ⚠️ ArkUI 官方模式：CustomDialogController 必须在 struct 字段声明时直接初始化
   private dialogController: CustomDialogController = new CustomDialogController({
     builder: ServerSettingsDialog(),
     alignment: DialogAlignment.Center,
@@ -107,28 +81,20 @@ export struct NotifyView {
     offset: { dx: 0, dy: 0 },
   });
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
-  // 请求代际：服务器切换/新请求发起后递增，过期响应直接丢弃，防止旧服务器数据写入列表
   private loadSeq: number = 0;
-  // 补拉标志：loadMessages 在请求进行中被调用时置 true，当前请求结束后补拉一次
   private loadQueued: boolean = false;
   private scroller: Scroller = new Scroller();
-  // 前台轮询定时器句柄（setTimeout 链式循环；-1 表示当前无待执行任务）
   private pollTimer: number = -1;
-  // 轮询启用开关：「通知」Tab 可见时为 true；与 pollTimer 配合，
   // 防止飞行中的轮询请求在切走 Tab 后又重启循环
   private pollingEnabled: boolean = false;
   // 轮询请求进行中标记：防止慢网络下请求堆积
   private pollInFlight: boolean = false;
 
   aboutToAppear() {
-    // ServerManager 可能还在异步 load，必须先 await ensureLoaded 再读当前 server，
-    // 否则 currentId='' 会走兜底生产 URL，显示/请求错误的地址。
     this.initAfterServerManagerReady();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
-      // 切换服务器后列表会整体刷新，selectedIds 属于旧服务器的消息 ID，继续操作会错删/报错，必须退出多选
       this.exitEditMode();
       this.refresh();
-      // 旧服务器的消息不属于新服务器：立即清空列表与分页状态（新服务器拉取失败时也不残留旧数据），
       // 并递增代际使飞行中的旧请求响应过期丢弃
       this.messages = [];
       this.hasMore = false;
@@ -140,7 +106,6 @@ export struct NotifyView {
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
-    // 「通知」Tab 为默认首 Tab，组件创建即可见时启动前台轮询
     if (this.homeTabIndex === 0) {
       this.startPolling();
     }
@@ -154,7 +119,6 @@ export struct NotifyView {
     this.stopPolling();
   }
 
-  // 降级顶栏：低版本 SDK 手工 Stack 叠层，blurStyle + 半透明底色实现毛玻璃
   @Builder
   fallbackTitleBar() {
     NotifyTitleBar({ title: this.title, isEditing: this.isEditing, statusBarHeight: this.statusBarHeight,
@@ -162,21 +126,12 @@ export struct NotifyView {
       onDelete: () => this.handleDeletePillClicked() });
   }
 
-  // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
-  // 状态栏避让由 titleBar 级 avoidLayoutSafeArea: true 负责（系统将内容整体下移 statusBarHeight）；
-  // 此处 padding 只留纯视觉余量，不得再叠加 statusBarHeight（titleBar 高度固定，会溢出裁剪 → 文字消失）。
-  // ⚠️ stackBuilder 是全宽叠层，与右侧系统 menu 槽位区域重叠：
-  //   1. 标题 Row 与透明占位节点都必须设 hitTestBehavior(None)（默认 Default 会阻塞兄弟节点），
-  //      否则点击 menu 的「多选/删除」会误触发 title 事件；None 不阻塞子节点，标题/图标的 onClick 仍生效；
-  //   2. menu 悬浮叠加不参与 Row 布局，标题 Row 末尾由 NotifyTitleBar 放等宽透明占位，
-  //      标题区宽度才会被真实约束，长标题省略号在按钮前收尾，不会钻到按钮下方。
   @Builder
   customTitleContent() {
     NotifyTitleBar({ title: this.title, isEditing: this.isEditing, useHdsLayout: true,
       onOpenSettings: () => this.handleMoreClicked() });
   }
 
-  // NotifyView Refresh 主体（含分支 view），两条渲染路径共用
   @Builder
   refreshContentBody() {
     Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
@@ -192,13 +147,11 @@ export struct NotifyView {
         this.listView();
       }
     }
-    // ⚠️ 官方 HDS 动态模糊必配：Refresh 外层也不裁剪溢出，否则穿出 titleBar 背面的内容会被 Refresh 边界裁掉
     .clip(false)
     .width('100%')
     .height('100%')
     .onStateChange((state: RefreshStatus) => {
       // 同步刷新状态给自定义指示器，控制其显隐
-      // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
       this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
     })
     .onRefreshing(() => {
@@ -207,7 +160,6 @@ export struct NotifyView {
     });
   }
 
-  // NotifyView 主体（Refresh + 多选底部操作栏），两条渲染路径共用
   @Builder
   viewportBody() {
     Column() {
@@ -228,27 +180,20 @@ export struct NotifyView {
 
   build() {
     if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
-      // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
       HdsNavigation() {
         this.viewportBody();
       }
       .titleBar({
         enableComponentSafeArea: true,
-        // ⚠️ stackBuilder 全自定义区域系统不做状态栏避让（系统 mainTitle 槽位才自带避让），
-        // 必须显式开启 avoidLayoutSafeArea，titleBar 内容整体下移 statusBarHeight，总高自动变为 statusBarHeight+56；
-        // stackBuilder 内部不要再手工加 statusBarHeight（titleBar 高度固定会溢出裁剪）
         avoidLayoutSafeArea: true,
         content: {
-          // 全自定义标题区：服务器标题 + 更多入口（胶囊按钮已迁至系统 menu 槽位获得沉浸光感）
           stackBuilder: (): void => {
             this.customTitleContent();
           },
-          // 系统槽位按钮：系统渲染胶囊/图标样式，自动跟随 titleBar 沉浸光感材质
           menu: {
             value: [
               {
                 content: {
-                  // 文字按钮必须显式指定 TextStyleMode.NORMAL（胶囊样式），默认为图标渲染模式
                   label: this.isEditing ? '取消' : '多选',
                   type: TextStyleMode.NORMAL,
                   action: (): void => {
@@ -268,26 +213,21 @@ export struct NotifyView {
           },
         },
         style: {
-          // 滚动到顶栏下方时触发 GradientBlur 渐变模糊：采样下层内容做动态光感模糊
           scrollEffectOpts: {
             enableScrollEffect: true,
             scrollEffectType: ScrollEffectType.GRADIENT_BLUR
           },
           systemMaterialEffect: {
             materialType: hdsMaterial.MaterialType.ADAPTIVE,
-            // 官方推荐 ADAPTIVE：系统按设备算力自适应档位，避免低端机卡顿/发热
-            //（EXQUISITE 需 getSystemMaterialTypes() 检测支持后才可硬编码）
             materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
           },
         }
       })
       .hideBackButton(true)
       .titleMode(HdsNavigationTitleMode.MINI)
-      // 官方：绑定 List 滚动 → scrollEffectOpts 才会根据滚动偏移激活 GradientBlur 渐变模糊
       .bindToScrollable([this.scroller])
       .width('100%')
       .height('100%')
-      // 点击消息卡片弹出全屏详情模态（内部已做状态栏避让 + 顶部圆角）
       .bindContentCover(this.showDetail, this.detailBuilder(), {
         onDisappear: () => {
           this.showDetail = false;
@@ -295,11 +235,9 @@ export struct NotifyView {
       })
       .backgroundColor($r('app.color.index_page_body_background'));
     } else {
-      // ─── API < 26: Stack + 手工顶栏叠层（backgroundBlurStyle 降级）───
       Column() {
         Stack({ alignContent: Alignment.Top }) {
           this.refreshContentBody();
-          // 顶栏层（上层）：blurStyle + 半透明底色糊住下层滚动内容
           this.fallbackTitleBar();
         }
         .width('100%')
@@ -321,7 +259,6 @@ export struct NotifyView {
     }
   }
 
-  // 仅在下拉/刷新过程中显示，静止（Inactive）时隐藏
   @Builder
   refreshHeaderBuilder() {
     NotifyRefreshHeader({ refreshState: this.refreshState, statusBarHeight: this.statusBarHeight,
@@ -330,141 +267,18 @@ export struct NotifyView {
 
   @Builder
   listView() {
-    List({ space: 10, scroller: this.scroller }) {
-      // 降级分支：Stack 叠层内容从窗口顶开始，占位还需叠加 statusBarHeight + titleBar(64) 手工避让
-      if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
-        ListItem() {
-          Row()
-            .width('100%')
-            .height(4);
-        }
-      } else {
-        ListItem() {
-          Row()
-            .width('100%')
-            .height(this.statusBarHeight + 64 + 14);
-        }
-      }
-
-      ForEach(this.buildSections(), (section: NotifySection) => {
-        if (section.grouped) {
-          if (this.isGroupExpanded(section.groupKey)) {
-            // 展开态 = ListItemGroup：header 为分组名顶栏，每条消息是独立子 ListItem
-            // （各自支持左滑删除/独立点击）。展开/收起在 animateTo 中切换，
-            // 子 ListItem 增删由 List 做布局动画
-            ListItemGroup({ space: 0, header: this.groupExpandedHeader(section) }) {
-              ForEach(section.messages, (m: NotifyMessage, index?: number) => {
-                ListItem() {
-                  // 第一条绑定共享元素 id（与折叠卡内容一一对应），其余行传空串不参与
-                  this.groupMessageRow(m, index === section.messages.length - 1,
-                    index === 0 ? `gmc:${section.groupKey}` : '');
-                }
-                  // ListItem 自身铺卡片底色并裁剪：左滑时露出的区域保持与 item 一致的白底
-                  // （而非列表灰底），且滑动内容被裁在卡片左右边界内、不会越界；
-                  // 末行保留底部 12vp 圆角，与展开卡片底边弧线一致
-                  .backgroundColor($r('app.color.card_background'))
-                  .borderRadius({
-                    topLeft: 0,
-                    topRight: 0,
-                    bottomLeft: index === section.messages.length - 1 ? 12 : 0,
-                    bottomRight: index === section.messages.length - 1 ? 12 : 0
-                  })
-                  .clip(true)
-                  .swipeAction({
-                    end: {
-                      builder: () => {
-                        this.swipeDeleteBuilder(m);
-                      }
-                    }
-                  });
-              }, (m: NotifyMessage) => `group-child:${section.groupKey}:${m.id}`);
-            }
-          } else {
-            // 折叠态 = 单个 ListItem（层叠卡片）。swipeAction 只能挂在 ListItem 上、
-            // ListItemGroup 的 header 不支持左滑，因此折叠态必须独立成 ListItem；
-            // 左滑删除按钮语义为「删除整个分组」
-            ListItem() {
-              this.groupHeaderBuilder(section);
-            }
-            .swipeAction({
-              end: {
-                builder: () => {
-                  this.swipeDeleteGroupBuilder(section);
-                }
-              }
-            });
-          }
-        } else {
-          ListItem() {
-            this.messageRow(section.messages[0]);
-          }
-          .swipeAction({
-            end: {
-              builder: () => {
-                this.swipeDeleteBuilder(section.messages[0]);
-              }
-            }
-          });
-        }
-      }, (section: NotifySection) => section.key);
-
-      // 触底加载指示器
-      if (this.loadingMore) {
-        ListItem() {
-          Row({ space: 6 }) {
-            LoadingProgress()
-              .width(18)
-              .height(18)
-              .color($r('app.color.text_accent_color'));
-            Text('加载更多…')
-              .fontSize(12)
-              .fontColor($r('app.color.text_quinary_color'));
-          }
-          .width('100%')
-          .height(44)
-          .justifyContent(FlexAlign.Center);
-        }
-      } else if (!this.hasMore && this.messages.length > 0) {
-        ListItem() {
-          Text('没有更多了')
-            .fontSize(12)
-            .fontColor($r('app.color.text_quinary_color'))
-            .width('100%')
-            .height(40)
-            .textAlign(TextAlign.Center);
-        }
-      }
-
-      // 底部占位：随内容一起滚动，末尾消息才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
-      // TabBar 总高 = 56 + 导航条高度，占位 64/72 保持视觉余量不变
-      ListItem() {
-        Row()
-          .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.navBarHeight + 72 :
-            this.navBarHeight + 64);
-      }
-    }
-    .width('100%')
-    .height('100%')
-    // 顶/底避让均由首尾占位实现（可滚动穿透顶栏/TabBar）；左右仅保留边距
-    .padding({ left: 16, right: 16 })
-    .align(Alignment.Top)
-    // ⚠️ 官方 HDS 动态模糊必配：List 不裁剪溢出内容，这样卡片才能向上"穿出"至 titleBar 背面被材质采样
-    .clip(false)
-    .onReachEnd(() => {
-      // 列表按时间倒序（新→旧），末尾是最旧消息；取末尾消息 ID 作 since 加载更老的
-      this.loadMore();
-    });
-  }
-
-  // 自定义下拉刷新指示器：顶部留出状态栏高度 + 毛玻璃顶栏高度（64），
-  // 刷新圈显示在顶栏下方而不是被玻璃盖住
-
-  @Builder
-  messageRow(m: NotifyMessage) {
-    NotifyMessageCard({ message: m, isEditing: this.isEditing, selected: this.isSelected(m.id),
-      onSelect: (id: number) => this.toggleSelect(id),
-      onOpen: (message: NotifyMessage) => this.openMessageDetail(message),
+    NotifyMessageList({ messages: this.messages, isEditing: this.isEditing, selectedIds: this.selectedIds,
+      expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights, loadingMore: this.loadingMore,
+      hasMore: this.hasMore, statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
+      immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
+      onLoadMore: () => this.loadMore(), onToggleSelect: (id: number) => this.toggleSelect(id),
+      onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
+      onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
+      onOpenMessage: (message: NotifyMessage) => this.openMessageDetail(message),
+      onOpenGroup: (section: NotifySection) => this.handleGroupHeaderClick(section),
+      onHeightChange: (groupKey: string, height: number) => this.updateGroupCardHeight(groupKey, height),
+      onDeleteOne: (message: NotifyMessage) => this.confirmDeleteOne(message),
+      onDeleteGroup: (section: NotifySection) => this.confirmDeleteGroup(section),
       onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
   }
 
@@ -472,447 +286,6 @@ export struct NotifyView {
   private openMessageDetail(message: NotifyMessage): void {
     this.selectedMessage = message;
     this.showDetail = true;
-  }
-
-  // 「N 条通知」灰色胶囊徽标（折叠卡底部与展开态顶栏共用同一视觉，纯视觉无交互）。
-  // 几何转场绑在调用处包裹它的直接 Row 节点上（gmb）；注意该 Row 不可嵌套在另一个
-  // geometryTransition 节点内部，否则收起方向的 in 节点 opacity 不会恢复（徽标永久消失）
-  @Builder
-  groupCountBadge(count: number) {
-    Text(`${count} 条通知`)
-      .fontSize(10)
-      .fontWeight(FontWeight.Medium)
-      .fontColor($r('app.color.group_count_badge_text'))
-      .padding({ left: 8, right: 8, top: 2, bottom: 2 })
-      .borderRadius(10)
-      .backgroundColor($r('app.color.group_count_badge_bg'));
-  }
-
-  // 分组头卡片内容（主卡片与空壳层共用）：
-  // visible=true → 正常渲染（主卡片）；visible=false → 内容 Visibility.Hidden（不可见但保留布局空间，
-  // 使空壳与主卡片高度一致，解决空 Column height('100%') 在内容尺寸 Stack 中高度为 0 的问题）
-  @Builder
-  groupCardContent(section: NotifySection, visible: boolean) {
-    if (this.isEditing) {
-      Checkbox()
-        .select(this.isGroupAllSelected(section.messages))
-        .selectedColor($r('app.color.text_accent_color'))
-        .shape(CheckBoxShape.CIRCLE)
-        .visibility(visible ? Visibility.Visible : Visibility.Hidden)
-        .onClick(() => {
-          this.toggleGroupSelection(section.messages);
-        });
-    }
-    Column({ space: 6 }) {
-      // 上：标题/副标题/正文（左占剩余空间）+ icon（右 38x38）
-      // 该 Row 与展开列表第一行的上半 Row 结构完全一致，作为 gmc 共享元素：
-      // 展开时平滑「飞」到第一行，收起时反向飞回。只包上半 Row（不含底部徽标/时间行），
-      // 避免与徽标的 gmb 转场嵌套（嵌套几何转场会导致徽标收起后 opacity 不恢复）
-      Row({ space: 8 }) {
-        Column() {
-          if (section.messages[0].title && section.messages[0].title.length > 0) {
-            Text(section.messages[0].title)
-              .fontSize(15)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary_color'))
-              .width('100%')
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-          }
-          if (section.messages[0].subtitle && section.messages[0].subtitle.length > 0) {
-            Text(section.messages[0].subtitle)
-              .fontSize(13)
-              .fontColor($r('app.color.text_accent_color'))
-              .width('100%')
-              .maxLines(2)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-          }
-          // 正文优先展示 extras.inboxcontent 多行摘要，无则回退普通正文
-          if (section.messages[0].inboxContent.length > 0) {
-            this.inboxRichTextList(section.messages[0].inboxContent)
-          } else if (section.messages[0].body && section.messages[0].body.length > 0) {
-            this.bodyRichTextList(section.messages[0].body)
-          }
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start);
-
-        if (section.messages[0].image && section.messages[0].image.length > 0) {
-          Image(section.messages[0].image)
-            .width(38)
-            .height(38)
-            .borderRadius(12)
-            .objectFit(ImageFit.Cover)
-            .flexShrink(0)
-            .alt($r('app.media.app_icon'));
-        }
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Top)
-      .geometryTransition(visible ? `gmc:${section.groupKey}` : '')
-      .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-
-      // 下：左侧条数徽标（gmb 共享元素，飞到展开顶栏；与 gmc 是兄弟节点，不可嵌套），右侧时间
-      // （折叠态不放箭头，点击整张卡片展开）
-      Row() {
-        Row() {
-          this.groupCountBadge(section.messages.length);
-        }
-        .flexShrink(0)
-        .geometryTransition(visible ? `gmb:${section.groupKey}` : '')
-        .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-        Blank();
-        Text(this.formatTime(section.messages[0].timestamp))
-          .fontSize(11)
-          .fontColor($r('app.color.text_quinary_color'));
-      }
-      .width('100%')
-      .margin({ top: 2 })
-      .alignItems(VerticalAlign.Center);
-    }
-    .layoutWeight(1)
-    .alignItems(HorizontalAlign.Start)
-    .visibility(visible ? Visibility.Visible : Visibility.Hidden)
-    .onClick(() => {
-      this.handleGroupHeaderClick(section);
-    });
-  }
-
-  // 折叠态分组卡片左滑露出的删除按钮：语义为删除整个分组（组内全部消息）
-  @Builder
-  swipeDeleteGroupBuilder(section: NotifySection) {
-    // 外层透明容器只负责占位宽度、与卡片的间距及垂直居中，背景透出列表底色
-    Row() {
-      // 44vp 红色圆形按钮 + 白色垃圾桶图标
-      Row() {
-        Image($r('app.media.delete'))
-          .width(22)
-          .height(22)
-          .objectFit(ImageFit.Contain)
-          .fillColor('#FFFFFF');
-      }
-      .width(44)
-      .height(44)
-      .borderRadius(44)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .backgroundColor($r('app.color.text_error_color'))
-      .onClick(() => {
-        this.confirmDeleteGroup(section);
-      });
-    }
-    .width(68)
-    .height('100%')
-    .padding({ left: 12 })
-    .justifyContent(FlexAlign.Start)
-    .alignItems(VerticalAlign.Center);
-  }
-
-  // 折叠态层叠空壳层：视觉上是一张「内缩 + 下沉」的卡片，垫在主卡片背面制造层级感。
-  // inset = 单侧水平内缩 vp，yOffset = 向下偏移 vp。
-  // 高度直接取主卡片实测高度（groupCardHeights）：不能用 height('100%')，
-  // 虚拟化 List 中百分比高度会被解析成接近整个列表视口高度，空壳会拉成通屏大面板；
-  // 也不渲染 Hidden 占位内容，避免多一层布局。hitTestBehavior(None) 不拦截触摸。
-  @Builder
-  groupShellLayer(section: NotifySection, inset: number, yOffset: number, bgColor: Resource) {
-    Row() {
-      Column()
-        .layoutWeight(1)
-        .height('100%')
-        .borderRadius(12)
-        .backgroundColor(bgColor);
-    }
-    .width('100%')
-    // 高度 = 主卡片实测高度（vp）；未测量到（0）时由调用方跳过渲染，不会出现高度塌陷
-    .height(this.groupCardHeights.get(section.groupKey) ?? 0)
-    .padding({ left: inset, right: inset })
-    .offset({ y: yOffset })
-    .hitTestBehavior(HitTestMode.None);
-  }
-
-  // 分组头卡片：展示组内最新一条消息，右下角显示组内条数与展开/收起箭头。
-  // 折叠态在主卡片后方垫 1-2 张空壳卡片（向下偏移 + 两侧内缩），产生层叠透视效果：
-  //   2 条 → 1 层叠加（offset 9vp，左右内缩 8vp）
-  //   3 条及以上 → 2 层叠加（浅层 offset 9vp/内缩 8vp，深层 offset 18vp/内缩 16vp）
-  // 空壳半透明无投影（与全应用卡片平面风格一致），借鉴 iOS 通知堆叠的半透明后层：
-  // 亮色=半透明白罩（后层比背景略亮，像叠放的白纸，shallow 80% / deep 50%），
-  // 暗色=半透明白罩（后层比背景略亮，shallow 12% / deep 4%）；
-  // 两档不同透明度区分浅/深两层，层次同时由「越深越窄越低」的几何阶梯加强
-  // 展开后空壳层消失，仅展示主卡片 + 子项列表
-  // 空壳层渲染相同内容但 Visibility.Hidden（保留布局空间保证高度一致），仅背景可见；
-  // hitTestBehavior(None) 确保空壳不拦截任何触摸事件
-  //
-  // ⚠️ 关键：空壳层用 offset 向下偏移后会超出 Stack 内容底部 → 必须给 Stack 加
-  // paddingBottom 预留空间，让空壳层完全落在 Stack 边界内（否则会被父容器裁剪不可见）。
-  @Builder
-  groupHeaderBuilder(section: NotifySection) {
-    Stack({ alignContent: Alignment.TopStart }) {
-      // ─── 叠加空壳层（折叠态 only）───
-      // Stack 中后声明的子组件在上层，空壳须先于主卡片声明才能垫在背面；
-      // 主卡片高度测量完成后才渲染，避免首帧 0 高闪烁
-      if (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 3
-        && (this.groupCardHeights.get(section.groupKey) ?? 0) > 0) {
-        // 深层：下沉 18vp、两侧各内缩 16vp，视觉最远；比浅层更深一档，两层阶梯可辨
-        this.groupShellLayer(section, 16, 18, $r('app.color.card_shell_deep'));
-      }
-      if (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 2
-        && (this.groupCardHeights.get(section.groupKey) ?? 0) > 0) {
-        // 浅层：下沉 9vp、两侧各内缩 8vp，介于深层与主卡片之间
-        this.groupShellLayer(section, 8, 9, $r('app.color.card_shell_shallow'));
-      }
-      // ─── 主卡片（最上层）───
-      Row({ space: 12 }) {
-        this.groupCardContent(section, true)
-      }
-      .width('100%')
-      .padding(12)
-      .backgroundColor($r('app.color.card_background'))
-      .borderRadius(12)
-      .alignItems(VerticalAlign.Top)
-      // 卡片底色随折叠态离场淡入淡出，配合消息内容的共享元素飞行，避免白底瞬间跳变
-      .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
-      // 上报主卡片实测高度（vp），空壳层用同一高度渲染；内容随轮询变化时同步更新
-      .onAreaChange((_oldValue: Area, newValue: Area) => {
-        // 当前 API 下 Area.height 的回调数值单位为 vp（不是 px，切勿再做 px2vp，
-        // 否则空壳高度会被缩小数倍、完全藏在主卡片身后不可见）
-        this.updateGroupCardHeight(section.groupKey, newValue.height as number);
-      });
-    }
-    .width('100%')
-    // paddingBottom 恰好等于空壳下沉量（无描边故无边框余量）：空壳底边与 Stack 底部齐平，
-    // 空壳下沿到下一项的距离 = List space(10vp)，与普通卡片间距视觉一致；展开/单条 → 0
-    .padding({ bottom:
-      (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 3) ? 18
-        : (!this.isGroupExpanded(section.groupKey) && section.messages.length >= 2) ? 9 : 0
-    });
-  }
-
-  // 展开态分组顶栏：app 图标 + group 名称（左）+ 条数 + 折叠箭头（右），底部分隔线，仅上方圆角
-  @Builder
-  groupExpandedHeader(section: NotifySection) {
-    Column() {
-      Row({ space: 8 }) {
-        if (this.isEditing) {
-          Checkbox()
-            .select(this.isGroupAllSelected(section.messages))
-            .selectedColor($r('app.color.text_accent_color'))
-            .shape(CheckBoxShape.CIRCLE)
-        } else {
-          // 顶栏图标与消息卡片保持一致：优先用消息自带图标，无则回退 app 图标
-          if (section.messages[0].image && section.messages[0].image.length > 0) {
-            Image(section.messages[0].image)
-              .width(24)
-              .height(24)
-              .borderRadius(6)
-              .objectFit(ImageFit.Cover)
-              .flexShrink(0)
-              .alt($r('app.media.app_icon'));
-          } else {
-            Image($r('app.media.app_icon'))
-              .width(24)
-              .height(24)
-              .borderRadius(6)
-              .objectFit(ImageFit.Cover)
-              .flexShrink(0);
-          }
-        }
-        Text(section.groupKey)
-          .fontSize(15)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary_color'))
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(1);
-        // 条数徽标与折叠卡共用同一 builder + 同一 gmb 共享元素 id：
-        // 展开时徽标从卡内底部飞到顶栏，收起时反向飞回
-        Row() {
-          this.groupCountBadge(section.messages.length);
-        }
-        .flexShrink(0)
-        .geometryTransition(`gmb:${section.groupKey}`)
-        .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-        // 箭头朝上（右箭头 -90°）仅作视觉指示，点击区域由整行统一处理；
-        // 尺寸/颜色与 MineView 右箭头保持一致
-        Image($r('app.media.arrow_right'))
-          .width(20)
-          .height(20)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_quinary_color'))
-          .rotate({ angle: -90 })
-          .flexShrink(0)
-          .padding({ left: 4, top: 2, bottom: 2 });
-      }
-      .width('100%')
-      .padding(12)
-      .alignItems(VerticalAlign.Center);
-
-      // 顶栏与首条消息之间的分隔线：左侧缩进 12vp 与文字对齐，右侧顶到卡片边缘
-      // （与展开组内各行的分隔线保持同一终点，左滑删除时不错位）
-      Divider()
-        .color($r('app.color.divider_color'))
-        .strokeWidth(0.5)
-        .margin({ left: 12 });
-    }
-    .width('100%')
-    .backgroundColor($r('app.color.card_background'))
-    .borderRadius({ topLeft: 12, topRight: 12, bottomLeft: 0, bottomRight: 0 })
-    // 点击整个顶栏：非编辑态收起分组，编辑态整组勾选（绑在根 Column，覆盖整行+分隔线）
-    // hitTestBehavior(Block)：ListItemGroup header 左部触摸会被子 ListItem 的
-    // swipeAction 手势层吞掉（只有右侧箭头区可点），Block 强制 header 自身消费整行触摸
-    .hitTestBehavior(HitTestMode.Block)
-    .onClick(() => {
-      if (this.isEditing) {
-        this.toggleGroupSelection(section.messages);
-      } else {
-        this.toggleGroupExpanded(section.groupKey);
-      }
-    })
-    // 顶栏随展开态淡入淡出（徽标本身另有共享元素飞行动画）
-    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-  }
-
-  // 展开态分组内的消息行：布局与普通消息卡片完全一致（上方标题/正文+右上 38vp 图标，下方时间居右），
-  // 仅无独立圆角/底色，行下细分隔线，末行下方圆角。
-  // 根节点用 Stack 单表面（分隔线以 BottomStart 叠加在表面内部），不要把 Divider 作为
-  // 与内容并列的第二个子节点：swipeAction 的 end builder 用 height('100%') 匹配 ListItem 高度时，
-  // Column(Row+Divider) 结构下百分比高度解析不到整行，删除按钮会比行矮一截、与分隔线错位
-  // contentTransitionId 非空（仅组内第一条）时，上半标题/正文/icon Row 绑定共享元素转场，
-  // 与折叠卡上半 Row 做一镜到底过渡（底部时间行不参与，两侧结构保持一致）
-  @Builder
-  groupMessageRow(m: NotifyMessage, isLast: boolean, contentTransitionId: string) {
-    Stack({ alignContent: Alignment.BottomStart }) {
-      Row({ space: 12 }) {
-        if (this.isEditing) {
-          Checkbox()
-            .select(this.isSelected(m.id))
-            .selectedColor($r('app.color.text_accent_color'))
-            .shape(CheckBoxShape.CIRCLE)
-            .flexShrink(0);
-        }
-        Column({ space: 6 }) {
-          // 上：标题/副标题/正文（左占剩余空间）+ icon（右 38x38）
-          Row({ space: 8 }) {
-            Column() {
-              if (m.title && m.title.length > 0) {
-                Text(m.title)
-                  .fontSize(15)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.text_primary_color'))
-                  .width('100%')
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
-              if (m.subtitle && m.subtitle.length > 0) {
-                Text(m.subtitle)
-                  .fontSize(13)
-                  .fontColor($r('app.color.text_accent_color'))
-                  .width('100%')
-                  .maxLines(2)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
-              // 正文优先展示 extras.inboxcontent 多行摘要，无则回退普通正文（保留链接高亮能力）
-              if (m.inboxContent.length > 0) {
-                this.inboxRichTextList(m.inboxContent)
-              } else if (m.body && m.body.length > 0) {
-                this.bodyRichTextList(m.body)
-              }
-            }
-            .layoutWeight(1)
-            .alignItems(HorizontalAlign.Start);
-
-            if (m.image && m.image.length > 0) {
-              Image(m.image)
-                .width(38)
-                .height(38)
-                .borderRadius(12)
-                .objectFit(ImageFit.Cover)
-                .flexShrink(0)
-                .alt($r('app.media.app_icon'));
-            }
-          }
-          .width('100%')
-          .alignItems(VerticalAlign.Top)
-          // 仅第一条消息的上半 Row 与折叠卡上半 Row 做几何转场（其他行传空串不参与）；
-          // 只包标题/正文/icon 行，两侧结构一一对应，飞行轨迹最自然
-          .geometryTransition(contentTransitionId)
-          .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-
-          // 下：时间居右（与普通消息卡片一致）
-          Text(this.formatTime(m.timestamp))
-            .fontSize(11)
-            .fontColor($r('app.color.text_quinary_color'))
-            .width('100%')
-            .textAlign(TextAlign.End);
-        }
-        .layoutWeight(1)
-        .alignItems(HorizontalAlign.Start);
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Top)
-      // 底部 22vp = 12vp 卡片边距 + 10vp 与分隔线间距（分隔线叠加在 Stack 底部，不占独立高度）
-      .padding({ left: 12, right: 12, top: 12, bottom: 22 });
-
-      // 非末行：分隔线贴卡片表面底边，左侧缩进 12vp 与文字对齐，右侧顶到卡片边缘——
-      // 左滑某一行时红线（删除区）与相邻行的分隔线终点在同一竖边上，不错位
-      if (!isLast) {
-        Divider()
-          .color($r('app.color.divider_color'))
-          .strokeWidth(0.5)
-          .width('100%')
-          .margin({ left: 12 });
-      }
-    }
-    .width('100%')
-    .backgroundColor($r('app.color.card_background'))
-    .borderRadius({
-      topLeft: 0,
-      topRight: 0,
-      bottomLeft: isLast ? 12 : 0,
-      bottomRight: isLast ? 12 : 0
-    })
-    // 圆角处裁剪：分隔线右侧顶边、左滑删除按钮都不能溢出圆角
-    .clip(true)
-    // 各行随分组展开淡入、收起淡出（第一条消息内容本身另走共享元素飞行）
-    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
-    .onClick(() => {
-      if (this.isEditing) {
-        this.toggleSelect(m.id);
-      } else {
-        this.selectedMessage = m;
-        this.showDetail = true;
-      }
-    });
-  }
-
-  // 左滑露出的删除按钮：44vp 红底白色垃圾桶圆形按钮，垂直居中于行内，
-  // 与卡片左缘保留 12vp 间距（外层透明容器透出列表底色，不再铺满行高）
-  @Builder
-  swipeDeleteBuilder(m: NotifyMessage) {
-    // 外层透明容器只负责占位宽度、与卡片的间距及垂直居中，背景透出列表底色
-    Row() {
-      // 44vp 红色圆形按钮 + 白色垃圾桶图标（复用顶栏 delete.svg，fillColor 着白色）
-      Row() {
-        Image($r('app.media.delete'))
-          .width(22)
-          .height(22)
-          .objectFit(ImageFit.Contain)
-          .fillColor('#FFFFFF');
-      }
-      .width(44)
-      .height(44)
-      .borderRadius(44)
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .backgroundColor($r('app.color.text_error_color'))
-      .onClick(() => {
-        this.confirmDeleteOne(m);
-      });
-    }
-    .width(68)
-    .height('100%')
-    .padding({ left: 12 })
-    .justifyContent(FlexAlign.Start)
-    .alignItems(VerticalAlign.Center);
   }
 
   // 多选模式底部操作栏（需要加在 Refresh 外面）
@@ -961,7 +334,6 @@ export struct NotifyView {
     this.confirmDeleteSelected();
   }
 
-  // 消息详情全屏模态视图：完整展示标题/副标题/正文/时间，不截断
   @Builder
   detailBuilder() {
     NotifyMessageDetail({
@@ -979,7 +351,6 @@ export struct NotifyView {
     try {
       await ServerManager.getInstance().ensureLoaded();
       this.refresh();
-      // 缓存优先：先从本地 RDB 读最新一页立即渲染，避免冷启动白屏等网络
       const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
       if (deviceKey && deviceKey.length > 0) {
         const cached: NotifyMessage[] = await MessageCacheStore.loadLatest(deviceKey, 100);
@@ -988,7 +359,6 @@ export struct NotifyView {
           this.hasMore = true;
         }
       }
-      // 后台增量同步服务端（合并新消息 + 删除事件）
       this.syncFromServer(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -996,7 +366,6 @@ export struct NotifyView {
     }
   }
 
-  // ====== 正文富文本：URL 点击打开系统浏览器 ======
   private openUrl(url: string): void {
     try {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -1029,65 +398,6 @@ export struct NotifyView {
     }
   }
 
-  // 正文富文本共享片段：URL/验证码高亮可点击，普通段用次级文本色；
-  // fontSize 由调用方按场景指定（列表 14fp / 详情 15fp），必须内联在 Text 容器内使用
-  @Builder
-  richTextSpans(text: string, fontSize: number) {
-    ForEach(parseNotifyTextSegments(text), (seg: NotifyTextSegment, index: number) => {
-      if (seg.type === NOTIFY_SEGMENT_URL) {
-        Span(seg.text)
-          .fontColor($r('app.color.text_accent_color'))
-          .fontSize(fontSize)
-          .onClick(() => { this.openUrl(seg.text); });
-      } else if (seg.type === NOTIFY_SEGMENT_CODE) {
-        Span(seg.text)
-          .fontColor($r('app.color.text_accent_color'))
-          .fontSize(fontSize)
-          .onClick(() => { this.copyCode(seg.text); });
-      } else {
-        Span(seg.text)
-          .fontColor($r('app.color.text_secondary_color'))
-          .fontSize(fontSize);
-      }
-    }, (seg: NotifyTextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
-  }
-
-  // 列表项正文富文本：URL/验证码高亮可点击，maxLines(4) + 省略号
-  @Builder
-  bodyRichTextList(text: string) {
-    Text() {
-      this.richTextSpans(text, 14)
-    }
-    .width('100%')
-    .maxLines(4)
-    .textOverflow({ overflow: TextOverflow.Ellipsis })
-    .lineHeight(21) // 1.5 倍行距（14fp × 1.5）
-    .margin({ top: 4 }); // 与上方标题/副标题拉开间距
-  }
-
-  // 列表项 inboxContent 富文本：每条独占一行、单行超出省略号，最多展示 INBOX_LIST_MAX_LINES 行
-  // （与普通正文 maxLines(4) 对齐）；每行仍保留 URL/验证码高亮可点击
-  @Builder
-  inboxRichTextList(items: string[]) {
-    Column() {
-      ForEach(items, (line: string, index: number) => {
-        if (index < INBOX_LIST_MAX_LINES) {
-          Text() {
-            this.richTextSpans(line, 14)
-          }
-          .width('100%')
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .lineHeight(21); // 1.5 倍行距（14fp × 1.5）
-        }
-      }, (line: string, index: number) => `${index}_${line}`)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
-    .margin({ top: 4 }); // 与上方标题/副标题拉开间距
-  }
-
-  // 未配置 client token 或未注册 → 引导到"我的"页配置
   private needGuideToConfig(): boolean {
     return !this.loading && !this.hasClientToken && this.errorMsg.length > 0;
   }
@@ -1103,9 +413,6 @@ export struct NotifyView {
     this.selectedIds = [];
   }
 
-  // Tab 切换监听（homeTabIndex 的 @Watch 回调）：切走「通知」Tab 后列表不可见，
-  // 多选状态保留无意义，自动退出编辑；切回「通知」Tab 时全量刷新，
-  // 且仅在页面可见（未被其它页面覆盖/未退后台）时恢复前台轮询
   private onHomeTabIndexChanged(): void {
     if (this.isEditing) {
       this.exitEditMode();
@@ -1120,8 +427,6 @@ export struct NotifyView {
     }
   }
 
-  // 页面显隐监听（indexPageVisible 的 @Watch 回调）：Index 被 router 跳转其它页面覆盖或应用
-  // 退后台时停止轮询；返回页面/回前台且停留在「通知」Tab 时恢复轮询
   private onPageVisibleChanged(): void {
     if (this.indexPageVisible) {
       if (this.homeTabIndex === 0) {
@@ -1132,12 +437,10 @@ export struct NotifyView {
     }
   }
 
-  // 刷新信号监听（refreshSignal 的 @Watch 回调）：App 回前台或点击通知拉起时自动刷新列表
   private onRefreshSignalChanged(): void {
     this.loadMessages();
   }
 
-  // ====== 前台轮询（「通知」Tab 可见期间保持列表增量更新）======
 
   // 启动轮询：幂等，重复调用不会叠加定时器
   private startPolling(): void {
@@ -1148,7 +451,6 @@ export struct NotifyView {
     this.scheduleNextPoll();
   }
 
-  // 停止轮询：清除待执行任务并关闭开关，飞行中的请求完成后不再续排
   private stopPolling(): void {
     this.pollingEnabled = false;
     if (this.pollTimer >= 0) {
@@ -1157,8 +459,6 @@ export struct NotifyView {
     }
   }
 
-  // 调度下一轮轮询：15s 后执行一次增量拉取，请求完成后再续排，
-  // 间隔从请求结束时起算，慢网络下不会出现请求堆积
   private scheduleNextPoll(): void {
     this.pollTimer = setTimeout(() => {
       this.pollTimer = -1;
@@ -1170,10 +470,8 @@ export struct NotifyView {
     }, POLL_INTERVAL_MS);
   }
 
-  // 静默增量拉取：走 after + deletedSince 协议，只拉本地没有的新消息并应用删除事件，
   // 不清空列表/不重置分页；失败静默，等下一轮
   private async pollNewMessages(): Promise<void> {
-    // 有全量请求/翻页/轮询进行中 → 本轮跳过；未配置 Token 的引导态 → 不发无谓请求
     if (this.pollInFlight || this.loading || this.loadingMore || this.needGuideToConfig()) {
       return;
     }
@@ -1188,24 +486,18 @@ export struct NotifyView {
     }
   }
 
-  // 编辑态变化监听（isEditing 的 @Watch 回调）：任何来源退出编辑（自身退出/Tab 切换/
-  // Index.onBackPress 返回拦截）时，同步清空选中项，保证状态一致
   private onIsEditingChanged(): void {
     if (!this.isEditing && this.selectedIds.length > 0) {
       this.selectedIds = [];
     }
   }
 
-  // 顶栏「多选」按钮的点击逻辑：无消息时提示不可多选；
-  // 非编辑态进入多选；编辑态有选中时清空选择，无选中时退出编辑
   private handleMultiSelectClicked(): void {
-    // 空列表无可多选，避免进入编辑态后底部操作栏不显示的"假编辑"状态
     if (this.messages.length === 0) {
       showToast(this.getUIContext(), '暂无可多选的消息');
       return;
     }
     if (this.isEditing) {
-      // 多选模式下，选中有内容时清空，全选时取消全选，否则退出编辑
       if (this.selectedIds.length === this.messages.length) {
         this.selectedIds = [];
       } else if (this.selectedIds.length > 0) {
@@ -1218,8 +510,6 @@ export struct NotifyView {
     }
   }
 
-  // 顶栏删除胶囊按钮的点击逻辑：非编辑态清空全部消息（二次确认）；
-  // 编辑态删除选中消息（有选中才触发，未选中时提示，与底部「删除(N)」按钮一致）
   private handleDeletePillClicked(): void {
     if (this.isEditing) {
       if (this.selectedIds.length > 0) {
@@ -1242,17 +532,10 @@ export struct NotifyView {
 
   // ====== group 分组展示 ======
 
-  // 依据当前消息顺序构建展示分组：messages 已按时间倒序维护，分组位置取组内最新消息首次出现的位置；
-  // 这是渲染层唯一的分组顺序来源，轮询/分页/删除后均重新从 messages 派生，避免多处各自排序造成漂移
-  private buildSections(): NotifySection[] {
-    return buildNotifySections(this.messages);
-  }
-
   private isGroupExpanded(groupKey: string): boolean {
     return NotifyGroupStateUtils.isExpanded(this.expandedGroups, groupKey);
   }
 
-  // 缓存某个分组主卡片的实测高度（vp）；不可变更新 Map 以触发空壳层重渲染
   private updateGroupCardHeight(groupKey: string, heightVp: number): void {
     if (heightVp <= 0) {
       return;
@@ -1260,7 +543,6 @@ export struct NotifyView {
     this.groupCardHeights = NotifyGroupStateUtils.updateCardHeight(this.groupCardHeights, groupKey, heightVp);
   }
 
-  // 设置某个分组的展开状态（展开态数组不可变更新，确保 ForEach 刷新）
   private setGroupExpanded(groupKey: string, expanded: boolean): void {
     if (this.isGroupExpanded(groupKey) === expanded) {
       return;
@@ -1268,9 +550,6 @@ export struct NotifyView {
     this.expandedGroups = NotifyGroupStateUtils.toggleExpanded(this.expandedGroups, groupKey);
   }
 
-  // 切换分组展开/收起，并在动画上下文中更新状态：
-  // animateTo 期间 ListItemGroup 子 ListItem 的增删由 List 插值布局（高度展开/下方项让位），
-  // header 内折叠卡/展开顶栏两形态通过各自的 TransitionEffect 交叉淡入淡出
   private toggleGroupExpanded(groupKey: string): void {
     const nextExpanded: boolean = !this.isGroupExpanded(groupKey);
     this.getUIContext().animateTo({ duration: 280, curve: Curve.EaseInOut }, () => {
@@ -1278,7 +557,6 @@ export struct NotifyView {
     });
   }
 
-  // 分组头内容区点击：编辑态整组勾选；非编辑态折叠时展开，已展开时打开最新消息详情
   private handleGroupHeaderClick(section: NotifySection): void {
     if (this.isEditing) {
       this.toggleGroupSelection(section.messages);
@@ -1292,17 +570,14 @@ export struct NotifyView {
     }
   }
 
-  // 分组复选框是否应显示为选中：组内消息全部选中才选中
   private isGroupAllSelected(groupMessages: NotifyMessage[]): boolean {
     return areGroupMessagesSelected(this.selectedIds, groupMessages);
   }
 
-  // 整组勾选/取消勾选：全选状态下取消整组，否则补齐组内未选中的消息
   private toggleGroupSelection(groupMessages: NotifyMessage[]): void {
     this.selectedIds = toggleGroupMessages(this.selectedIds, groupMessages);
   }
 
-  // 从本地列表移除（UI 即时更新，不刷新整个列表）
   private removeFromList(ids: number[]): void {
     const idSet: Set<number> = new Set<number>(ids);
     const newList: NotifyMessage[] = [];
@@ -1312,7 +587,6 @@ export struct NotifyView {
       }
     }
     this.messages = newList;
-    // 清理已不存在，或删到只剩 1 条（已退回普通卡片）的分组展开状态，
     // 避免后续再次聚合成组时意外沿用展开态
     this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups);
     // 如果删光了，退出编辑模式
@@ -1353,7 +627,6 @@ export struct NotifyView {
     });
   }
 
-  // 折叠态分组卡片左滑删除：删除该分组内全部消息
   private confirmDeleteGroup(section: NotifySection): void {
     const uiCtx: UIContext = this.getUIContext();
     const ids: number[] = [];
@@ -1372,7 +645,6 @@ export struct NotifyView {
       if (err || result.index !== 1) {
         return;
       }
-      // 多条逐个删（服务端无批量删除 API）；失败的 id 收集后提示
       const svc = NotifyMessageService.getInstance();
       let failCount = 0;
       for (let i = 0; i < ids.length; i++) {
@@ -1406,7 +678,6 @@ export struct NotifyView {
         return;
       }
       const ids: number[] = [...this.selectedIds];
-      // 多条逐个删（服务端无批量删除 API）；失败的 id 收集后跳过
       const svc = NotifyMessageService.getInstance();
       let failCount = 0;
       for (let i = 0; i < ids.length; i++) {
@@ -1416,7 +687,6 @@ export struct NotifyView {
           hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', ids[i], errMsg);
         }
       }
-      // 同步删除本地缓存（成功删除的 id 才删缓存；失败的保留，下次同步由删除流水兜底）
       await ServerManager.getInstance().ensureLoaded();
       const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
       if (deviceKey && deviceKey.length > 0) {
@@ -1432,7 +702,6 @@ export struct NotifyView {
     });
   }
 
-  // 清空全部消息：弹窗二次确认并重点提示不可恢复，确认后调用服务端删除全部消息接口
   private confirmDeleteAll(): void {
     const uiCtx: UIContext = this.getUIContext();
     // 本地无消息时无需调用清空接口
@@ -1457,7 +726,6 @@ export struct NotifyView {
         showToast(uiCtx, errMsg);
         return;
       }
-      // 清空成功：移除本地列表、清空本地缓存并退出多选模式
       await ServerManager.getInstance().ensureLoaded();
       const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
       if (deviceKey && deviceKey.length > 0) {
@@ -1483,18 +751,15 @@ export struct NotifyView {
   private async loadMessages(): Promise<void> {
     if (this.loading) {
       this.refreshing = false;
-      // 已有请求在跑（如切换服务器时旧请求未完成）：排队补拉，保证新服务器数据最终被拉取
       this.loadQueued = true;
       return;
     }
     this.loading = true;
-    // 请求代际：响应到达时与最新代际不符（期间已切换服务器/发起新请求）→ 过期丢弃
     const seq: number = ++this.loadSeq;
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
     try {
       await this.syncFromServer(true, seq);
-      // 是否有可用 client token（用户自定义 or 内置默认），用于引导态判断
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1548,7 +813,6 @@ export struct NotifyView {
     let newMaxId: number = after;
     let newDelCursor: number = delCursor;
 
-    // 增量翻页循环（after 升序），最多 20 页防异常死循环
     const MAX_PAGES: number = 20;
     for (let page = 0; page < MAX_PAGES; page++) {
       if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
@@ -1556,7 +820,6 @@ export struct NotifyView {
       }
       const result = await svc.getMessages(null, 0, 100, after, newDelCursor);
       if (!result.ok) {
-        // 失败：保留本地缓存，静默结束；forceFull 且本地为空时透出错误
         hilog.warn(DOMAIN, TAG, 'syncFromServer 失败：%{public}s', result.errorMsg);
         if (forceFull && this.messages.length === 0) {
           this.errorMsg = result.errorMsg;
@@ -1566,7 +829,6 @@ export struct NotifyView {
 
       // 处理删除事件
       if (result.reset) {
-        // 游标落在流水保留期缺口：清空本地重新播种
         hilog.info(DOMAIN, TAG, 'syncFromServer reset：清空本地缓存重新播种');
         await MessageCacheStore.clearDevice(deviceKey);
         after = 0;
@@ -1604,14 +866,12 @@ export struct NotifyView {
       if (!result.hasMore) {
         break;
       }
-      // 下一页：用当前最大 id 作 after，删除游标只在首请求拉一次即可
       after = newMaxId;
     }
 
     // 持久化同步元信息
     await MessageCacheStore.saveMeta(deviceKey, newMaxId, newDelCursor);
 
-    // 代际校验后从缓存重新加载列表（含删除结果，与本地一致）
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
       return;
     }
@@ -1621,8 +881,6 @@ export struct NotifyView {
     this.errorMsg = '';
   }
 
-  // 触底加载更多：优先读本地缓存（秒出），缓存不足一页再走服务端 since 翻页并落库
-  // limit 默认 100，返回少于 100 条说明已到底，置 hasMore=false
   private async loadMore(): Promise<void> {
     if (this.loadingMore || !this.hasMore || this.messages.length === 0) {
       return;
@@ -1657,7 +915,6 @@ export struct NotifyView {
         this.messages = this.messages.concat(cachedDeduped);
       }
 
-      // 2) 缓存不足一页 → 走网络 since 翻页补齐，并落库供下次离线浏览
       if (cached.length < PAGE_SIZE) {
         const result = await NotifyMessageService.getInstance().getMessages(null, oldest.id, PAGE_SIZE);
         if (result.ok) {
@@ -1680,19 +937,13 @@ export struct NotifyView {
             this.hasMore = false;
           }
         }
-        // loadMore 失败不弹错误提示，避免打扰用户；日志已由 service 层打印
       }
-      // 缓存满一页 → 仍可能有更多缓存，保持 hasMore=true 让用户继续下拉
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'loadMore 异常：%{public}s', msg);
     } finally {
       this.loadingMore = false;
     }
-  }
-
-  private formatTime(ts: number): string {
-    return formatNotifyTime(ts);
   }
 
   private handleMoreClicked(): void {
@@ -1717,102 +968,29 @@ export struct NotifyView {
     }
   }
 
-  // 生成导出文件名时间后缀：yyyyMMdd_HHmmss
-  private formatExportTime(d: Date): string {
-    const p = (n: number): string => (n < 10 ? '0' + n : String(n));
-    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(
-      d.getSeconds())}`;
-  }
-
-  // 将 NotifyMessage 转为可 JSON 序列化的原始对象（严格匹配服务端全量导出格式）
-  // 字段：id, appid, title, message, priority, extras{device_key, subtitle?}, date
-  private messageToRaw(m: NotifyMessage, deviceKey: string): Object {
-    const raw: Record<string, Object> = {
-      'id': m.id,
-      'appid': m.appid,
-      'title': m.title,
-      'message': m.body,
-      'priority': m.priority,
-      'date': m.date.length > 0 ? m.date : (m.createdAt.length > 0 ? m.createdAt : ''),
-    };
-    // extras：固定放 device_key（与服务端一致）；有 subtitle 时也补在 extras 下
-    const extras: Record<string, Object> = { 'device_key': deviceKey };
-    if (m.subtitle && m.subtitle.length > 0) {
-      extras['subtitle'] = m.subtitle;
-    }
-    raw['extras'] = extras as Object;
-    return raw as Object;
-  }
-
-  // 导出当前选中的消息：
-  // 1. 读取当前 device_key（放入 extras，与服务端全量导出格式一致）
-  // 2. 从 this.messages 按 selectedIds 过滤
-  // 3. 转为与全量导出同结构的 JSON 数组文本（2 空格缩进）
-  // 4. DocumentViewPicker 拉起系统保存对话框（无需权限），用户选择位置后写入 txt
+  /** 导出选中消息：文件写入与序列化由 NotifyExportService 处理。 */
   private async exportSelectedMessages(): Promise<void> {
     if (this.exportingSelected || this.selectedIds.length === 0) {
-      return; // 防重复触发
+      return;
     }
-    const uiCtx: UIContext = this.getUIContext();
+    const uiContext: UIContext = this.getUIContext();
     this.exportingSelected = true;
     try {
-      // 预先加载 device_key：ServerManager 可能还在初始化，先 ensureLoaded
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (!deviceKey || deviceKey.length === 0) {
-        showToast(uiCtx, '设备未注册，无法导出');
+      const abilityContext = this.getAbilityContext();
+      if (!abilityContext) {
+        showToast(uiContext, '上下文获取失败');
         return;
       }
-
-      // 按 selectedIds 过滤当前列表中的消息（保持列表原有展示顺序：新→旧）
-      const idSet: Set<number> = new Set<number>(this.selectedIds);
-      const selected: NotifyMessage[] = [];
-      for (let i = 0; i < this.messages.length; i++) {
-        if (idSet.has(this.messages[i].id)) {
-          selected.push(this.messages[i]);
-        }
+      const count: number = await NotifyExportService.exportSelected(abilityContext, this.messages, this.selectedIds);
+      if (count < 0) {
+        showToast(uiContext, '设备未注册，无法导出');
+      } else if (count > 0) {
+        showToast(uiContext, `已导出 ${count} 条消息`, 1500);
       }
-      if (selected.length === 0) {
-        showToast(uiCtx, '没有可导出的消息');
-        return;
-      }
-
-      // 转成原始对象数组后 JSON 序列化（字段与服务端全量导出一致）
-      const rawArr: Object[] = [];
-      for (let i = 0; i < selected.length; i++) {
-        rawArr.push(this.messageToRaw(selected[i], deviceKey));
-      }
-      const text: string = JSON.stringify(rawArr, null, 2);
-
-      // 系统保存对话框：预设文件名 + txt 过滤；Picker 保存无需申请权限
-      const saveOptions = new picker.DocumentSaveOptions();
-      saveOptions.newFileNames = [`timelynotify_selected_${this.formatExportTime(new Date())}.txt`];
-      saveOptions.fileSuffixChoices = ['文档|.txt'];
-      const abilityCtx = this.getAbilityContext();
-      if (!abilityCtx) {
-        showToast(uiCtx, '上下文获取失败');
-        return;
-      }
-      const docPicker = new picker.DocumentViewPicker(abilityCtx);
-      const uris: string[] = await docPicker.save(saveOptions);
-      if (uris.length === 0) {
-        return; // 用户取消保存，静默结束
-      }
-
-      // Picker 返回的 URI 需以 READ_WRITE 模式打开后写入
-      const file = fileIo.openSync(uris[0], fileIo.OpenMode.READ_WRITE);
-      try {
-        fileIo.writeSync(file.fd, text);
-      } finally {
-        fileIo.closeSync(file);
-      }
-
-      showToast(uiCtx, `已导出 ${selected.length} 条消息`, 1500);
-      hilog.info(DOMAIN, TAG, '选中消息导出完成：count=%{public}d', String(selected.length));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, '导出选中消息失败：%{public}s', msg);
-      showToast(uiCtx, '导出失败');
+      const message: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '导出选中消息失败：%{public}s', message);
+      showToast(uiContext, '导出失败');
     } finally {
       this.exportingSelected = false;
     }
