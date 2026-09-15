@@ -407,7 +407,8 @@ export struct NotifyView {
       navBarHeight: this.navBarHeight,
       onDismiss: () => { this.showDetail = false; },
       onOpenUrl: (url: string) => { this.openUrl(url); },
-      onCopyCode: (code: string) => { this.copyCode(code); }
+      onCopyCode: (code: string) => { this.copyCode(code); },
+      onCopyUrl: (url: string) => { this.copyUrl(url); }
     });
   }
 
