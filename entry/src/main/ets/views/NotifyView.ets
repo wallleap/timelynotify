@@ -22,10 +22,7 @@ import {
   KEY_NOTIFY_REFRESH_SIGNAL
 } from '../common/Constant';
 import showToast from '../components/showToast';
-import {
-  buildNotifySections,
-  NotifySection
-} from '../components/notify/NotifyViewTypes';
+import { NotifySection } from '../components/notify/NotifyViewTypes';
 import {
   areGroupMessagesSelected,
   hasSelectedMessage,
@@ -38,12 +35,8 @@ import { NotifyTitleBar } from '../components/notify/NotifyTitleBar';
 import { NotifyEditActionBar } from '../components/notify/NotifyEditActionBar';
 import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
-import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
-import { NotifyGroupExpandedHeader } from '../components/notify/NotifyGroupExpandedHeader';
-import { NotifyGroupMessageRow } from '../components/notify/NotifyGroupMessageRow';
-import { NotifyGroupCard } from '../components/notify/NotifyGroupCard';
-import { NotifySwipeDelete } from '../components/notify/NotifySwipeDelete';
+import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 
 const TAG: string = 'NotifyView';
 
@@ -326,141 +319,18 @@ export struct NotifyView {
 
   @Builder
   listView() {
-    List({ space: 10, scroller: this.scroller }) {
-      // 降级分支：Stack 叠层内容从窗口顶开始，占位还需叠加 statusBarHeight + titleBar(64) 手工避让
-      if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
-        ListItem() {
-          Row()
-            .width('100%')
-            .height(4);
-        }
-      } else {
-        ListItem() {
-          Row()
-            .width('100%')
-            .height(this.statusBarHeight + 64 + 14);
-        }
-      }
-
-      ForEach(this.buildSections(), (section: NotifySection) => {
-        if (section.grouped) {
-          if (this.isGroupExpanded(section.groupKey)) {
-            // 展开态 = ListItemGroup：header 为分组名顶栏，每条消息是独立子 ListItem
-            // （各自支持左滑删除/独立点击）。展开/收起在 animateTo 中切换，
-            // 子 ListItem 增删由 List 做布局动画
-            ListItemGroup({ space: 0, header: this.groupExpandedHeader(section) }) {
-              ForEach(section.messages, (m: NotifyMessage, index?: number) => {
-                ListItem() {
-                  // 第一条绑定共享元素 id（与折叠卡内容一一对应），其余行传空串不参与
-                  this.groupMessageRow(m, index === section.messages.length - 1,
-                    index === 0 ? `gmc:${section.groupKey}` : '');
-                }
-                  // ListItem 自身铺卡片底色并裁剪：左滑时露出的区域保持与 item 一致的白底
-                  // （而非列表灰底），且滑动内容被裁在卡片左右边界内、不会越界；
-                  // 末行保留底部 12vp 圆角，与展开卡片底边弧线一致
-                  .backgroundColor($r('app.color.card_background'))
-                  .borderRadius({
-                    topLeft: 0,
-                    topRight: 0,
-                    bottomLeft: index === section.messages.length - 1 ? 12 : 0,
-                    bottomRight: index === section.messages.length - 1 ? 12 : 0
-                  })
-                  .clip(true)
-                  .swipeAction({
-                    end: {
-                      builder: () => {
-                        this.swipeDeleteBuilder(m);
-                      }
-                    }
-                  });
-              }, (m: NotifyMessage) => `group-child:${section.groupKey}:${m.id}`);
-            }
-          } else {
-            // 折叠态 = 单个 ListItem（层叠卡片）。swipeAction 只能挂在 ListItem 上、
-            // ListItemGroup 的 header 不支持左滑，因此折叠态必须独立成 ListItem；
-            // 左滑删除按钮语义为「删除整个分组」
-            ListItem() {
-              this.groupHeaderBuilder(section);
-            }
-            .swipeAction({
-              end: {
-                builder: () => {
-                  this.swipeDeleteGroupBuilder(section);
-                }
-              }
-            });
-          }
-        } else {
-          ListItem() {
-            this.messageRow(section.messages[0]);
-          }
-          .swipeAction({
-            end: {
-              builder: () => {
-                this.swipeDeleteBuilder(section.messages[0]);
-              }
-            }
-          });
-        }
-      }, (section: NotifySection) => section.key);
-
-      // 触底加载指示器
-      if (this.loadingMore) {
-        ListItem() {
-          Row({ space: 6 }) {
-            LoadingProgress()
-              .width(18)
-              .height(18)
-              .color($r('app.color.text_accent_color'));
-            Text('加载更多…')
-              .fontSize(12)
-              .fontColor($r('app.color.text_quinary_color'));
-          }
-          .width('100%')
-          .height(44)
-          .justifyContent(FlexAlign.Center);
-        }
-      } else if (!this.hasMore && this.messages.length > 0) {
-        ListItem() {
-          Text('没有更多了')
-            .fontSize(12)
-            .fontColor($r('app.color.text_quinary_color'))
-            .width('100%')
-            .height(40)
-            .textAlign(TextAlign.Center);
-        }
-      }
-
-      // 底部占位：随内容一起滚动，末尾消息才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
-      // TabBar 总高 = 56 + 导航条高度，占位 64/72 保持视觉余量不变
-      ListItem() {
-        Row()
-          .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.navBarHeight + 72 :
-            this.navBarHeight + 64);
-      }
-    }
-    .width('100%')
-    .height('100%')
-    // 顶/底避让均由首尾占位实现（可滚动穿透顶栏/TabBar）；左右仅保留边距
-    .padding({ left: 16, right: 16 })
-    .align(Alignment.Top)
-    // ⚠️ 官方 HDS 动态模糊必配：List 不裁剪溢出内容，这样卡片才能向上"穿出"至 titleBar 背面被材质采样
-    .clip(false)
-    .onReachEnd(() => {
-      // 列表按时间倒序（新→旧），末尾是最旧消息；取末尾消息 ID 作 since 加载更老的
-      this.loadMore();
-    });
-  }
-
-  // 自定义下拉刷新指示器：顶部留出状态栏高度 + 毛玻璃顶栏高度（64），
-  // 刷新圈显示在顶栏下方而不是被玻璃盖住
-
-  @Builder
-  messageRow(m: NotifyMessage) {
-    NotifyMessageCard({ message: m, isEditing: this.isEditing, selected: this.isSelected(m.id),
-      onSelect: (id: number) => this.toggleSelect(id),
-      onOpen: (message: NotifyMessage) => this.openMessageDetail(message),
+    NotifyMessageList({ messages: this.messages, isEditing: this.isEditing, selectedIds: this.selectedIds,
+      expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights, loadingMore: this.loadingMore,
+      hasMore: this.hasMore, statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
+      immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
+      onLoadMore: () => this.loadMore(), onToggleSelect: (id: number) => this.toggleSelect(id),
+      onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
+      onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
+      onOpenMessage: (message: NotifyMessage) => this.openMessageDetail(message),
+      onOpenGroup: (section: NotifySection) => this.handleGroupHeaderClick(section),
+      onHeightChange: (groupKey: string, height: number) => this.updateGroupCardHeight(groupKey, height),
+      onDeleteOne: (message: NotifyMessage) => this.confirmDeleteOne(message),
+      onDeleteGroup: (section: NotifySection) => this.confirmDeleteGroup(section),
       onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
   }
 
@@ -468,74 +338,6 @@ export struct NotifyView {
   private openMessageDetail(message: NotifyMessage): void {
     this.selectedMessage = message;
     this.showDetail = true;
-  }
-
-  // 折叠态分组卡片左滑露出的删除按钮：语义为删除整个分组（组内全部消息）
-  @Builder
-  swipeDeleteGroupBuilder(section: NotifySection) {
-    NotifySwipeDelete({ onDelete: () => this.confirmDeleteGroup(section) });
-  }
-
-  // 分组头卡片：展示组内最新一条消息，右下角显示组内条数与展开/收起箭头。
-  // 折叠态在主卡片后方垫 1-2 张空壳卡片（向下偏移 + 两侧内缩），产生层叠透视效果：
-  //   2 条 → 1 层叠加（offset 9vp，左右内缩 8vp）
-  //   3 条及以上 → 2 层叠加（浅层 offset 9vp/内缩 8vp，深层 offset 18vp/内缩 16vp）
-  // 空壳半透明无投影（与全应用卡片平面风格一致），借鉴 iOS 通知堆叠的半透明后层：
-  // 亮色=半透明白罩（后层比背景略亮，像叠放的白纸，shallow 80% / deep 50%），
-  // 暗色=半透明白罩（后层比背景略亮，shallow 12% / deep 4%）；
-  // 两档不同透明度区分浅/深两层，层次同时由「越深越窄越低」的几何阶梯加强
-  // 展开后空壳层消失，仅展示主卡片 + 子项列表
-  // 空壳层渲染相同内容但 Visibility.Hidden（保留布局空间保证高度一致），仅背景可见；
-  // hitTestBehavior(None) 确保空壳不拦截任何触摸事件
-  //
-  // ⚠️ 关键：空壳层用 offset 向下偏移后会超出 Stack 内容底部 → 必须给 Stack 加
-  // paddingBottom 预留空间，让空壳层完全落在 Stack 边界内（否则会被父容器裁剪不可见）。
-  @Builder
-  groupHeaderBuilder(section: NotifySection) {
-    NotifyGroupCard({ section: section, isEditing: this.isEditing,
-      groupSelected: this.isGroupAllSelected(section.messages),
-      cardHeight: this.groupCardHeights.get(section.groupKey) ?? 0,
-      onToggleSelection: () => this.toggleGroupSelection(section.messages),
-      onOpen: () => this.handleGroupHeaderClick(section),
-      onHeightChange: (height: number) => this.updateGroupCardHeight(section.groupKey, height),
-      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
-  }
-
-  // 展开态分组顶栏：app 图标 + group 名称（左）+ 条数 + 折叠箭头（右），底部分隔线，仅上方圆角
-  @Builder
-  groupExpandedHeader(section: NotifySection) {
-    NotifyGroupExpandedHeader({ section: section, isEditing: this.isEditing,
-      groupSelected: this.isGroupAllSelected(section.messages),
-      onToggle: () => {
-        if (this.isEditing) {
-          this.toggleGroupSelection(section.messages);
-        } else {
-          this.toggleGroupExpanded(section.groupKey);
-        }
-      } });
-  }
-
-  // 展开态分组内的消息行：布局与普通消息卡片完全一致（上方标题/正文+右上 38vp 图标，下方时间居右），
-  // 仅无独立圆角/底色，行下细分隔线，末行下方圆角。
-  // 根节点用 Stack 单表面（分隔线以 BottomStart 叠加在表面内部），不要把 Divider 作为
-  // 与内容并列的第二个子节点：swipeAction 的 end builder 用 height('100%') 匹配 ListItem 高度时，
-  // Column(Row+Divider) 结构下百分比高度解析不到整行，删除按钮会比行矮一截、与分隔线错位
-  // contentTransitionId 非空（仅组内第一条）时，上半标题/正文/icon Row 绑定共享元素转场，
-  // 与折叠卡上半 Row 做一镜到底过渡（底部时间行不参与，两侧结构保持一致）
-  @Builder
-  groupMessageRow(m: NotifyMessage, isLast: boolean, contentTransitionId: string) {
-    NotifyGroupMessageRow({ message: m, isLast: isLast, isEditing: this.isEditing,
-      selected: this.isSelected(m.id), contentTransitionId: contentTransitionId,
-      onSelect: (id: number) => this.toggleSelect(id),
-      onOpen: (message: NotifyMessage) => this.openMessageDetail(message),
-      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code) });
-  }
-
-  // 左滑露出的删除按钮：44vp 红底白色垃圾桶圆形按钮，垂直居中于行内，
-  // 与卡片左缘保留 12vp 间距（外层透明容器透出列表底色，不再铺满行高）
-  @Builder
-  swipeDeleteBuilder(m: NotifyMessage) {
-    NotifySwipeDelete({ onDelete: () => this.confirmDeleteOne(m) });
   }
 
   // 多选模式底部操作栏（需要加在 Refresh 外面）
@@ -808,10 +610,6 @@ export struct NotifyView {
 
   // 依据当前消息顺序构建展示分组：messages 已按时间倒序维护，分组位置取组内最新消息首次出现的位置；
   // 这是渲染层唯一的分组顺序来源，轮询/分页/删除后均重新从 messages 派生，避免多处各自排序造成漂移
-  private buildSections(): NotifySection[] {
-    return buildNotifySections(this.messages);
-  }
-
   private isGroupExpanded(groupKey: string): boolean {
     return NotifyGroupStateUtils.isExpanded(this.expandedGroups, groupKey);
   }
