@@ -11,7 +11,6 @@ import { MessageCacheStore } from '../services/MessageCacheStore';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
-  resolveBlurStyle,
   SUPPORTS_IMMERSIVE_MATERIAL
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
@@ -40,18 +39,14 @@ import {
   toggleSelectedMessage
 } from '../components/notify/NotifySelectionUtils';
 import { NotifyMessageDetail } from '../components/notify/NotifyMessageDetail';
+import { NotifyTitleBar } from '../components/notify/NotifyTitleBar';
+import { NotifyEditActionBar } from '../components/notify/NotifyEditActionBar';
 
 const TAG: string = 'NotifyView';
 
 // 前台轮询间隔（ms）：「通知」Tab 可见期间静默拉取新消息，
 // 补齐"用户停留列表页时新消息不及时出现"的场景
 const POLL_INTERVAL_MS: number = 15000;
-
-// HDS 顶栏右侧系统 menu 槽位（「多选/取消」文字胶囊 + 删除图标按钮）的占位宽度（vp）。
-// stackBuilder 为全宽叠层，menu 悬浮叠加其上、不参与 Row 布局，需放一个等宽透明占位
-// 约束标题区宽度，长标题省略号才会在按钮前收尾，不会钻到按钮下方。
-// 宽度组成：文字胶囊 ≈60 + 按钮间距 ≈8 + 图标按钮 ≈40 + 视觉余量 ≈8
-const TITLE_MENU_RESERVE_VP: number = 116;
 
 // 列表项 inboxContent 多行摘要最多展示行数（与普通正文 maxLines(4) 保持一致）
 const INBOX_LIST_MAX_LINES: number = 4;
@@ -158,99 +153,9 @@ export struct NotifyView {
   // 降级顶栏：低版本 SDK 手工 Stack 叠层，blurStyle + 半透明底色实现毛玻璃
   @Builder
   fallbackTitleBar() {
-    Row({ space: 8 }) {
-      Row({ space: 2 }) {
-        Text(this.title)
-          .fontSize(24)
-          .fontColor($r('app.color.text_primary_color'))
-          .fontWeight(FontWeight.Bold)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          // 短标题保持内容宽度、箭头紧贴标题；长标题时收缩出省略号
-          // （Row/Column 子组件 flexShrink 默认 0，必须显式声明才会收缩）
-          .flexShrink(1);
-
-        Image($r('app.media.select_more'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_primary_color'))
-          .flexShrink(0)
-          .onClick(() => {
-            this.handleMoreClicked();
-          });
-      }
-      .layoutWeight(1)
-      .width(0)
-      .padding({ right: 48 })
-      .alignItems(VerticalAlign.Center)
-      .onClick(() => {
-        this.handleMoreClicked();
-      });
-
-      // 多选胶囊按钮：非编辑态进入多选；编辑态退出并清空选中
-      this.multiSelectPill();
-
-      // 删除胶囊按钮
-      this.deletePill();
-    }
-    .width('100%')
-    .padding({
-      left: 16,
-      right: 16,
-      top: 16 + this.statusBarHeight,
-      bottom: 16
-    })
-    .alignItems(VerticalAlign.Center)
-    // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
-    .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.index_page_top_glass_background'));
-  }
-
-  // 降级分支「多选/取消」胶囊按钮：未编辑态显示「多选」进入选择；编辑态显示「取消」清空/退出；
-  // 毛玻璃模糊 + 半透明底色 + 高亮描边（与 HDS 分支系统 menu 槽位的两个按钮行为一致）
-  @Builder
-  multiSelectPill() {
-    Row() {
-      Text(this.isEditing ? '取消' : '多选')
-        .fontSize(16)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary_color'))
-    }
-    .height(38)
-    .padding({ left: 14, right: 14 })
-    .borderRadius(38)
-    .alignItems(VerticalAlign.Center)
-    .border({ width: 1, color: $r('app.color.glass_button_border') })
-    .backgroundBlurStyle(resolveBlurStyle('card')!)
-    .backgroundColor($r('app.color.glass_button_background'))
-    .onClick(() => {
-      this.handleMultiSelectClicked();
-    });
-  }
-
-  // 降级分支删除胶囊按钮：样式与「多选」一致，内部为删除图标；
-  // 非编辑态点击走清空全部（二次确认并重点提示不可恢复），编辑态点击删除选中消息
-  @Builder
-  deletePill() {
-    Row() {
-      Image($r('app.media.delete'))
-        .width(24)
-        .height(24)
-        .objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.text_primary_color'))
-    }
-    .height(38)
-    .width(38)
-    .borderRadius(38)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
-    .border({ width: 1, color: $r('app.color.glass_button_border') })
-    .backgroundBlurStyle(resolveBlurStyle('card')!)
-    .backgroundColor($r('app.color.glass_button_background'))
-    .onClick(() => {
-      this.handleDeletePillClicked();
-    });
+    NotifyTitleBar({ title: this.title, isEditing: this.isEditing, statusBarHeight: this.statusBarHeight,
+      onOpenSettings: () => this.handleMoreClicked(), onToggleSelection: () => this.handleMultiSelectClicked(),
+      onDelete: () => this.handleDeletePillClicked() });
   }
 
   // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
@@ -259,57 +164,12 @@ export struct NotifyView {
   // ⚠️ stackBuilder 是全宽叠层，与右侧系统 menu 槽位区域重叠：
   //   1. 标题 Row 与透明占位节点都必须设 hitTestBehavior(None)（默认 Default 会阻塞兄弟节点），
   //      否则点击 menu 的「多选/删除」会误触发 title 事件；None 不阻塞子节点，标题/图标的 onClick 仍生效；
-  //   2. menu 悬浮叠加不参与 Row 布局，标题 Row 末尾放一个等宽透明占位（TITLE_MENU_RESERVE_VP），
+  //   2. menu 悬浮叠加不参与 Row 布局，标题 Row 末尾由 NotifyTitleBar 放等宽透明占位，
   //      标题区宽度才会被真实约束，长标题省略号在按钮前收尾，不会钻到按钮下方。
   @Builder
   customTitleContent() {
-    Row({ space: 8 }) {
-      Row({ space: 2 }) {
-        Text(this.title)
-          .fontSize(24)
-          .fontColor($r('app.color.text_primary_color'))
-          .fontWeight(FontWeight.Bold)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          // 不占满剩余空间：短标题按内容宽度排布，展开箭头紧贴标题；
-          // 长标题时外层定宽 Row（layoutWeight + menu 占位）空间不足，本节点 flexShrink(1) 被压缩出省略号。
-          // 注意：Row/Column 子组件 flexShrink 默认 0（不收缩），必须显式声明，否则长标题会把箭头挤出
-          .flexShrink(1)
-          // 点击标题文本打开服务器设置弹窗
-          .onClick(() => {
-            this.handleMoreClicked();
-          });
-
-        Image($r('app.media.select_more'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_primary_color'))
-          .flexShrink(0)
-          .onClick(() => {
-            this.handleMoreClicked();
-          });
-      }
-      .layoutWeight(1)
-      .width(0)
-      .alignItems(VerticalAlign.Center)
-      // 自身不参与触摸测试，避免拦截右侧系统 menu 槽位按钮的点击（子节点 onClick 不受影响）
-      .hitTestBehavior(HitTestMode.None);
-
-      // 系统 menu 槽位等宽透明占位：把 menu 悬浮区从 Row 布局中扣除，标题省略号才不会被按钮盖住
-      Row()
-        .width(TITLE_MENU_RESERVE_VP)
-        .height(1)
-        .hitTestBehavior(HitTestMode.None);
-    }
-    .width('100%')
-    .padding({
-      left: 16,
-      right: 16,
-      top: 16,
-      bottom: 16
-    })
-    .alignItems(VerticalAlign.Center);
+    NotifyTitleBar({ title: this.title, isEditing: this.isEditing, useHdsLayout: true,
+      onOpenSettings: () => this.handleMoreClicked() });
   }
 
   // NotifyView Refresh 主体（含分支 view），两条渲染路径共用
@@ -1202,67 +1062,47 @@ export struct NotifyView {
   // 多选模式底部操作栏（需要加在 Refresh 外面）
   @Builder
   editActionBar() {
-    Row() {
-      Text('取消')
-        .fontSize(15)
-        .fontColor($r('app.color.text_tertiary_color'))
-        .onClick(() => {
-          this.exitEditMode();
-        });
-      Blank();
-      Text(this.selectedIds.length === this.messages.length ? '取消全选' : '全选')
-        .fontSize(15)
-        .fontColor($r('app.color.text_tertiary_color'))
-        .padding({ right: 16 })
-        .onClick(() => {
-          if (this.selectedIds.length === this.messages.length) {
-            this.selectedIds = [];
-          } else {
-            const all: number[] = [];
-            for (let i = 0; i < this.messages.length; i++) {
-              all.push(this.messages[i].id);
-            }
-            this.selectedIds = all;
-          }
-        });
-      // 导出选中：有选中时启用；导出中显示加载文案；未选中时点击提示
-      Text(this.exportingSelected ? `导出中…` : `导出(${this.selectedIds.length})`)
-        .fontSize(15)
-        .fontColor(this.selectedIds.length > 0 && !this.exportingSelected ? $r('app.color.text_accent_color') :
-          $r('app.color.text_quinary_color'))
-        .padding({ right: 16 })
-        .onClick(() => {
-          if (this.exportingSelected) {
-            return; // 导出中防重复触发
-          }
-          if (this.selectedIds.length > 0) {
-            this.exportSelectedMessages();
-          } else {
-            showToast(this.getUIContext(), '请先选择要导出的消息');
-          }
-        });
-      Text(`删除(${this.selectedIds.length})`)
-        .fontSize(15)
-        .fontColor(this.selectedIds.length > 0 ? $r('app.color.text_error_color') : $r('app.color.text_quinary_color'))
-        .onClick(() => {
-          if (this.selectedIds.length > 0) {
-            this.confirmDeleteSelected();
-          } else {
-            showToast(this.getUIContext(), '请先选择要删除的消息');
-          }
-        });
+    NotifyEditActionBar({ selectedCount: this.selectedIds.length, messageCount: this.messages.length,
+      exporting: this.exportingSelected, navBarHeight: this.navBarHeight,
+      immersiveLightEnabled: this.immersiveLightEnabled,
+      onCancel: () => this.exitEditMode(),
+      onToggleAll: () => this.toggleAllSelection(),
+      onExport: () => this.handleExportSelected(),
+      onDelete: () => this.handleDeleteSelected() });
+  }
+
+  /** 切换当前列表的全选状态，供多选底栏回调使用。 */
+  private toggleAllSelection(): void {
+    if (this.selectedIds.length === this.messages.length) {
+      this.selectedIds = [];
+      return;
     }
-    .width('100%')
-    // 底部补导航条高度：沉浸式布局下操作栏贴近屏幕底，避让手势条
-    .padding({
-      left: 16,
-      right: 16,
-      top: 12,
-      bottom: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.navBarHeight + 72 :
-        this.navBarHeight + 64
-    })
-    .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.index_page_top_glass_background'));
+    const ids: number[] = [];
+    for (let i = 0; i < this.messages.length; i++) {
+      ids.push(this.messages[i].id);
+    }
+    this.selectedIds = ids;
+  }
+
+  /** 处理导出入口，保留空选择和重复点击提示。 */
+  private handleExportSelected(): void {
+    if (this.exportingSelected) {
+      return;
+    }
+    if (this.selectedIds.length === 0) {
+      showToast(this.getUIContext(), '请先选择要导出的消息');
+      return;
+    }
+    this.exportSelectedMessages();
+  }
+
+  /** 处理删除入口，保留空选择提示。 */
+  private handleDeleteSelected(): void {
+    if (this.selectedIds.length === 0) {
+      showToast(this.getUIContext(), '请先选择要删除的消息');
+      return;
+    }
+    this.confirmDeleteSelected();
   }
 
   // 消息详情全屏模态视图：完整展示标题/副标题/正文/时间，不截断
