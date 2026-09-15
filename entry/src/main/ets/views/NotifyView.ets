@@ -23,6 +23,23 @@ import {
   KEY_NOTIFY_REFRESH_SIGNAL
 } from '../common/Constant';
 import showToast from '../components/showToast';
+import {
+  buildNotifySections,
+  formatNotifyTime,
+  NOTIFY_SEGMENT_CODE,
+  NOTIFY_SEGMENT_URL,
+  NotifySection,
+  NotifyTextSegment,
+  parseNotifyTextSegments
+} from '../components/notify/NotifyViewTypes';
+import {
+  areGroupMessagesSelected,
+  hasSelectedMessage,
+  retainExpandableGroups,
+  toggleGroupMessages,
+  toggleSelectedMessage
+} from '../components/notify/NotifySelectionUtils';
+import { NotifyMessageDetail } from '../components/notify/NotifyMessageDetail';
 
 const TAG: string = 'NotifyView';
 
@@ -39,87 +56,6 @@ const TITLE_MENU_RESERVE_VP: number = 116;
 // 列表项 inboxContent 多行摘要最多展示行数（与普通正文 maxLines(4) 保持一致）
 const INBOX_LIST_MAX_LINES: number = 4;
 
-// ====== 正文富文本解析：自动识别 URL 和验证码 ======
-
-// 文本段类型
-interface TextSegment {
-  text: string;
-  type: number; // 0=普通, 1=URL, 2=验证码
-}
-const SEG_NORMAL: number = 0;
-const SEG_URL: number = 1;
-const SEG_CODE: number = 2;
-
-// 匹配项（临时结构，用于收集正则结果后排序合并）
-interface MatchInfo {
-  start: number;
-  end: number;
-  text: string;
-  type: number;
-}
-
-// 列表展示分组：无 group 或同 group 仅加载到 1 条时按普通卡片展示；
-// 同 group 达到 2 条及以上时折叠为一个 ListItemGroup（折叠卡 header + 展开后多条子 ListItem）
-interface NotifySection {
-  // ForEach 稳定键：普通卡片与分组使用不同前缀，避免虚拟列表复用错位
-  key: string;
-  // 非空表示该 section 是 group 分组
-  groupKey: string;
-  // 组内消息按时间倒序（新→旧），首条为最新消息
-  messages: NotifyMessage[];
-  // 是否以折叠分组样式渲染
-  grouped: boolean;
-}
-
-/**
- * 将正文按 URL（http/https）和验证码（4-8 位连续数字）切分为文本段数组。
- * URL 段和验证码段在渲染时以强调色高亮 + 可点击；普通段按默认样式渲染。
- * 验证码区间若与 URL 重叠则跳过（避免把 URL 中的数字串误识别为验证码）。
- */
-function parseTextSegments(text: string): TextSegment[] {
-  if (!text || text.length === 0) {
-    return [];
-  }
-  const urlPattern: RegExp = /https?:\/\/[^\s<>"'\])]+/g;
-  const codePattern: RegExp = /\b\d{4,8}\b/g;
-
-  const matches: MatchInfo[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = urlPattern.exec(text)) !== null) {
-    const info: MatchInfo = { start: m.index, end: m.index + m[0].length, text: m[0], type: SEG_URL };
-    matches.push(info);
-  }
-  while ((m = codePattern.exec(text)) !== null) {
-    // 跳过与已有 URL 匹配重叠的区间
-    let overlaps = false;
-    for (let i = 0; i < matches.length; i++) {
-      if (m.index < matches[i].end && m.index + m[0].length > matches[i].start) {
-        overlaps = true;
-        break;
-      }
-    }
-    if (!overlaps) {
-      const info: MatchInfo = { start: m.index, end: m.index + m[0].length, text: m[0], type: SEG_CODE };
-      matches.push(info);
-    }
-  }
-
-  // 按起始位置排序后构建文本段数组
-  matches.sort((a: MatchInfo, b: MatchInfo) => a.start - b.start);
-  const segments: TextSegment[] = [];
-  let lastEnd = 0;
-  for (let i = 0; i < matches.length; i++) {
-    if (matches[i].start > lastEnd) {
-      segments.push({ text: text.substring(lastEnd, matches[i].start), type: SEG_NORMAL });
-    }
-    segments.push({ text: matches[i].text, type: matches[i].type });
-    lastEnd = matches[i].end;
-  }
-  if (lastEnd < text.length) {
-    segments.push({ text: text.substring(lastEnd), type: SEG_NORMAL });
-  }
-  return segments;
-}
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
 @Component
@@ -1329,115 +1265,17 @@ export struct NotifyView {
     .backgroundColor($r('app.color.index_page_top_glass_background'));
   }
 
-  @Builder
-  detailTitleBar() {
-    Column() {
-      Row() {
-        Text('消息详情')
-          .fontSize(18)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary_color'))
-          .layoutWeight(1);
-        Image($r('app.media.close'))
-          .width(28)
-          .height(28)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_tertiary_color'))
-          .padding(2)
-          .onClick(() => {
-            this.showDetail = false;
-          });
-      }
-      .width('100%')
-      .padding(16)
-      .alignItems(VerticalAlign.Center);
-    }
-    .width('100%')
-    .padding({ top: this.statusBarHeight })
-    // bindContentCover 模态不参与 HdsNavigation 沉浸光感，统一用 blur + 半透明底色的毛玻璃
-    .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.index_page_top_glass_background'));
-  }
-
   // 消息详情全屏模态视图：完整展示标题/副标题/正文/时间，不截断
   @Builder
   detailBuilder() {
-    Column() {
-      // Stack 层叠：详情内容在下、标题栏在上，滚动时内容从标题栏下方穿过
-      Stack({ alignContent: Alignment.Top }) {
-        // 内容区（可滚动，先声明位于下层）
-        Scroll() {
-          Column({ space: 12 }) {
-            // 顶部占位：随内容一起滚动，详情才能滑入标题栏毛玻璃下方（padding 是硬边界做不到）
-            // 模态全屏布局从屏幕顶 y=0 开始，占位 = 状态栏高度 + 标题栏高度 + 余量
-            Row()
-              .width('100%')
-              .height(this.statusBarHeight + 72);
-
-            if (this.selectedMessage) {
-              // 标题行：标题（左占剩余空间）+ icon（右 38x38，与列表样式一致）
-              Row({ space: 8 }) {
-                if (this.selectedMessage.title && this.selectedMessage.title.length > 0) {
-                  Text(this.selectedMessage.title)
-                    .fontSize(18)
-                    .fontWeight(FontWeight.Bold)
-                    .fontColor($r('app.color.text_primary_color'))
-                    .layoutWeight(1);
-                }
-                if (this.selectedMessage.image && this.selectedMessage.image.length > 0) {
-                  Image(this.selectedMessage.image)
-                    .width(38)
-                    .height(38)
-                    .borderRadius(12)
-                    .objectFit(ImageFit.Cover)
-                    .flexShrink(0)
-                    .alt($r('app.media.app_icon'));
-                }
-              }
-              .width('100%')
-              .alignItems(VerticalAlign.Top);
-
-              if (this.selectedMessage.subtitle && this.selectedMessage.subtitle.length > 0) {
-                Text(this.selectedMessage.subtitle)
-                  .fontSize(14)
-                  .fontColor($r('app.color.text_accent_color'))
-                  .width('100%');
-              }
-              // 正文优先展示 extras.inboxcontent（每条一段完整展示），无则回退普通正文
-              if (this.selectedMessage.inboxContent.length > 0) {
-                this.inboxRichTextDetail(this.selectedMessage.inboxContent)
-              } else if (this.selectedMessage.body && this.selectedMessage.body.length > 0) {
-                this.bodyRichTextDetail(this.selectedMessage.body)
-              }
-
-              // 下：时间居右
-              Text(this.formatTime(this.selectedMessage.timestamp))
-                .fontSize(12)
-                .fontColor($r('app.color.text_quinary_color'))
-                .width('100%')
-                .textAlign(TextAlign.End);
-            }
-          }
-          .width('100%')
-          // 顶部避让由首项占位实现（可滚动穿透标题栏）；底部补导航条高度避让手势条
-          .padding({ left: 16, right: 16, bottom: 24 + this.navBarHeight });
-        }
-        .align(Alignment.TopStart)
-        .width('100%')
-        .height('100%')
-        .edgeEffect(EdgeEffect.Spring)
-        .scrollBar(BarState.Off);
-
-        // 标题栏（后声明覆盖在上层）：毛玻璃 + 半透明底色，状态栏高度手动避让
-        this.detailTitleBar()
-      }
-      .width('100%')
-      .height('100%');
-    }
-    .width('100%')
-    .height('100%')
-    // 沉浸式布局下模态全屏铺满，灰色底色自然覆盖导航条区域，实现底部沉浸
-    .backgroundColor($r('app.color.index_page_body_background'));
+    NotifyMessageDetail({
+      message: this.selectedMessage,
+      statusBarHeight: this.statusBarHeight,
+      navBarHeight: this.navBarHeight,
+      onDismiss: () => { this.showDetail = false; },
+      onOpenUrl: (url: string) => { this.openUrl(url); },
+      onCopyCode: (code: string) => { this.copyCode(code); }
+    });
   }
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
@@ -1499,13 +1337,13 @@ export struct NotifyView {
   // fontSize 由调用方按场景指定（列表 14fp / 详情 15fp），必须内联在 Text 容器内使用
   @Builder
   richTextSpans(text: string, fontSize: number) {
-    ForEach(parseTextSegments(text), (seg: TextSegment, index: number) => {
-      if (seg.type === SEG_URL) {
+    ForEach(parseNotifyTextSegments(text), (seg: NotifyTextSegment, index: number) => {
+      if (seg.type === NOTIFY_SEGMENT_URL) {
         Span(seg.text)
           .fontColor($r('app.color.text_accent_color'))
           .fontSize(fontSize)
           .onClick(() => { this.openUrl(seg.text); });
-      } else if (seg.type === SEG_CODE) {
+      } else if (seg.type === NOTIFY_SEGMENT_CODE) {
         Span(seg.text)
           .fontColor($r('app.color.text_accent_color'))
           .fontSize(fontSize)
@@ -1515,7 +1353,7 @@ export struct NotifyView {
           .fontColor($r('app.color.text_secondary_color'))
           .fontSize(fontSize);
       }
-    }, (seg: TextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
+    }, (seg: NotifyTextSegment, index: number) => `${index}_${seg.type}_${seg.text}`)
   }
 
   // 列表项正文富文本：URL/验证码高亮可点击，maxLines(4) + 省略号
@@ -1551,32 +1389,6 @@ export struct NotifyView {
     .width('100%')
     .alignItems(HorizontalAlign.Start)
     .margin({ top: 4 }); // 与上方标题/副标题拉开间距
-  }
-
-  // 详情页正文富文本：URL/验证码高亮可点击，不限制行数
-  @Builder
-  bodyRichTextDetail(text: string) {
-    Text() {
-      this.richTextSpans(text, 15)
-    }
-    .width('100%')
-    .lineHeight(22.5); // 1.5 倍行距（15fp × 1.5）
-  }
-
-  // 详情页 inboxContent 富文本：每条独占一段、长文自动换行完整展示，段落间留间距
-  @Builder
-  inboxRichTextDetail(items: string[]) {
-    Column({ space: 8 }) {
-      ForEach(items, (line: string, index: number) => {
-        Text() {
-          this.richTextSpans(line, 15)
-        }
-        .width('100%')
-        .lineHeight(22.5); // 1.5 倍行距（15fp × 1.5）
-      }, (line: string, index: number) => `${index}_${line}`)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start);
   }
 
   // 未配置 client token 或未注册 → 引导到"我的"页配置
@@ -1725,18 +1537,11 @@ export struct NotifyView {
   }
 
   private isSelected(id: number): boolean {
-    return this.selectedIds.indexOf(id) >= 0;
+    return hasSelectedMessage(this.selectedIds, id);
   }
 
   private toggleSelect(id: number): void {
-    const idx: number = this.selectedIds.indexOf(id);
-    if (idx >= 0) {
-      const arr: number[] = [...this.selectedIds];
-      arr.splice(idx, 1);
-      this.selectedIds = arr;
-    } else {
-      this.selectedIds = [...this.selectedIds, id];
-    }
+    this.selectedIds = toggleSelectedMessage(this.selectedIds, id);
   }
 
   // ====== group 分组展示 ======
@@ -1744,50 +1549,7 @@ export struct NotifyView {
   // 依据当前消息顺序构建展示分组：messages 已按时间倒序维护，分组位置取组内最新消息首次出现的位置；
   // 这是渲染层唯一的分组顺序来源，轮询/分页/删除后均重新从 messages 派生，避免多处各自排序造成漂移
   private buildSections(): NotifySection[] {
-    // 第一遍：统计每个 group 的成员数量，供 key 使用
-    const groupSizeMap: Map<string, number> = new Map<string, number>();
-    for (let i = 0; i < this.messages.length; i++) {
-      const g: string = this.messages[i].group;
-      if (g.length > 0) {
-        groupSizeMap.set(g, (groupSizeMap.get(g) ?? 0) + 1);
-      }
-    }
-    const sections: NotifySection[] = [];
-    const sectionIndexMap: Map<string, number> = new Map<string, number>();
-    for (let i = 0; i < this.messages.length; i++) {
-      const m: NotifyMessage = this.messages[i];
-      if (m.group.length === 0) {
-        const single: NotifySection = {
-          key: `single:${m.id}`,
-          groupKey: '',
-          messages: [m],
-          grouped: false
-        };
-        sections.push(single);
-        continue;
-      }
-      const existIndex: number | undefined = sectionIndexMap.get(m.group);
-      if (existIndex === undefined) {
-        sectionIndexMap.set(m.group, sections.length);
-        // key 必须带成员数量：ArkUI ForEach 在 key 不变时会整体复用原子组件树、
-        // 不重新执行 item 生成函数（官方 FAQ 619）。若只用 groupKey 做 key，
-        // 组内删除/新增后数量变化但 key 不变，内层 ForEach 拿不到新数组，
-        // 表现为被删消息不消失、折叠卡「N 条通知」角标不更新
-        const section: NotifySection = {
-          key: `group:${m.group}:${groupSizeMap.get(m.group) ?? 0}`,
-          groupKey: m.group,
-          messages: [m],
-          // 先按普通卡片占位；后续遇到同组消息时再升级为折叠分组
-          grouped: false
-        };
-        sections.push(section);
-      } else {
-        const section: NotifySection = sections[existIndex];
-        section.messages.push(m);
-        section.grouped = true;
-      }
-    }
-    return sections;
+    return buildNotifySections(this.messages);
   }
 
   private isGroupExpanded(groupKey: string): boolean {
@@ -1848,35 +1610,12 @@ export struct NotifyView {
 
   // 分组复选框是否应显示为选中：组内消息全部选中才选中
   private isGroupAllSelected(groupMessages: NotifyMessage[]): boolean {
-    if (groupMessages.length === 0) {
-      return false;
-    }
-    for (let i = 0; i < groupMessages.length; i++) {
-      if (!this.isSelected(groupMessages[i].id)) {
-        return false;
-      }
-    }
-    return true;
+    return areGroupMessagesSelected(this.selectedIds, groupMessages);
   }
 
   // 整组勾选/取消勾选：全选状态下取消整组，否则补齐组内未选中的消息
   private toggleGroupSelection(groupMessages: NotifyMessage[]): void {
-    if (this.isGroupAllSelected(groupMessages)) {
-      const groupIdSet: Set<number> = new Set<number>();
-      for (let i = 0; i < groupMessages.length; i++) {
-        groupIdSet.add(groupMessages[i].id);
-      }
-      this.selectedIds = this.selectedIds.filter((id: number) => !groupIdSet.has(id));
-    } else {
-      const next: number[] = [...this.selectedIds];
-      for (let i = 0; i < groupMessages.length; i++) {
-        const id: number = groupMessages[i].id;
-        if (!this.isSelected(id)) {
-          next.push(id);
-        }
-      }
-      this.selectedIds = next;
-    }
+    this.selectedIds = toggleGroupMessages(this.selectedIds, groupMessages);
   }
 
   // 从本地列表移除（UI 即时更新，不刷新整个列表）
@@ -1891,14 +1630,7 @@ export struct NotifyView {
     this.messages = newList;
     // 清理已不存在，或删到只剩 1 条（已退回普通卡片）的分组展开状态，
     // 避免后续再次聚合成组时意外沿用展开态
-    const groupCountMap: Map<string, number> = new Map<string, number>();
-    for (let i = 0; i < this.messages.length; i++) {
-      const g: string = this.messages[i].group;
-      if (g.length > 0) {
-        groupCountMap.set(g, (groupCountMap.get(g) ?? 0) + 1);
-      }
-    }
-    this.expandedGroups = this.expandedGroups.filter((g: string) => (groupCountMap.get(g) ?? 0) >= 2);
+    this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups);
     // 如果删光了，退出编辑模式
     if (this.messages.length === 0) {
       this.exitEditMode();
@@ -2276,16 +2008,7 @@ export struct NotifyView {
   }
 
   private formatTime(ts: number): string {
-    if (!ts) {
-      return '';
-    }
-    const d = new Date(ts);
-    const y: number = d.getFullYear();
-    const mo: string = String(d.getMonth() + 1).padStart(2, '0');
-    const da: string = String(d.getDate()).padStart(2, '0');
-    const h: string = String(d.getHours()).padStart(2, '0');
-    const mi: string = String(d.getMinutes()).padStart(2, '0');
-    return `${y}-${mo}-${da} ${h}:${mi}`;
+    return formatNotifyTime(ts);
   }
 
   private handleMoreClicked(): void {
