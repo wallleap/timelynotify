@@ -1,5 +1,6 @@
 import { formatNotifyTime, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifySection, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
 import { NotifyGroupCountBadge, NotifyGroupShellLayer } from './NotifyGroupVisuals';
+import { NotifyMessage } from '../../model/NotifyMessage';
 
 /** 折叠态分组卡片，页面负责持有展开状态、高度和实际操作。 */
 @Component
@@ -28,8 +29,7 @@ export struct NotifyGroupCard {
   }
 
   @Builder
-  private body() {
-    const message = this.section.messages[0];
+  private body(message: NotifyMessage) {
     if (message.inboxContent.length > 0) {
       Column() {
         ForEach(message.inboxContent, (line: string, index: number) => {
@@ -70,7 +70,7 @@ export struct NotifyGroupCard {
                 Text(this.section.messages[0].subtitle).fontSize(13).fontColor($r('app.color.text_accent_color'))
                   .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
               }
-              this.body();
+              this.body(this.section.messages[0]);
             }.layoutWeight(1);
             if (this.section.messages[0].image.length > 0) {
               Image(this.section.messages[0].image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).alt($r('app.media.app_icon'));

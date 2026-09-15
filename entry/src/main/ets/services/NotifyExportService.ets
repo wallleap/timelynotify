@@ -3,6 +3,23 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { ServerManager } from './ServerManager';
 
+/** 导出文件中消息 extras 的显式类型，满足 ArkTS 对对象字面量的约束。 */
+class NotifyExportExtras {
+  device_key: string = '';
+  subtitle: string = '';
+}
+
+/** 导出文件中单条通知的显式结构。 */
+class NotifyExportMessage {
+  id: number = 0;
+  appid: number = 0;
+  title: string = '';
+  message: string = '';
+  priority: number = 0;
+  date: string = '';
+  extras: NotifyExportExtras = new NotifyExportExtras();
+}
+
 /** 选中通知的系统文件导出服务，保持页面只负责触发与提示。 */
 export class NotifyExportService {
   static async exportSelected(context: common.UIAbilityContext, messages: NotifyMessage[], selectedIds: number[]): Promise<number> {
@@ -16,7 +33,7 @@ export class NotifyExportService {
     if (selected.length === 0) {
       return 0;
     }
-    const raw: Object[] = selected.map((message: NotifyMessage) => NotifyExportService.toRaw(message, deviceKey));
+    const raw: NotifyExportMessage[] = selected.map((message: NotifyMessage) => NotifyExportService.toRaw(message, deviceKey));
     const options = new picker.DocumentSaveOptions();
     options.newFileNames = [`timelynotify_selected_${NotifyExportService.fileTime(new Date())}.txt`];
     options.fileSuffixChoices = ['文档|.txt'];
@@ -38,13 +55,18 @@ export class NotifyExportService {
     return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
   }
 
-  private static toRaw(message: NotifyMessage, deviceKey: string): Object {
-    const extras: Record<string, Object> = { 'device_key': deviceKey };
+  private static toRaw(message: NotifyMessage, deviceKey: string): NotifyExportMessage {
+    const raw: NotifyExportMessage = new NotifyExportMessage();
+    raw.id = message.id;
+    raw.appid = message.appid;
+    raw.title = message.title;
+    raw.message = message.body;
+    raw.priority = message.priority;
+    raw.date = message.date.length > 0 ? message.date : message.createdAt;
+    raw.extras.device_key = deviceKey;
     if (message.subtitle.length > 0) {
-      extras['subtitle'] = message.subtitle;
+      raw.extras.subtitle = message.subtitle;
     }
-    return { 'id': message.id, 'appid': message.appid, 'title': message.title, 'message': message.body,
-      'priority': message.priority, 'date': message.date.length > 0 ? message.date : message.createdAt,
-      'extras': extras as Object } as Object;
+    return raw;
   }
 }
