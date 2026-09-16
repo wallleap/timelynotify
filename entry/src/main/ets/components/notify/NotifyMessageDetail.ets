@@ -149,27 +149,29 @@ export struct NotifyMessageDetail {
     }
   }
 
-  /** 卡片贴底操作区：复制/打开两项等宽排列，与正文共享同一张卡片。 */
+  /** 系统通知风格卡片底栏：复制/访问两项等宽排列，与正文共享同一张卡片。 */
   @Builder
   private linkActions(url: string) {
     if (url.length > 0) {
-      Row() {
-        Row({ space: 4 }) {
-          Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
-            .objectFit(ImageFit.Contain).flexShrink(0);
-          Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
+      Column() {
+        Divider().width('100%').strokeWidth(0.5).color($r('app.color.color_border_subtle'));
+        Row() {
+          Row({ space: 4 }) {
+            Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
+              .objectFit(ImageFit.Contain).flexShrink(0);
+            Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
+          }
+          .layoutWeight(1).justifyContent(FlexAlign.Center).onClick(() => this.onCopyUrl(url));
+          Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
+          Row({ space: 4 }) {
+            Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
+              .objectFit(ImageFit.Contain).flexShrink(0);
+            Text('访问链接').fontSize(13).fontColor($r('app.color.color_brand'));
+          }
+          .layoutWeight(1).justifyContent(FlexAlign.Center).onClick(() => this.onOpenUrl(url));
         }
-        .layoutWeight(1).justifyContent(FlexAlign.Center).onClick(() => this.onCopyUrl(url));
-        Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
-        Row({ space: 4 }) {
-          Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
-            .objectFit(ImageFit.Contain).flexShrink(0);
-          Text('打开链接').fontSize(13).fontColor($r('app.color.color_brand'));
-        }
-        .layoutWeight(1).justifyContent(FlexAlign.Center).onClick(() => this.onOpenUrl(url));
-      }
-      .width('100%').padding({ top: 10, bottom: 10 })
-      .backgroundColor($r('app.color.color_bg_action')).alignItems(VerticalAlign.Center);
+        .width('100%').height(42).backgroundColor($r('app.color.color_bg_action_bar')).alignItems(VerticalAlign.Center);
+      }.width('100%');
     }
   }
 
@@ -195,8 +197,8 @@ export struct NotifyMessageDetail {
     Stack({ alignContent: Alignment.Top }) {
       Scroll() {
         Column() {
-          // 为悬浮顶栏预留高度，使内容卡片从顶栏下自然开始。
-          Row().width('100%').height(this.statusBarHeight + 76);
+          // 为悬浮顶栏预留高度，额外保留 16vp 使内容卡片与顶栏自然分隔。
+          Row().width('100%').height(this.statusBarHeight + 80);
           if (this.message) {
             // 外层统一裁剪圆角，正文与贴底 action 形成同一张分区卡片。
             Column() {
@@ -233,7 +235,7 @@ export struct NotifyMessageDetail {
                 .width('100%').maxLines(1).textAlign(TextAlign.End).margin({ top: 14 });
               this.recognizedActions(this.recognizedSegments());
               }
-              .width('100%').padding(20);
+              .width('100%').padding({ left: 14, right: 14, top: 16, bottom: 16 });
               if (this.message.url.length > 0) {
                 this.linkActions(this.message.url);
               }

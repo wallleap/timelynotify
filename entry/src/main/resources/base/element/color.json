@@ -1,37 +1,140 @@
 {
   "color": [
-    { "name": "color_brand", "value": "#E96924" },
-    { "name": "color_on_brand", "value": "#FFFFFF" },
-    { "name": "color_brand_container", "value": "#FFF1E9" },
-    { "name": "color_on_brand_container", "value": "#963A00" },
-    { "name": "color_bg_page", "value": "#F7F8FA" },
-    { "name": "color_bg_navigation", "value": "#FBFCFE" },
-    { "name": "color_bg_surface", "value": "#FFFFFF" },
-    { "name": "color_bg_surface_muted", "value": "#F1F3F6" },
-    { "name": "color_bg_surface_glass", "value": "#A6FFFFFF" },
-    { "name": "color_bg_dialog", "value": "#FFFFFF" },
-    { "name": "color_bg_input", "value": "#F1F3F6" },
-    { "name": "color_bg_action", "value": "#F1F3F6" },
-    { "name": "color_bg_glass", "value": "#1AFFFFFF" },
-    { "name": "color_bg_glass_control", "value": "#8CFFFFFF" },
-    { "name": "color_bg_stack_deep", "value": "#80E1E6EC" },
-    { "name": "color_bg_stack_shallow", "value": "#CCF1F4F7" },
-    { "name": "color_bg_badge", "value": "#EEF1F5" },
-    { "name": "color_text_primary", "value": "#1B2430" },
-    { "name": "color_text_secondary", "value": "#4B5A6B" },
-    { "name": "color_text_tertiary", "value": "#758397" },
-    { "name": "color_text_hint", "value": "#98A4B4" },
-    { "name": "color_text_badge", "value": "#758397" },
-    { "name": "color_border_subtle", "value": "#E7EBF0" },
-    { "name": "color_border_default", "value": "#DCE2E8" },
-    { "name": "color_border_glass", "value": "#1F1E293B" },
-    { "name": "color_link", "value": "#3578D4" },
-    { "name": "color_state_link_pressed", "value": "#1A3578D4" },
-    { "name": "color_state_selected", "value": "#FFF1E9" },
-    { "name": "color_state_brand_selected", "value": "#1AE96924" },
-    { "name": "color_success", "value": "#1BA854" },
-    { "name": "color_warning", "value": "#D97706" },
-    { "name": "color_error", "value": "#D84A4A" },
-    { "name": "color_info", "value": "#2F77D5" }
+    {
+      "name": "color_brand",
+      "value": "#E96924"
+    },
+    {
+      "name": "color_on_brand",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "color_brand_container",
+      "value": "#FFF1E9"
+    },
+    {
+      "name": "color_on_brand_container",
+      "value": "#963A00"
+    },
+    {
+      "name": "color_bg_page",
+      "value": "#F7F8FA"
+    },
+    {
+      "name": "color_bg_navigation",
+      "value": "#FBFCFE"
+    },
+    {
+      "name": "color_bg_surface",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "color_bg_surface_muted",
+      "value": "#F1F3F6"
+    },
+    {
+      "name": "color_bg_surface_glass",
+      "value": "#A6FFFFFF"
+    },
+    {
+      "name": "color_bg_dialog",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "color_bg_input",
+      "value": "#F1F3F6"
+    },
+    {
+      "name": "color_bg_action",
+      "value": "#F4F6F8"
+    },
+    {
+      "name": "color_bg_action_bar",
+      "value": "#F2F2F2"
+    },
+    {
+      "name": "color_bg_glass",
+      "value": "#1AFFFFFF"
+    },
+    {
+      "name": "color_bg_glass_control",
+      "value": "#8CFFFFFF"
+    },
+    {
+      "name": "color_bg_stack_deep",
+      "value": "#E8EDF3"
+    },
+    {
+      "name": "color_bg_stack_shallow",
+      "value": "#F0F3F6"
+    },
+    {
+      "name": "color_bg_badge",
+      "value": "#EEF1F5"
+    },
+    {
+      "name": "color_text_primary",
+      "value": "#1B2430"
+    },
+    {
+      "name": "color_text_secondary",
+      "value": "#4B5A6B"
+    },
+    {
+      "name": "color_text_tertiary",
+      "value": "#758397"
+    },
+    {
+      "name": "color_text_hint",
+      "value": "#98A4B4"
+    },
+    {
+      "name": "color_text_badge",
+      "value": "#758397"
+    },
+    {
+      "name": "color_border_subtle",
+      "value": "#E7EBF0"
+    },
+    {
+      "name": "color_border_default",
+      "value": "#DCE2E8"
+    },
+    {
+      "name": "color_border_glass",
+      "value": "#1F1E293B"
+    },
+    {
+      "name": "color_link",
+      "value": "#3578D4"
+    },
+    {
+      "name": "color_state_link_pressed",
+      "value": "#1A3578D4"
+    },
+    {
+      "name": "color_state_selected",
+      "value": "#FFF1E9"
+    },
+    {
+      "name": "color_state_brand_selected",
+      "value": "#1AE96924"
+    },
+    {
+      "name": "color_success",
+      "value": "#1BA854"
+    },
+    {
+      "name": "color_warning",
+      "value": "#D97706"
+    },
+    {
+      "name": "color_error",
+      "value": "#D84A4A"
+    },
+    {
+      "name": "color_info",
+      "value": "#2F77D5"
+    }
   ]
 }
