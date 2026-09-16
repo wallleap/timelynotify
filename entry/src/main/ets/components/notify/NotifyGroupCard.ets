@@ -21,11 +21,11 @@ export struct NotifyGroupCard {
   private spans(text: string) {
     ForEach(parseNotifyTextSegments(text), (segment: NotifyTextSegment, index: number) => {
       if (segment.type === NOTIFY_SEGMENT_URL) {
-        Span(segment.text).fontSize(14).fontColor($r('app.color.link_color')).onClick(() => this.onOpenUrl(segment.text));
+        Span(segment.text).fontSize(14).fontColor($r('app.color.color_link')).onClick(() => this.onOpenUrl(segment.text));
       } else if (segment.type === NOTIFY_SEGMENT_CODE) {
-        Span(segment.text).fontSize(14).fontColor($r('app.color.text_accent_color')).onClick(() => this.onCopyCode(segment.text));
+        Span(segment.text).fontSize(14).fontColor($r('app.color.color_brand')).onClick(() => this.onCopyCode(segment.text));
       } else {
-        Span(segment.text).fontSize(14).fontColor($r('app.color.text_secondary_color'));
+        Span(segment.text).fontSize(14).fontColor($r('app.color.color_text_secondary'));
       }
     }, (segment: NotifyTextSegment, index: number) => `${index}_${segment.type}_${segment.text}`)
   }
@@ -50,8 +50,8 @@ export struct NotifyGroupCard {
   private groupCount() {
     if (this.isEditing) {
       Text(`已选 ${this.selectedCount} / ${this.section.total}`).fontSize(10).fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.group_count_badge_text')).padding({ left: 8, right: 8, top: 2, bottom: 2 })
-        .borderRadius(10).backgroundColor($r('app.color.group_count_badge_bg'));
+        .fontColor($r('app.color.color_text_badge')).padding({ left: 8, right: 8, top: 2, bottom: 2 })
+        .borderRadius(10).backgroundColor($r('app.color.color_bg_badge'));
     } else {
       NotifyGroupCountBadge({ count: this.section.total });
     }
@@ -61,15 +61,15 @@ export struct NotifyGroupCard {
     Stack({ alignContent: Alignment.TopStart }) {
       if (this.section.messages.length >= 3 && this.cardHeight > 0) {
         NotifyGroupShellLayer({ shellHeight: this.cardHeight, inset: 16, yOffset: 18,
-          shellColor: $r('app.color.card_shell_deep') });
+          shellColor: $r('app.color.color_bg_stack_deep') });
       }
       if (this.section.messages.length >= 2 && this.cardHeight > 0) {
         NotifyGroupShellLayer({ shellHeight: this.cardHeight, inset: 8, yOffset: 9,
-          shellColor: $r('app.color.card_shell_shallow') });
+          shellColor: $r('app.color.color_bg_stack_shallow') });
       }
       Row({ space: 12 }) {
         if (this.isEditing) {
-          Checkbox().select(this.groupSelected).selectedColor($r('app.color.text_accent_color'))
+          Checkbox().select(this.groupSelected).selectedColor($r('app.color.color_brand'))
             .shape(CheckBoxShape.CIRCLE);
         }
         Column({ space: 6 }) {
@@ -79,17 +79,17 @@ export struct NotifyGroupCard {
             Row({ space: 8 }) {
               if (this.section.messages[0].title.length > 0) {
                 Text(this.section.messages[0].title).fontSize(15).fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.text_primary_color')).layoutWeight(1).maxLines(1)
+                  .fontColor($r('app.color.color_text_primary')).layoutWeight(1).maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis });
               } else { Blank().layoutWeight(1); }
               Text(formatNotifyTime(this.section.messages[0].timestamp)).fontSize(11)
-                .fontColor($r('app.color.text_quinary_color')).flexShrink(0);
+                .fontColor($r('app.color.color_text_hint')).flexShrink(0);
             }.width('100%').alignItems(VerticalAlign.Center);
             // 图标只与正文并列，不再压缩标题与时间。
             Row({ space: 8 }) {
               Column() {
                 if (this.section.messages[0].subtitle.length > 0) {
-                  Text(this.section.messages[0].subtitle).fontSize(13).fontColor($r('app.color.text_accent_color'))
+                  Text(this.section.messages[0].subtitle).fontSize(13).fontColor($r('app.color.color_brand'))
                     .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
                 }
                 this.body(this.section.messages[0]);
@@ -109,7 +109,7 @@ export struct NotifyGroupCard {
           }.width('100%');
         }.layoutWeight(1);
       }
-      .width('100%').padding(12).backgroundColor($r('app.color.card_background')).borderRadius(12)
+      .width('100%').padding(12).backgroundColor($r('app.color.color_bg_surface')).borderRadius(12)
       .onAreaChange((_old: Area, value: Area) => this.onHeightChange(value.height as number))
       .onClick(() => this.isEditing ? this.onToggleSelection() : this.onOpen());
     }

@@ -24,7 +24,7 @@ struct ServerSettingsPage {
       .width(32)
       .height(32)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_primary_color'))
+      .fillColor($r('app.color.color_text_primary'))
       .padding(4)
       .draggable(false)
       .onClick(() => {
@@ -34,7 +34,7 @@ struct ServerSettingsPage {
     Text('服务器设置')
       .fontSize(18)
       .fontWeight(FontWeight.Bold)
-      .fontColor($r('app.color.text_primary_color'))
+      .fontColor($r('app.color.color_text_primary'))
       .layoutWeight(1)
       .textAlign(TextAlign.Center);
 
@@ -126,11 +126,11 @@ struct ServerSettingsPage {
           bottom: 12
         })
         .backgroundBlurStyle(resolveBlurStyle('bar')!, { scale: 1.0 })
-        .backgroundColor($r('app.color.index_page_top_glass_background'));
+        .backgroundColor($r('app.color.color_bg_glass'));
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.index_page_body_background'));
+      .backgroundColor($r('app.color.color_bg_page'));
     }
   }
 

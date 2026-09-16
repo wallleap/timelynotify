@@ -46,7 +46,7 @@ export struct MineView {
     Row() {
       // 标题居左
       Text('我的').fontSize(24).fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_primary_color'));
+        .fontColor($r('app.color.color_text_primary'));
       Blank();
       // 右侧主题切换器（跟随系统/浅色/深色）
       this.colorModeSelector();
@@ -61,7 +61,7 @@ export struct MineView {
     })
     // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
     .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.index_page_top_glass_background'));
+    .backgroundColor($r('app.color.color_bg_glass'));
   }
 
   // 顶栏右侧主题切换器：三段纯图标（跟随系统/浅色/深色），选中项圆形高亮底
@@ -72,14 +72,14 @@ export struct MineView {
         Row() {
           SymbolGlyph(icon)
             .fontSize(18)
-            .fontColor([idx === this.colorModeIndex ? $r('app.color.text_accent_color') :
-              $r('app.color.text_tertiary_color')])
+            .fontColor([idx === this.colorModeIndex ? $r('app.color.color_brand') :
+              $r('app.color.color_text_tertiary')])
         }
         .width(32)
         .height(32)
         .borderRadius(16)
         .justifyContent(FlexAlign.Center)
-        .backgroundColor(idx === this.colorModeIndex ? $r('app.color.color_mode_selected_background') :
+        .backgroundColor(idx === this.colorModeIndex ? $r('app.color.color_state_brand_selected') :
           Color.Transparent)
         .onClick(() => {
           this.colorModeIndex = idx;
@@ -99,7 +99,7 @@ export struct MineView {
       Text('我的')
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_primary_color'));
+        .fontColor($r('app.color.color_text_primary'));
       Blank();
       // 右侧主题切换器（跟随系统/浅色/深色）
       this.colorModeSelector();
@@ -194,7 +194,7 @@ export struct MineView {
       .bindToScrollable([this.scroller])
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.index_page_body_background'));
+      .backgroundColor($r('app.color.color_bg_page'));
     } else {
       // ─── API < 26: Stack + 手工顶栏叠层（backgroundBlurStyle 降级）───
       Column() {
@@ -205,7 +205,7 @@ export struct MineView {
         }.width('100%').layoutWeight(1);
       }
       .width('100%').height('100%')
-      .backgroundColor($r('app.color.index_page_body_background'));
+      .backgroundColor($r('app.color.color_bg_page'));
     }
   }
 

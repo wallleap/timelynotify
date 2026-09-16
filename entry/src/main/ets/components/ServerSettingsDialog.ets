@@ -33,7 +33,7 @@ export struct ServerSettingsDialog {
 
       Text('关闭')
         .fontSize(14)
-        .fontColor($r('app.color.text_quinary_color'))
+        .fontColor($r('app.color.color_text_hint'))
         .padding(8)
         .onClick(() => {
           try {
@@ -46,7 +46,7 @@ export struct ServerSettingsDialog {
         });
     }
     .padding(18)
-    .backgroundColor($r('app.color.dialog_background'))
+    .backgroundColor($r('app.color.color_bg_dialog'))
     .borderRadius(14);
   }
 }
