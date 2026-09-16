@@ -68,7 +68,7 @@ export class NotifyMessage extends Object {
         }
         m.inboxContent = lines;
       }
-      // 分组标识从 extras.group 取，纯空白视为未分组
+  // 分组标识从 extras.group 取，纯空白视为“默认”分组
       const groupVal: Object | undefined = extras['group'];
       m.group = typeof groupVal === 'string' ? groupVal.trim() : '';
       // 跳转 URL 从 extras.url 取，纯空白视为无链接
@@ -126,4 +126,3 @@ export class NotifyMessage extends Object {
     return isNaN(t) ? 0 : t;
   }
 }
-

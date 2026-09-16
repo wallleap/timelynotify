@@ -423,7 +423,7 @@ export class NotifyMessageService {
 
   // 删除单条消息（服务端 API）：DELETE /{device_key}/message/{id}
 
-  // 返回 '' 表示成功；非空是错误描述。server 为空时操作当前服务器。
+  // 返回 '' 表示成功（含服务端已不存在的幂等删除）；非空是错误描述。server 为空时操作当前服务器。
   async deleteMessage(messageId: number, context: common.Context | null = null,
     server: ServerEntry | null = null): Promise<string> {
     if (messageId <= 0) {
@@ -459,7 +459,10 @@ export class NotifyMessageService {
         return '客户端 Token 无效';
       }
       if (resp.code === 404) {
-        return '消息不存在';
+        // 记录可能已被其他终端或删除流水清除；DELETE 在此按幂等成功处理，
+        // 让调用方继续移除本地缓存，避免遗留无法删除的陈旧通知。
+        hilog.info(DOMAIN, TAG, '消息 %{public}d 已不存在，按删除成功处理', messageId);
+        return '';
       }
       if (resp.code < 200 || resp.code >= 300) {
         return `删除失败（HTTP ${resp.code}）`;

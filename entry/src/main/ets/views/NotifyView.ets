@@ -753,13 +753,15 @@ export struct NotifyView {
         newList.push(this.messages[i]);
       }
     }
-    this.messages = newList;
-    // 避免后续再次聚合成组时意外沿用展开态
-    this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups);
-    // 如果删光了，退出编辑模式
-    if (this.messages.length === 0) {
-      this.exitEditMode();
-    }
+    // 可观察分组会只删除目标子项；动画上下文同步平滑收起该行占用的布局空间。
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
+      this.messages = newList;
+      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups);
+      // 如果删光了，退出编辑模式
+      if (this.messages.length === 0) {
+        this.exitEditMode();
+      }
+    });
   }
 
   // ====== 删除确认与执行 ======
