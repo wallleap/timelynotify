@@ -59,13 +59,20 @@ export struct NotifyGroupCard {
             .shape(CheckBoxShape.CIRCLE);
         }
         Column({ space: 6 }) {
+          // 折叠分组预览与普通通知统一：标题和最新通知时间同行。
+          Row({ space: 8 }) {
+            if (this.section.messages[0].title.length > 0) {
+              Text(this.section.messages[0].title).fontSize(15).fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_primary_color')).layoutWeight(1).maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis });
+            } else { Blank().layoutWeight(1); }
+            Text(formatNotifyTime(this.section.messages[0].timestamp)).fontSize(11)
+              .fontColor($r('app.color.text_quinary_color')).flexShrink(0);
+          }.width('100%').alignItems(VerticalAlign.Center).geometryTransition(`gmc:${this.section.groupKey}`)
+            .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+          // 图标只与正文并列，不再压缩标题与时间。
           Row({ space: 8 }) {
             Column() {
-              if (this.section.messages[0].title.length > 0) {
-                Text(this.section.messages[0].title).fontSize(15).fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.text_primary_color')).width('100%').maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
               if (this.section.messages[0].subtitle.length > 0) {
                 Text(this.section.messages[0].subtitle).fontSize(13).fontColor($r('app.color.text_accent_color'))
                   .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -76,14 +83,11 @@ export struct NotifyGroupCard {
               Image(this.section.messages[0].image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).alt($r('app.media.app_icon'));
             }
           }
-          .width('100%').alignItems(VerticalAlign.Top).geometryTransition(`gmc:${this.section.groupKey}`)
-          .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+          .width('100%').alignItems(VerticalAlign.Top);
           Row() {
             Row() { NotifyGroupCountBadge({ count: this.section.total }); }
               .geometryTransition(`gmb:${this.section.groupKey}`);
             Blank();
-            Text(formatNotifyTime(this.section.messages[0].timestamp)).fontSize(11)
-              .fontColor($r('app.color.text_quinary_color'));
           }.width('100%');
         }.layoutWeight(1);
       }
