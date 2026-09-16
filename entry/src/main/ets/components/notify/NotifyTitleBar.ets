@@ -15,33 +15,33 @@ export struct NotifyTitleBar {
   private selectionPill() {
     Row() {
       Text(this.isEditing ? '取消' : '多选').fontSize(16).fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary_color'));
+        .fontColor($r('app.color.color_text_primary'));
     }
     .height(38).padding({ left: 14, right: 14 }).borderRadius(38).alignItems(VerticalAlign.Center)
-    .border({ width: 1, color: $r('app.color.glass_button_border') }).backgroundBlurStyle(resolveBlurStyle('card')!)
-    .backgroundColor($r('app.color.glass_button_background')).onClick(() => this.onToggleSelection());
+    .border({ width: 1, color: $r('app.color.color_border_glass') }).backgroundBlurStyle(resolveBlurStyle('card')!)
+    .backgroundColor($r('app.color.color_bg_glass_control')).onClick(() => this.onToggleSelection());
   }
 
   @Builder
   private deletePill() {
     Row() {
       Image($r('app.media.delete')).width(24).height(24).objectFit(ImageFit.Contain).draggable(false)
-        .fillColor($r('app.color.text_primary_color'));
+        .fillColor($r('app.color.color_text_primary'));
     }
     .height(38).width(38).borderRadius(38).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-    .border({ width: 1, color: $r('app.color.glass_button_border') }).backgroundBlurStyle(resolveBlurStyle('card')!)
-    .backgroundColor($r('app.color.glass_button_background')).onClick(() => this.onDelete());
+    .border({ width: 1, color: $r('app.color.color_border_glass') }).backgroundBlurStyle(resolveBlurStyle('card')!)
+    .backgroundColor($r('app.color.color_bg_glass_control')).onClick(() => this.onDelete());
   }
 
   @Builder
   private titleContent(reserveMenuSpace: boolean) {
     Row({ space: 8 }) {
       Row({ space: 2 }) {
-        Text(this.title).fontSize(24).fontColor($r('app.color.text_primary_color')).fontWeight(FontWeight.Bold)
+        Text(this.title).fontSize(24).fontColor($r('app.color.color_text_primary')).fontWeight(FontWeight.Bold)
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
           .onClick(() => this.onOpenSettings());
         Image($r('app.media.select_more')).width(24).height(24).objectFit(ImageFit.Contain).draggable(false)
-          .fillColor($r('app.color.text_primary_color')).flexShrink(0).onClick(() => this.onOpenSettings());
+          .fillColor($r('app.color.color_text_primary')).flexShrink(0).onClick(() => this.onOpenSettings());
       }
       .layoutWeight(1).width(0).alignItems(VerticalAlign.Center).onClick(() => this.onOpenSettings())
       .hitTestBehavior(reserveMenuSpace ? HitTestMode.None : HitTestMode.Default);
@@ -65,7 +65,7 @@ export struct NotifyTitleBar {
       }
       .width('100%').padding({ left: 16, right: 16, top: 16 + this.statusBarHeight, bottom: 16 })
       .alignItems(VerticalAlign.Center).backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.index_page_top_glass_background'));
+      .backgroundColor($r('app.color.color_bg_glass'));
     }
   }
 }

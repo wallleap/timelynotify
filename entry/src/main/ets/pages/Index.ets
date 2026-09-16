@@ -47,12 +47,12 @@ struct Index {
         .width(24)
         .height(24)
         .fillColor(
-          this.currentIndex === index ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'))
+          this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
         .draggable(false);
       Text(item.title)
         .fontSize(12)
         .fontColor(
-          this.currentIndex === index ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
+          this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
     }
     .width('100%')
     .height('100%')
@@ -129,14 +129,14 @@ struct Index {
         .animationDuration(300)
         .barOverlap(true)
         .barBackgroundBlurStyle(resolveBlurStyle('bar')!)
-        .barBackgroundColor($r('app.color.index_page_bottom_glass_background'))
+        .barBackgroundColor($r('app.color.color_bg_glass'))
         .onChange((index: number) => {
           this.currentIndex = index
         })
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.index_page_top_solid'))
+      .backgroundColor($r('app.color.color_bg_navigation'))
     }
   }
 }

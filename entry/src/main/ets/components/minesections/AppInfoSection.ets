@@ -33,7 +33,7 @@ export struct AppInfoSection {
       .width(20)
       .height(20)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_quinary_color'))
+      .fillColor($r('app.color.color_text_hint'))
       .draggable(false);
   }
 
@@ -41,7 +41,7 @@ export struct AppInfoSection {
     Column({ space: 8 }) {
       Text('信息')
         .fontSize(12)
-        .fontColor($r('app.color.text_quinary_color'))
+        .fontColor($r('app.color.color_text_hint'))
         .width('100%')
         .padding({ left: 12 });
 
@@ -52,10 +52,10 @@ export struct AppInfoSection {
             Text('构建信息')
               .fontSize(16)
               .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.text_primary_color'));
+              .fontColor($r('app.color.color_text_primary'));
             Text(AppInfoService.buildInfoDisplay(this.certFingerprintTail))
               .fontSize(12)
-              .fontColor($r('app.color.text_quinary_color'))
+              .fontColor($r('app.color.color_text_hint'))
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
           }.alignItems(HorizontalAlign.Start).layoutWeight(1);
@@ -68,7 +68,7 @@ export struct AppInfoSection {
         .width('100%')
         .padding(16)
         .backgroundBlurStyle(resolveBlurStyle('bar')!)
-        .backgroundColor($r('app.color.card_glass_background'))
+        .backgroundColor($r('app.color.color_bg_surface_glass'))
         .borderRadius(12)
         .onClick(() => {
           this.openBuildInfo();
@@ -81,20 +81,20 @@ export struct AppInfoSection {
               Text('推送 Token')
                 .fontSize(17)
                 .fontWeight(FontWeight.Medium)
-                .fontColor($r('app.color.text_primary_color'));
+                .fontColor($r('app.color.color_text_primary'));
               Text(' (自动生成)')
                 .fontSize(14)
-                .fontColor($r('app.color.text_tertiary_color'))
+                .fontColor($r('app.color.color_text_tertiary'))
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis });
               Blank();
-              Text('点击复制').fontSize(12).fontColor($r('app.color.text_accent_color'));
+              Text('点击复制').fontSize(12).fontColor($r('app.color.color_brand'));
             }.width('100%');
 
             Text(this.buildDeviceTokenDisplay())
               .fontSize(14)
-              .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.text_tertiary_color') :
-                $r('app.color.text_quinary_color'))
+              .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.color_text_tertiary') :
+                $r('app.color.color_text_hint'))
               .width('100%')
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -103,7 +103,7 @@ export struct AppInfoSection {
         .width('100%')
         .padding(16)
         .backgroundBlurStyle(resolveBlurStyle('bar')!)
-        .backgroundColor($r('app.color.card_glass_background'))
+        .backgroundColor($r('app.color.color_bg_surface_glass'))
         .borderRadius(12)
         .onClick(() => {
           this.copyDeviceToken();

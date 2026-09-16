@@ -80,10 +80,10 @@ export struct NotifyMessageList {
   private groupLoadMoreFooter(section: NotifySection) {
     Row() {
       if (this.groupLoading(section)) {
-        LoadingProgress().width(16).height(16).color($r('app.color.text_accent_color'));
-        Text('加载中...').fontSize(13).fontColor($r('app.color.text_quinary_color')).margin({ left: 6 });
+        LoadingProgress().width(16).height(16).color($r('app.color.color_brand'));
+        Text('加载中...').fontSize(13).fontColor($r('app.color.color_text_hint')).margin({ left: 6 });
       } else {
-        Text('加载更多').fontSize(13).fontColor($r('app.color.text_accent_color'));
+        Text('加载更多').fontSize(13).fontColor($r('app.color.color_brand'));
       }
     }
     .width('100%').height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center);
@@ -120,14 +120,14 @@ export struct NotifyMessageList {
           }.margin({ bottom: row.spaceAfter }).transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
             .swipeAction({ end: { builder: () => { this.deleteOne(row.message!); } } });
         } else if (row.type === NOTIFY_LIST_ROW_GROUP_MORE && row.section !== null) {
-          ListItem() { this.groupLoadMoreFooter(row.section); }.backgroundColor($r('app.color.card_background'))
+          ListItem() { this.groupLoadMoreFooter(row.section); }.backgroundColor($r('app.color.color_bg_surface'))
             .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: 12, bottomRight: 12 }).clip(true)
             .margin({ bottom: row.spaceAfter }).onClick(() => { if (!this.groupLoading(row.section!)) { this.onLoadMoreInGroup(row.section!.groupKey); } });
         }
       }, (row: NotifyListRow) => row.key);
       ListItem() {
         Row() {
-          Text('没有更多了').fontSize(13).fontColor($r('app.color.text_quinary_color'));
+          Text('没有更多了').fontSize(13).fontColor($r('app.color.color_text_hint'));
         }.width('100%').height(40).justifyContent(FlexAlign.Center);
       }
       ListItem() { Row().width('100%').height(this.navBarHeight + (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 72 : 64)); }

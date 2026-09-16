@@ -228,14 +228,14 @@ export struct NotifyView {
     Row() {
       Image(this.groupEnabled ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
         .width(20).height(20).objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.text_primary_color'))
+        .fillColor($r('app.color.color_text_primary'))
         .draggable(false);
     }
     .width(44).height(44).borderRadius(22)
     .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-    .backgroundColor($r('app.color.glass_button_background'))
+    .backgroundColor($r('app.color.color_bg_glass_control'))
     .backgroundBlurStyle(resolveBlurStyle('card')!)
-    .border({ width: 1, color: $r('app.color.glass_button_border') })
+    .border({ width: 1, color: $r('app.color.color_border_glass') })
     .margin({ right: 16, bottom: this.navBarHeight + 56 + 16 })
     .onClick(() => {
       this.toggleGroupEnabled();
@@ -297,7 +297,7 @@ export struct NotifyView {
           this.showDetail = false;
         }
       })
-      .backgroundColor($r('app.color.index_page_body_background'));
+      .backgroundColor($r('app.color.color_bg_page'));
     } else {
       Column() {
         Stack({ alignContent: Alignment.BottomEnd }) {
@@ -328,7 +328,7 @@ export struct NotifyView {
           this.showDetail = false;
         }
       })
-      .backgroundColor($r('app.color.index_page_body_background'));
+      .backgroundColor($r('app.color.color_bg_page'));
     }
   }
 
@@ -826,8 +826,8 @@ export struct NotifyView {
       title: '确认删除',
       message: `确定要删除这条消息吗？${m.title && m.title.length > 0 ? '\n「' + m.title + '」' : ''}`,
       buttons: [
-        { text: '取消', color: '#666666' },
-        { text: '删除', color: '#F53F3F' },
+        { text: '取消', color: $r('app.color.color_text_tertiary') },
+        { text: '删除', color: $r('app.color.color_error') },
       ],
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -863,8 +863,8 @@ export struct NotifyView {
       title: '删除整个分组',
       message: `确定要删除该分组的 ${count} 条消息吗？此操作不可恢复。`,
       buttons: [
-        { text: '取消', color: '#666666' },
-        { text: '全部删除', color: '#F53F3F' },
+        { text: '取消', color: $r('app.color.color_text_tertiary') },
+        { text: '全部删除', color: $r('app.color.color_error') },
       ],
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -914,8 +914,8 @@ export struct NotifyView {
       title: '确认删除',
       message: `确定要删除选中的 ${count} 条消息吗？此操作不可恢复。`,
       buttons: [
-        { text: '取消', color: '#666666' },
-        { text: '全部删除', color: '#F53F3F' },
+        { text: '取消', color: $r('app.color.color_text_tertiary') },
+        { text: '全部删除', color: $r('app.color.color_error') },
       ],
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -969,8 +969,8 @@ export struct NotifyView {
         ? '将删除所有服务器的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！'
         : '将删除当前设备的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！',
       buttons: [
-        { text: '取消', color: '#666666' },
-        { text: '全部删除', color: '#F53F3F' },
+        { text: '取消', color: $r('app.color.color_text_tertiary') },
+        { text: '全部删除', color: $r('app.color.color_error') },
       ],
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {

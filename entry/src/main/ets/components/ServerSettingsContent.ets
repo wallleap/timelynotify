@@ -124,7 +124,7 @@ export struct ServerSettingsContent {
           if (this.isCurrent(s.id)) {
             Text('●')
               .fontSize(10)
-              .fontColor($r('app.color.text_accent_color'));
+              .fontColor($r('app.color.color_brand'));
           }
 
           Text(s.name && s.name.length > 0 ? s.name : extractHost(s.baseURL))
@@ -137,7 +137,7 @@ export struct ServerSettingsContent {
 
         Text(s.baseURL)
           .fontSize(12)
-          .fontColor($r('app.color.text_quinary_color'))
+          .fontColor($r('app.color.color_text_hint'))
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%');
@@ -148,7 +148,7 @@ export struct ServerSettingsContent {
       if (this.isCurrent(s.id)) {
         Text('操作')
           .fontSize(13)
-          .fontColor($r('app.color.text_accent_color'))
+          .fontColor($r('app.color.color_brand'))
           .padding({
             left: 10,
             right: 10,
@@ -161,7 +161,7 @@ export struct ServerSettingsContent {
       } else {
         Text('删除')
           .fontSize(13)
-          .fontColor($r('app.color.text_error_color'))
+          .fontColor($r('app.color.color_error'))
           .padding({
             left: 10,
             right: 10,
@@ -189,7 +189,7 @@ export struct ServerSettingsContent {
         TextInput({ placeholder: 'http://host:port 或域名', text: this.inputURL })
           .width('100%')
           .height(48)
-          .backgroundColor($r('app.color.input_background_color'))
+          .backgroundColor($r('app.color.color_bg_input'))
           .borderRadius(8)
           .padding({ left: 12, right: 12 })
           .onChange((val: string) => {
@@ -199,7 +199,7 @@ export struct ServerSettingsContent {
         TextInput({ placeholder: '名称（可选）', text: this.inputName })
           .width('100%')
           .height(48)
-          .backgroundColor($r('app.color.input_background_color'))
+          .backgroundColor($r('app.color.color_bg_input'))
           .borderRadius(8)
           .padding({ left: 12, right: 12 })
           .onChange((val: string) => {
@@ -210,7 +210,7 @@ export struct ServerSettingsContent {
           .width('100%')
           .height(48)
           .fontSize(14)
-          .backgroundColor($r('app.color.text_accent_color'))
+          .backgroundColor($r('app.color.color_brand'))
           .borderRadius(8)
           .onClick(() => {
             this.handleAdd();
@@ -224,29 +224,29 @@ export struct ServerSettingsContent {
           Column({ space: 2 }) {
             Text('显示所有服务器通知')
               .fontSize(15)
-              .fontColor($r('app.color.text_primary_color'));
+              .fontColor($r('app.color.color_text_primary'));
             Text('开启后将聚合展示所有服务器的通知')
               .fontSize(12)
-              .fontColor($r('app.color.text_quinary_color'));
+              .fontColor($r('app.color.color_text_hint'));
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1);
 
           Toggle({ type: ToggleType.Switch, isOn: this.viewAll })
-            .selectedColor($r('app.color.text_accent_color'))
+            .selectedColor($r('app.color.color_brand'))
             .onChange((isOn: boolean) => {
               ServerManager.getInstance().setViewAllMode(isOn);
             });
         }
         .width('100%')
         .padding(12)
-        .backgroundColor($r('app.color.card_background'))
+        .backgroundColor($r('app.color.color_bg_surface'))
         .borderRadius(10)
-        .border({ width: 1, color: $r('app.color.divider_color') });
+        .border({ width: 1, color: $r('app.color.color_border_subtle') });
 
         Text('已保存的服务器（点击切换）')
           .fontSize(13)
-          .fontColor($r('app.color.text_tertiary_color'))
+          .fontColor($r('app.color.color_text_tertiary'))
           .width('100%');
         if (this.maxListHeight > 0) {
           List({ space: 8 }) {
@@ -456,8 +456,8 @@ export struct ServerSettingsContent {
         title: title,
         message: message,
         buttons: [
-          { text: '取消', color: $r('app.color.text_tertiary_color') },
-          { text: '确定', color: $r('app.color.text_error_color') },
+          { text: '取消', color: $r('app.color.color_text_tertiary') },
+          { text: '确定', color: $r('app.color.color_error') },
         ],
       });
       return res.index === 1;
@@ -491,15 +491,15 @@ export struct ServerSettingsContent {
   }
 
   private rowBg(id: string): ResourceColor {
-    return this.isCurrent(id) ? $r('app.color.selected_row_background') : $r('app.color.card_background');
+    return this.isCurrent(id) ? $r('app.color.color_state_selected') : $r('app.color.color_bg_surface');
   }
 
   private rowBorder(id: string): ResourceColor {
-    return this.isCurrent(id) ? $r('app.color.text_accent_color') : $r('app.color.divider_color');
+    return this.isCurrent(id) ? $r('app.color.color_brand') : $r('app.color.color_border_subtle');
   }
 
   private titleColor(id: string): ResourceColor {
-    return this.isCurrent(id) ? $r('app.color.text_accent_color') : $r('app.color.text_primary_color');
+    return this.isCurrent(id) ? $r('app.color.color_brand') : $r('app.color.color_text_primary');
   }
 
   private titleWeight(id: string): FontWeight {

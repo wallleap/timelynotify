@@ -40,7 +40,7 @@ export struct ServerEntrySection {
       .width(20)
       .height(20)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_quinary_color'))
+      .fillColor($r('app.color.color_text_hint'))
       .draggable(false);
   }
 
@@ -48,7 +48,7 @@ export struct ServerEntrySection {
     Column({ space: 8 }) {
       Text('配置')
         .fontSize(12)
-        .fontColor($r('app.color.text_quinary_color'))
+        .fontColor($r('app.color.color_text_hint'))
         .width('100%')
         .padding({ left: 12 });
 
@@ -61,12 +61,12 @@ export struct ServerEntrySection {
               Text('服务器')
                 .fontSize(17)
                 .fontWeight(FontWeight.Medium)
-                .fontColor($r('app.color.text_primary_color'))
+                .fontColor($r('app.color.color_text_primary'))
                 .flexShrink(0);
               if (this.serverName.length > 0) {
                 Text(this.serverName)
                   .fontSize(11)
-                  .fontColor($r('app.color.text_accent_color'))
+                  .fontColor($r('app.color.color_brand'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
                   .padding({
@@ -76,7 +76,7 @@ export struct ServerEntrySection {
                     bottom: 2
                   })
                   .borderRadius(4)
-                  .backgroundColor($r('app.color.selected_row_background'))
+                  .backgroundColor($r('app.color.color_state_selected'))
                   .flexShrink(1);
               }
             }.width('100%').alignItems(VerticalAlign.Center);
@@ -85,7 +85,7 @@ export struct ServerEntrySection {
             if (this.hostDisplay.length > 0) {
               Text(this.hostDisplay)
                 .fontSize(12)
-                .fontColor($r('app.color.text_quinary_color'))
+                .fontColor($r('app.color.color_text_hint'))
                 .width('100%')
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -93,14 +93,14 @@ export struct ServerEntrySection {
           }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
           Row() {
-            Text(`共 ${this.serverCount} 个`).fontSize(12).fontColor($r('app.color.text_quinary_color'));
+            Text(`共 ${this.serverCount} 个`).fontSize(12).fontColor($r('app.color.color_text_hint'));
             this.arrowRightIcon();
           }
         }
         .width('100%')
         .padding(16)
         .backgroundBlurStyle(resolveBlurStyle('bar')!)
-        .backgroundColor($r('app.color.card_glass_background'))
+        .backgroundColor($r('app.color.color_bg_surface_glass'))
         .borderRadius(12)
         .onClick(() => {
           this.handleCardClicked();

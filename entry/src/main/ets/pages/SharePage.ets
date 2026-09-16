@@ -56,7 +56,7 @@ struct SharePage {
       .width(32)
       .height(32)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_primary_color'))
+      .fillColor($r('app.color.color_text_primary'))
       .padding(4)
       .draggable(false)
       .onClick(() => {
@@ -66,7 +66,7 @@ struct SharePage {
     Text(this.pageTitle)
       .fontSize(18)
       .fontWeight(FontWeight.Bold)
-      .fontColor($r('app.color.text_primary_color'))
+      .fontColor($r('app.color.color_text_primary'))
       .layoutWeight(1)
       .textAlign(TextAlign.Center)
       // 与 HDS 分支联动：网页下滑后隐藏标题；用 opacity 保持 layoutWeight 占位，
@@ -77,7 +77,7 @@ struct SharePage {
       .width(32)
       .height(32)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_primary_color'))
+      .fillColor($r('app.color.color_text_primary'))
       .padding(4)
       .draggable(false)
       .onClick(() => {
@@ -100,7 +100,7 @@ struct SharePage {
     })
     // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
     .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.index_page_top_glass_background'));
+    .backgroundColor($r('app.color.color_bg_glass'));
   }
 
   // 自定义刷新指示器：仅在下拉/刷新过程中显示（Inactive 隐藏）；
@@ -118,7 +118,7 @@ struct SharePage {
         LoadingProgress()
           .width(28)
           .height(28)
-          .color($r('app.color.text_accent_color'));
+          .color($r('app.color.color_brand'));
       }
     }
     .width('100%')
@@ -132,8 +132,8 @@ struct SharePage {
       Progress({ value: this.loadingProgress, total: 100, type: ProgressType.Linear })
         .width('100%')
         .height(2)
-        .color($r('app.color.text_accent_color'))
-        .backgroundColor($r('app.color.divider_color'))
+        .color($r('app.color.color_brand'))
+        .backgroundColor($r('app.color.color_border_subtle'))
         .opacity(this.loadingProgress < 100 ? 1 : 0);
 
       // 下拉刷新容器：Web 触顶后下拉手势才交给 Refresh，页面中间下拉仍是网页正常滚动
@@ -263,7 +263,7 @@ struct SharePage {
       // 仍可在内容滚入顶栏背面时提供沉浸光感视觉效果
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.index_page_body_background'));
+      .backgroundColor($r('app.color.color_bg_page'));
     } else {
       // ─── API < 26: Stack + 手工顶栏叠层（backgroundBlurStyle 降级）───
       Stack({ alignContent: Alignment.Top }) {
@@ -273,7 +273,7 @@ struct SharePage {
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.index_page_body_background'));
+      .backgroundColor($r('app.color.color_bg_page'));
     }
   }
 

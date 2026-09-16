@@ -44,7 +44,7 @@ export struct ServerActionMenuDialog {
           .width(24)
           .height(24)
           .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.text_quinary_color'))
+          .fillColor($r('app.color.color_text_hint'))
           .padding(4)
           .draggable(false)
           .onClick(() => {
@@ -54,11 +54,11 @@ export struct ServerActionMenuDialog {
       .padding({ bottom: 8 })
       .width('100%');
 
-      Divider().color($r('app.color.divider_color'));
+      Divider().color($r('app.color.color_border_subtle'));
 
       Text('复制地址和 Key')
         .fontSize(16)
-        .fontColor($r('app.color.text_primary_color'))
+        .fontColor($r('app.color.color_text_primary'))
         .width('100%')
         .height(52)
         .textAlign(TextAlign.Center)
@@ -67,11 +67,11 @@ export struct ServerActionMenuDialog {
           this.onCopy();
         });
 
-      Divider().color($r('app.color.divider_color'));
+      Divider().color($r('app.color.color_border_subtle'));
 
       Text('重置或还原 Key')
         .fontSize(16)
-        .fontColor($r('app.color.text_primary_color'))
+        .fontColor($r('app.color.color_text_primary'))
         .width('100%')
         .height(52)
         .textAlign(TextAlign.Center)
@@ -80,12 +80,12 @@ export struct ServerActionMenuDialog {
           this.onResetKey();
         });
 
-      Divider().color($r('app.color.divider_color'));
+      Divider().color($r('app.color.color_border_subtle'));
 
       // per-server 客户端 Token（X-Gotify-Key 认证）；留空走内置默认
       Text('设置客户端 Token')
         .fontSize(16)
-        .fontColor($r('app.color.text_primary_color'))
+        .fontColor($r('app.color.color_text_primary'))
         .width('100%')
         .height(52)
         .textAlign(TextAlign.Center)
@@ -94,11 +94,11 @@ export struct ServerActionMenuDialog {
           this.onClientToken();
         });
 
-      Divider().color($r('app.color.divider_color'));
+      Divider().color($r('app.color.color_border_subtle'));
 
       Text('设置服务器名称')
         .fontSize(16)
-        .fontColor($r('app.color.text_primary_color'))
+        .fontColor($r('app.color.color_text_primary'))
         .width('100%')
         .height(52)
         .textAlign(TextAlign.Center)
@@ -107,11 +107,11 @@ export struct ServerActionMenuDialog {
           this.onRename();
         });
 
-      Divider().color($r('app.color.divider_color'));
+      Divider().color($r('app.color.color_border_subtle'));
 
       Text('删除服务器')
         .fontSize(16)
-        .fontColor($r('app.color.text_error_color'))
+        .fontColor($r('app.color.color_error'))
         .width('100%')
         .height(52)
         .textAlign(TextAlign.Center)
@@ -126,7 +126,7 @@ export struct ServerActionMenuDialog {
       left: 16,
       right: 16
     })
-    .backgroundColor($r('app.color.dialog_background'))
+    .backgroundColor($r('app.color.color_bg_dialog'))
     .borderRadius(14);
   }
 
@@ -169,7 +169,7 @@ export struct ServerRenameDialog {
       TextInput({ placeholder: '输入新名称（留空则清除名称）', text: this.inputName })
         .width('100%')
         .height(42)
-        .backgroundColor($r('app.color.input_background_color'))
+        .backgroundColor($r('app.color.color_bg_input'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -181,8 +181,8 @@ export struct ServerRenameDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.divider_color'))
-          .fontColor($r('app.color.text_secondary_color'))
+          .backgroundColor($r('app.color.color_border_subtle'))
+          .fontColor($r('app.color.color_text_secondary'))
           .borderRadius(8)
           .onClick(() => {
             this.close();
@@ -192,7 +192,7 @@ export struct ServerRenameDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.text_accent_color'))
+          .backgroundColor($r('app.color.color_brand'))
           .borderRadius(8)
           .onClick(() => {
             this.confirm();
@@ -201,7 +201,7 @@ export struct ServerRenameDialog {
       .width('100%');
     }
     .padding(18)
-    .backgroundColor($r('app.color.dialog_background'))
+    .backgroundColor($r('app.color.color_bg_dialog'))
     .borderRadius(14);
   }
 
@@ -253,13 +253,13 @@ export struct ServerKeyDialog {
       Column({ space: 4 }) {
         Text(`当前 Key：${this.currentKey && this.currentKey.length > 0 ? this.currentKey : '（未注册）'}`)
           .fontSize(12)
-          .fontColor($r('app.color.text_quinary_color'))
+          .fontColor($r('app.color.color_text_hint'))
           .width('100%')
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text('输入框留空 = 重置（生成新 Key）；填入 Key = 还原')
           .fontSize(12)
-          .fontColor($r('app.color.text_quinary_color'))
+          .fontColor($r('app.color.color_text_hint'))
           .width('100%');
       }
       .width('100%');
@@ -267,7 +267,7 @@ export struct ServerKeyDialog {
       TextInput({ placeholder: '可选：输入要还原的 device_key', text: this.inputKey })
         .width('100%')
         .height(42)
-        .backgroundColor($r('app.color.input_background_color'))
+        .backgroundColor($r('app.color.color_bg_input'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -279,8 +279,8 @@ export struct ServerKeyDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.divider_color'))
-          .fontColor($r('app.color.text_secondary_color'))
+          .backgroundColor($r('app.color.color_border_subtle'))
+          .fontColor($r('app.color.color_text_secondary'))
           .borderRadius(8)
           .onClick(() => {
             this.close();
@@ -290,7 +290,7 @@ export struct ServerKeyDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.text_accent_color'))
+          .backgroundColor($r('app.color.color_brand'))
           .borderRadius(8)
           .onClick(() => {
             this.confirm();
@@ -299,7 +299,7 @@ export struct ServerKeyDialog {
       .width('100%');
     }
     .padding(18)
-    .backgroundColor($r('app.color.dialog_background'))
+    .backgroundColor($r('app.color.color_bg_dialog'))
     .borderRadius(14);
   }
 

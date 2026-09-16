@@ -42,16 +42,16 @@ export struct ClientTokenDialog {
       Column({ space: 4 }) {
         Text('用于查询历史消息（X-Gotify-Key 认证）')
           .fontSize(12)
-          .fontColor($r('app.color.text_quinary_color'))
+          .fontColor($r('app.color.color_text_hint'))
           .width('100%');
         Row() {
           Text('自建服务需要填写，可查看：')
             .fontSize(12)
-            .fontColor($r('app.color.text_quinary_color'));
+            .fontColor($r('app.color.color_text_hint'));
           // 点击跳转部署文档（内嵌 WebView，定位到 client_token 说明）
           Text('部署文档')
             .fontSize(12)
-            .fontColor($r('app.color.text_accent_color'))
+            .fontColor($r('app.color.color_brand'))
             .onClick(() => {
               this.openDocs();
             });
@@ -65,7 +65,7 @@ export struct ClientTokenDialog {
         .type(InputType.Password)
         .width('100%')
         .height(42)
-        .backgroundColor($r('app.color.input_background_color'))
+        .backgroundColor($r('app.color.color_bg_input'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -77,8 +77,8 @@ export struct ClientTokenDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.divider_color'))
-          .fontColor($r('app.color.text_secondary_color'))
+          .backgroundColor($r('app.color.color_border_subtle'))
+          .fontColor($r('app.color.color_text_secondary'))
           .borderRadius(8)
           .onClick(() => {
             this.close();
@@ -88,7 +88,7 @@ export struct ClientTokenDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.text_accent_color'))
+          .backgroundColor($r('app.color.color_brand'))
           .borderRadius(8)
           .onClick(() => {
             this.save();
@@ -98,7 +98,7 @@ export struct ClientTokenDialog {
     }
     .width('100%')
     .padding(18)
-    .backgroundColor($r('app.color.card_background'))
+    .backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius(14);
   }
 
