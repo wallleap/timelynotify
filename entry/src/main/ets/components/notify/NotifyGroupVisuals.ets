@@ -7,10 +7,10 @@ export struct NotifyGroupCountBadge {
     Text(`${this.count} 条通知`)
       .fontSize(10)
       .fontWeight(FontWeight.Medium)
-      .fontColor($r('app.color.group_count_badge_text'))
+      .fontColor($r('app.color.color_text_badge'))
       .padding({ left: 8, right: 8, top: 2, bottom: 2 })
       .borderRadius(10)
-      .backgroundColor($r('app.color.group_count_badge_bg'));
+      .backgroundColor($r('app.color.color_bg_badge'));
   }
 }
 
@@ -20,7 +20,7 @@ export struct NotifyGroupShellLayer {
   @Prop shellHeight: number = 0;
   @Prop inset: number = 0;
   @Prop yOffset: number = 0;
-  @Prop shellColor: Resource = $r('app.color.card_shell_shallow');
+  @Prop shellColor: Resource = $r('app.color.color_bg_stack_shallow');
 
   build() {
     Row() {

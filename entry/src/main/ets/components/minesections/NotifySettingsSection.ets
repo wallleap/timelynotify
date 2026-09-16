@@ -36,7 +36,7 @@ export struct NotifySettingsSection {
       .width(20)
       .height(20)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_quinary_color'))
+      .fillColor($r('app.color.color_text_hint'))
       .draggable(false);
   }
 
@@ -48,28 +48,28 @@ export struct NotifySettingsSection {
           Text('开启应用订阅通知')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'));
+            .fontColor($r('app.color.color_text_primary'));
           Text(this.notifyEnabled ? '已开启' : '已关闭')
             .fontSize(12)
             .fontColor(
-              this.notifyEnabled ? $r('app.color.text_accent_color') : $r('app.color.text_quinary_color'));
+              this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
         }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
         Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
-          .selectedColor($r('app.color.text_accent_color'))
+          .selectedColor($r('app.color.color_brand'))
           .onChange((isOn: boolean) => {
             this.onNotifyToggle(isOn);
           });
       }.width('100%').padding(16);
 
-      Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+      Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
       // 通知权限设置（点击拉起系统通知管理）
       Row() {
         Text('通知权限设置')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary_color'))
+          .fontColor($r('app.color.color_text_primary'))
           .layoutWeight(1);
 
         this.arrowRightIcon();
@@ -77,7 +77,7 @@ export struct NotifySettingsSection {
         this.openNotifySettings();
       });
 
-      Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+      Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
       // 测试通知行（点击向当前服务器 POST /push 发送一条测试推送，验证通知链路）
       Row() {
@@ -85,10 +85,10 @@ export struct NotifySettingsSection {
           Text('测试通知')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'));
+            .fontColor($r('app.color.color_text_primary'));
           Text(this.testingPush ? '正在发送…' : '发送一条测试推送验证通知链路')
             .fontSize(12)
-            .fontColor($r('app.color.text_quinary_color'));
+            .fontColor($r('app.color.color_text_hint'));
         }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
         // 发送中显示加载指示器，否则显示箭头
@@ -96,7 +96,7 @@ export struct NotifySettingsSection {
           LoadingProgress()
             .width(24)
             .height(24)
-            .color($r('app.color.text_accent_color'));
+            .color($r('app.color.color_brand'));
         } else {
           this.arrowRightIcon();
         }
@@ -104,7 +104,7 @@ export struct NotifySettingsSection {
         this.sendTestNotification();
       });
 
-      Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+      Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
       // 导出消息行（点击导出当前设备全部消息为 txt 文件，内容为 JSON 数组）
       Row() {
@@ -112,10 +112,10 @@ export struct NotifySettingsSection {
           Text('导出消息')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'));
+            .fontColor($r('app.color.color_text_primary'));
           Text(this.exporting ? '正在导出…' : '导出当前设备全部消息为 txt 文件')
             .fontSize(12)
-            .fontColor($r('app.color.text_quinary_color'));
+            .fontColor($r('app.color.color_text_hint'));
         }.alignItems(HorizontalAlign.Start).layoutWeight(1);
 
         // 导出中显示加载指示器，否则显示箭头
@@ -123,7 +123,7 @@ export struct NotifySettingsSection {
           LoadingProgress()
             .width(24)
             .height(24)
-            .color($r('app.color.text_accent_color'));
+            .color($r('app.color.color_brand'));
         } else {
           this.arrowRightIcon();
         }
@@ -133,7 +133,7 @@ export struct NotifySettingsSection {
     }
     .width('100%')
     .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.card_glass_background'))
+    .backgroundColor($r('app.color.color_bg_surface_glass'))
     .borderRadius(12);
   }
 
@@ -155,10 +155,10 @@ export struct NotifySettingsSection {
       return;
     }
     const uiCtx: UIContext = this.getUIContext();
-    const onButtons: promptAction.Button[] = [{ text: '残忍拒绝', color: $r('app.color.text_tertiary_color') },
-      { text: '接受推送', color: $r('app.color.text_accent_color') },];
-    const offButtons: promptAction.Button[] = [{ text: '保持推送', color: $r('app.color.text_tertiary_color') },
-      { text: '取消推送', color: $r('app.color.text_accent_color') },];
+    const onButtons: promptAction.Button[] = [{ text: '残忍拒绝', color: $r('app.color.color_text_tertiary') },
+      { text: '接受推送', color: $r('app.color.color_brand') },];
+    const offButtons: promptAction.Button[] = [{ text: '保持推送', color: $r('app.color.color_text_tertiary') },
+      { text: '取消推送', color: $r('app.color.color_brand') },];
     uiCtx.getPromptAction().showDialog({
       title: isOn ? '开启订阅' : '关闭订阅',
       message: isOn ? '是否要接收此订阅的通知栏推送？' : '是否要取消此订阅的通知栏推送？',

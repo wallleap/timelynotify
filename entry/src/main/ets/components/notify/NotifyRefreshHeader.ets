@@ -9,7 +9,7 @@ export struct NotifyRefreshHeader {
     Column() {
       Row().height(this.immersiveEnabled ? 8 : this.statusBarHeight + 80);
       if (this.refreshState !== RefreshStatus.Inactive) {
-        LoadingProgress().width(28).height(28).color($r('app.color.text_accent_color'));
+        LoadingProgress().width(28).height(28).color($r('app.color.color_brand'));
       }
     }.width('100%').alignItems(HorizontalAlign.Center);
   }

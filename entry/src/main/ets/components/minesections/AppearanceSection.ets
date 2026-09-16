@@ -22,7 +22,7 @@ export struct AppearanceSection {
       .width(20)
       .height(20)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_quinary_color'))
+      .fillColor($r('app.color.color_text_hint'))
       .draggable(false);
   }
 
@@ -30,7 +30,7 @@ export struct AppearanceSection {
     Column({ space: 8 }) {
       Text('外观')
         .fontSize(12)
-        .fontColor($r('app.color.text_quinary_color'))
+        .fontColor($r('app.color.color_text_hint'))
         .width('100%')
         .padding({ left: 12 });
 
@@ -40,21 +40,21 @@ export struct AppearanceSection {
         Text('沉浸光感')
           .fontSize(17)
           .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary_color'))
+          .fontColor($r('app.color.color_text_primary'))
           .layoutWeight(1);
 
         Row() {
           Text(this.immersiveLightEnabled ? '已开启' : '已关闭')
             .fontSize(12)
-            .fontColor(this.immersiveLightEnabled ? $r('app.color.text_accent_color') :
-              $r('app.color.text_quinary_color'));
+            .fontColor(this.immersiveLightEnabled ? $r('app.color.color_brand') :
+              $r('app.color.color_text_hint'));
           this.arrowRightIcon();
         }
       }
       .width('100%')
       .padding(16)
       .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.card_glass_background'))
+      .backgroundColor($r('app.color.color_bg_surface_glass'))
       .borderRadius(12)
       .onClick(() => {
         this.onImmersiveRowClick();
@@ -71,8 +71,8 @@ export struct AppearanceSection {
     const message: string = enable
       ? '开启后界面将呈现沉浸光感材质。设置需重启应用后生效，是否立即重启？'
       : '关闭后界面将回退为毛玻璃效果。设置需重启应用后生效，是否立即重启？';
-    const buttons: promptAction.Button[] = [{ text: '取消', color: $r('app.color.text_tertiary_color') },
-      { text: '立即重启', color: $r('app.color.text_accent_color') },];
+    const buttons: promptAction.Button[] = [{ text: '取消', color: $r('app.color.color_text_tertiary') },
+      { text: '立即重启', color: $r('app.color.color_brand') },];
     uiCtx.getPromptAction().showDialog({
       title: title,
       message: message,

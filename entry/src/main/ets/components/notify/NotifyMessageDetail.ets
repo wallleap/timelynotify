@@ -25,14 +25,14 @@ export struct NotifyMessageDetail {
   private textSpans(text: string) {
     ForEach(parseNotifyTextSegments(text), (segment: NotifyTextSegment, index: number) => {
       if (segment.type === NOTIFY_SEGMENT_URL) {
-        Span(segment.text).fontColor($r('app.color.link_color')).fontSize(15)
+        Span(segment.text).fontColor($r('app.color.color_link')).fontSize(15)
           .onClick(() => this.onOpenUrl(segment.text));
       } else if (segment.type === NOTIFY_SEGMENT_CODE) {
-        Span(segment.text).fontColor($r('app.color.text_accent_color')).fontSize(15)
+        Span(segment.text).fontColor($r('app.color.color_brand')).fontSize(15)
           .onClick(() => this.onCopyCode(segment.text));
       } else {
         // 普通文本可直接复制该连续片段；空白区域由外层 Text 复制整段内容。
-        Span(segment.text).fontColor($r('app.color.text_secondary_color')).fontSize(15)
+        Span(segment.text).fontColor($r('app.color.color_text_secondary')).fontSize(15)
           .onClick(() => this.onCopyText(segment.text));
       }
     }, (segment: NotifyTextSegment, index: number) => `${index}_${segment.type}_${segment.text}`)
@@ -113,9 +113,9 @@ export struct NotifyMessageDetail {
           Row({ space: 12 }) {
             Column({ space: 2 }) {
               Text(this.isUrlSegment(segment) ? '识别到链接' : '识别到验证码').fontSize(12)
-                .fontColor($r('app.color.text_tertiary_color')).width('100%');
+                .fontColor($r('app.color.color_text_tertiary')).width('100%');
               Text(this.displayRecognizedText(segment)).fontSize(14).fontWeight(FontWeight.Medium)
-                .fontColor(this.isUrlSegment(segment) ? $r('app.color.link_color') : $r('app.color.text_primary_color'))
+                .fontColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_text_primary'))
                 .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
             }
             .layoutWeight(1).alignItems(HorizontalAlign.Start);
@@ -123,18 +123,18 @@ export struct NotifyMessageDetail {
             Row({ space: 4 }) {
               Image(this.isUrlSegment(segment) ? $r('app.media.url') : $r('app.media.copy'))
                 .width(14).height(14).objectFit(ImageFit.Contain).draggable(false)
-                .fillColor(this.isUrlSegment(segment) ? $r('app.color.link_color') : $r('app.color.text_accent_color'));
+                .fillColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_brand'));
               Text(this.isUrlSegment(segment) ? '访问' : '复制').fontSize(13).fontWeight(FontWeight.Medium)
-                .fontColor(this.isUrlSegment(segment) ? $r('app.color.link_color') : $r('app.color.text_accent_color'));
+                .fontColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_brand'));
             }
             .padding({ left: 10, right: 10, top: 8, bottom: 8 }).borderRadius(16)
             .alignItems(VerticalAlign.Center);
           }
-          .width('100%').padding(10).borderRadius(12).backgroundColor($r('app.color.link_action_background'))
+          .width('100%').padding(10).borderRadius(12).backgroundColor($r('app.color.color_bg_action'))
           // 整条识别结果均可操作，降低窄屏下仅点小按钮的误触成本。
           .stateStyles({ pressed: {
-            backgroundColor: this.isUrlSegment(segment) ? $r('app.color.link_action_pressed_background') :
-              $r('app.color.selected_row_background')
+            backgroundColor: this.isUrlSegment(segment) ? $r('app.color.color_state_link_pressed') :
+              $r('app.color.color_state_selected')
           } })
           .alignItems(VerticalAlign.Center).onClick(() => {
             if (this.isUrlSegment(segment)) {
@@ -155,21 +155,21 @@ export struct NotifyMessageDetail {
     if (url.length > 0) {
       Row() {
         Row({ space: 4 }) {
-          Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.text_secondary_color')).draggable(false)
+          Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
             .objectFit(ImageFit.Contain).flexShrink(0);
-          Text('复制链接').fontSize(13).fontColor($r('app.color.text_secondary_color'));
+          Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
         }
         .layoutWeight(1).justifyContent(FlexAlign.Center).onClick(() => this.onCopyUrl(url));
-        Divider().vertical(true).strokeWidth(1).color($r('app.color.text_quinary_color')).height(16).opacity(0.35);
+        Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
         Row({ space: 4 }) {
-          Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.text_accent_color')).draggable(false)
+          Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
             .objectFit(ImageFit.Contain).flexShrink(0);
-          Text('打开链接').fontSize(13).fontColor($r('app.color.text_accent_color'));
+          Text('打开链接').fontSize(13).fontColor($r('app.color.color_brand'));
         }
         .layoutWeight(1).justifyContent(FlexAlign.Center).onClick(() => this.onOpenUrl(url));
       }
       .width('100%').padding({ top: 10, bottom: 10 })
-      .backgroundColor($r('app.color.link_action_background')).alignItems(VerticalAlign.Center);
+      .backgroundColor($r('app.color.color_bg_action')).alignItems(VerticalAlign.Center);
     }
   }
 
@@ -178,17 +178,17 @@ export struct NotifyMessageDetail {
     Column() {
       Row() {
         Text('消息详情').fontSize(18).fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary_color')).layoutWeight(1);
+          .fontColor($r('app.color.color_text_primary')).layoutWeight(1);
         Row() {
           Image($r('app.media.close')).width(22).height(22).objectFit(ImageFit.Contain).draggable(false)
-            .fillColor($r('app.color.text_tertiary_color'));
+            .fillColor($r('app.color.color_text_tertiary'));
         }
         .width(40).height(40).borderRadius(20).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
         .onClick(() => this.onDismiss());
       }.width('100%').height(64).padding({ left: 20, right: 12 }).alignItems(VerticalAlign.Center);
     }
     .width('100%').padding({ top: this.statusBarHeight }).backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.index_page_top_glass_background'));
+    .backgroundColor($r('app.color.color_bg_glass'));
   }
 
   build() {
@@ -206,11 +206,11 @@ export struct NotifyMessageDetail {
                 Column() {
                   if (this.message.title.length > 0) {
                     Text(this.message.title).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
-                      .fontColor($r('app.color.text_primary_color')).width('100%').copyOption(CopyOptions.InApp)
+                      .fontColor($r('app.color.color_text_primary')).width('100%').copyOption(CopyOptions.InApp)
                       .onClick(() => this.onCopyText(this.message ? this.message.title : ''));
                   }
                   if (this.message.subtitle.length > 0) {
-                    Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.text_accent_color'))
+                    Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.color_brand'))
                       .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                       .margin({ top: this.message.title.length > 0 ? 6 : 0 }).copyOption(CopyOptions.InApp)
                       .onClick(() => this.onCopyText(this.message ? this.message.subtitle : ''));
@@ -229,7 +229,7 @@ export struct NotifyMessageDetail {
                 this.body(this.message.body);
               }
               // 时间作为正文元信息的收尾；识别结果紧随其后，避免打断内容阅读。
-              Text(formatNotifyTime(this.message.timestamp)).fontSize(12).fontColor($r('app.color.text_quinary_color'))
+              Text(formatNotifyTime(this.message.timestamp)).fontSize(12).fontColor($r('app.color.color_text_hint'))
                 .width('100%').maxLines(1).textAlign(TextAlign.End).margin({ top: 14 });
               this.recognizedActions(this.recognizedSegments());
               }
@@ -238,14 +238,14 @@ export struct NotifyMessageDetail {
                 this.linkActions(this.message.url);
               }
             }
-            .width('100%').borderRadius(20).clip(true).backgroundColor($r('app.color.card_background'))
-            .border({ width: 1, color: $r('app.color.divider_color') });
+            .width('100%').borderRadius(20).clip(true).backgroundColor($r('app.color.color_bg_surface'))
+            .border({ width: 1, color: $r('app.color.color_border_subtle') });
           }
         }.width('100%').padding({ left: 16, right: 16, bottom: 24 + this.navBarHeight });
       }
       .align(Alignment.TopStart).width('100%').height('100%').edgeEffect(EdgeEffect.Spring).scrollBar(BarState.Off);
       this.titleBar();
     }
-    .width('100%').height('100%').backgroundColor($r('app.color.index_page_body_background'));
+    .width('100%').height('100%').backgroundColor($r('app.color.color_bg_page'));
   }
 }

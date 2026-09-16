@@ -35,7 +35,7 @@ export struct AboutSection {
       .width(20)
       .height(20)
       .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.text_quinary_color'))
+      .fillColor($r('app.color.color_text_hint'))
       .draggable(false);
   }
 
@@ -43,7 +43,7 @@ export struct AboutSection {
     Column({ space: 8 }) {
       Text('关于')
         .fontSize(12)
-        .fontColor($r('app.color.text_quinary_color'))
+        .fontColor($r('app.color.color_text_hint'))
         .width('100%')
         .padding({ left: 12 });
 
@@ -53,65 +53,65 @@ export struct AboutSection {
           Text('当前版本')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'))
+            .fontColor($r('app.color.color_text_primary'))
             .layoutWeight(1);
           Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
             .fontSize(14)
-            .fontColor($r('app.color.text_tertiary_color'));
+            .fontColor($r('app.color.color_text_tertiary'));
         }.width('100%').padding(16).onClick(() => {
           this.copyVersionInfo();
         });
 
-        Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
         // 开源代码行（点击跳转 GitHub）
         Row() {
           Text('开源代码')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'))
+            .fontColor($r('app.color.color_text_primary'))
             .layoutWeight(1);
           this.arrowRightIcon();
         }.width('100%').padding(16).onClick(() => {
           this.openSourceLink();
         });
 
-        Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
         // 使用文档行（进入内嵌 WebView）
         Row() {
           Text('使用文档')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'))
+            .fontColor($r('app.color.color_text_primary'))
             .layoutWeight(1);
           this.arrowRightIcon();
         }.width('100%').padding(16).onClick(() => {
           this.openDocs();
         });
 
-        Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
         // 隐私协议行
         Row() {
           Text('隐私协议')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'))
+            .fontColor($r('app.color.color_text_primary'))
             .layoutWeight(1);
           this.arrowRightIcon();
         }.width('100%').padding(16).onClick(() => {
           this.openPrivacy();
         });
 
-        Divider().color($r('app.color.divider_color')).strokeWidth(1).margin({ left: 16, right: 16 });
+        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
         // 反馈问题行（发送邮件）
         Row() {
           Text('反馈问题')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.text_primary_color'))
+            .fontColor($r('app.color.color_text_primary'))
             .layoutWeight(1);
           this.arrowRightIcon();
         }.width('100%').padding(16).onClick(() => {
@@ -120,7 +120,7 @@ export struct AboutSection {
       }
       .width('100%')
       .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.card_glass_background'))
+      .backgroundColor($r('app.color.color_bg_surface_glass'))
       .borderRadius(12);
     }.width('100%');
   }
