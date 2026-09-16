@@ -213,7 +213,7 @@ export class NotifyMessageService {
   // deletedSince > 0：返回该游标之后的删除事件（deletions 信封）
   async getMessages(context: common.Context | null = null, since: number = 0,
     limit: number = 100, after: number = 0, deletedSince: number = 0,
-    server: ServerEntry | null = null): Promise<MessageListResult> {
+    server: ServerEntry | null = null, includeAfterCursor: boolean = false): Promise<MessageListResult> {
     const result = new MessageListResult();
 
     await ServerManager.getInstance().ensureLoaded();
@@ -248,7 +248,9 @@ export class NotifyMessageService {
     if (since > 0) {
       params.push(`since=${since}`);
     }
-    if (after > 0) {
+    // after=0 也必须能显式传给服务端：它代表从最早消息开始的完整历史播种，
+    // 与不传 after（服务端默认返回最新一页）语义不同。
+    if (after > 0 || includeAfterCursor) {
       params.push(`after=${after}`);
     }
     if (deletedSince > 0) {

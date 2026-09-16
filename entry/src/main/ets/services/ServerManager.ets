@@ -410,9 +410,14 @@ export class ServerManager {
     const ctx: common.Context | null = resolveContext(context);
     const entry: ServerEntry | null = this.findById(serverId);
     if (entry) {
+      if (entry.deviceKey === deviceKey) {
+        return;
+      }
       entry.deviceKey = deviceKey;
       await this.persist(ctx);
       hilog.info(DOMAIN, TAG, '已更新 device_key：serverId=%{public}s key=%{public}s', serverId, deviceKey);
+      // key 决定通知缓存与远端历史的归属；变更后必须通知视图丢弃旧 key 的内存数据并重新同步。
+      this.emitChange();
     }
   }
 
