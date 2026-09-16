@@ -29,24 +29,26 @@ export struct NotifyMessageCard {
   @Builder
   private linkActions(url: string) {
     if (url.length > 0) {
-      // 贴在卡片底部的浅灰操作区，复制（灰）/打开（主色）两项等宽排列。
-      Row() {
-        Row({ space: 4 }) {
-          Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
-            .objectFit(ImageFit.Contain).flexShrink(0);
-          Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
-        }.layoutWeight(1).justifyContent(FlexAlign.Center)
-          .onClick(() => this.onCopyUrl(url));
-        Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
-        Row({ space: 4 }) {
-          Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
-            .objectFit(ImageFit.Contain).flexShrink(0);
-          Text('打开链接').fontSize(13).fontColor($r('app.color.color_brand'));
-        }.layoutWeight(1).justifyContent(FlexAlign.Center)
-          .onClick(() => this.onOpenUrl(url));
-      }
-      .width('100%').padding({ top: 10, bottom: 10 })
-      .backgroundColor($r('app.color.color_bg_action')).alignItems(VerticalAlign.Center);
+      // 系统通知风格的卡片底栏：顶部分界线和轻背景使操作归属卡片而非独立色带。
+      Column() {
+        Divider().width('100%').strokeWidth(0.5).color($r('app.color.color_border_subtle'));
+        Row() {
+          Row({ space: 4 }) {
+            Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
+              .objectFit(ImageFit.Contain).flexShrink(0);
+            Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
+          }.layoutWeight(1).justifyContent(FlexAlign.Center)
+            .onClick(() => this.onCopyUrl(url));
+          Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
+          Row({ space: 4 }) {
+            Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
+              .objectFit(ImageFit.Contain).flexShrink(0);
+            Text('访问链接').fontSize(13).fontColor($r('app.color.color_brand'));
+          }.layoutWeight(1).justifyContent(FlexAlign.Center)
+            .onClick(() => this.onOpenUrl(url));
+        }
+        .width('100%').height(42).backgroundColor($r('app.color.color_bg_action_bar')).alignItems(VerticalAlign.Center);
+      }.width('100%');
     }
   }
 
