@@ -8,6 +8,8 @@ export struct NotifyGroupCard {
   @Prop section: NotifySection = { key: '', groupKey: '', messages: [], grouped: false, total: 0 };
   @Prop isEditing: boolean = false;
   @Prop groupSelected: boolean = false;
+  // 当前内存中已选的消息数；真实总数仍由 section.total 提供。
+  @Prop selectedCount: number = 0;
   @Prop cardHeight: number = 0;
   onToggleSelection: () => void = () => {};
   onOpen: () => void = () => {};
@@ -40,6 +42,18 @@ export struct NotifyGroupCard {
       }.width('100%').margin({ top: 4 });
     } else if (message.body.length > 0) {
       Text() { this.spans(message.body) }.width('100%').maxLines(4).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21).margin({ top: 4 });
+    }
+  }
+
+  /** 多选时明确展示已选的已加载消息与分组真实总数，避免将局部选择误认为整组操作。 */
+  @Builder
+  private groupCount() {
+    if (this.isEditing) {
+      Text(`已选 ${this.selectedCount} / ${this.section.total}`).fontSize(10).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.group_count_badge_text')).padding({ left: 8, right: 8, top: 2, bottom: 2 })
+        .borderRadius(10).backgroundColor($r('app.color.group_count_badge_bg'));
+    } else {
+      NotifyGroupCountBadge({ count: this.section.total });
     }
   }
 
@@ -89,7 +103,7 @@ export struct NotifyGroupCard {
           .width('100%').geometryTransition(`gmc:${this.section.groupKey}`)
           .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
           Row() {
-            Row() { NotifyGroupCountBadge({ count: this.section.total }); }
+            Row() { this.groupCount(); }
               .geometryTransition(`gmb:${this.section.groupKey}`);
             Blank();
           }.width('100%');

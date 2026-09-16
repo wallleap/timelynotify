@@ -44,6 +44,16 @@ export struct NotifyMessageList {
   private groupSelected(messages: NotifyMessage[]): boolean {
     return messages.length > 0 && messages.every((message: NotifyMessage) => this.isSelected(message.id));
   }
+  /** 返回当前已加载的分组消息中已选数量；真实总数由 section.total 单独展示。 */
+  private groupSelectedCount(messages: NotifyMessage[]): number {
+    let count: number = 0;
+    for (let i = 0; i < messages.length; i++) {
+      if (this.isSelected(messages[i].id)) {
+        count++;
+      }
+    }
+    return count;
+  }
   /** 组内是否还有更多未加载的消息（内存数量 < 真实总数）。 */
   private groupHasMore(section: NotifySection): boolean {
     return section.grouped && section.total > section.messages.length;
@@ -93,6 +103,7 @@ export struct NotifyMessageList {
         } else if (row.type === NOTIFY_LIST_ROW_GROUP_CARD && row.section !== null) {
           ListItem() {
             NotifyGroupCard({ section: row.section, isEditing: this.isEditing, groupSelected: this.groupSelected(row.section.messages),
+              selectedCount: this.groupSelectedCount(row.section.messages),
               cardHeight: this.groupCardHeights.get(row.section.groupKey) ?? 0, onToggleSelection: () => this.onToggleGroupSelection(row.section!.messages),
               onOpen: () => this.onOpenGroup(row.section!), onHeightChange: (height: number) => this.onHeightChange(row.section!.groupKey, height),
               onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code) });
@@ -127,6 +138,7 @@ export struct NotifyMessageList {
   @Builder
   private expandedHeader(section: NotifySection) {
     NotifyGroupExpandedHeader({ section: section, isEditing: this.isEditing, groupSelected: this.groupSelected(section.messages),
+      selectedCount: this.groupSelectedCount(section.messages),
       onToggle: () => this.isEditing ? this.onToggleGroupSelection(section.messages) : this.onToggleGroupExpanded(section.groupKey) });
   }
 }
