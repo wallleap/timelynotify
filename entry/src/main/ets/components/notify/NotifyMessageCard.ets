@@ -73,12 +73,17 @@ export struct NotifyMessageCard {
           Checkbox().select(this.selected).selectedColor($r('app.color.text_accent_color')).shape(CheckBoxShape.CIRCLE);
         }
         Column({ space: 6 }) {
+          // 首行固定为标题与时间，便于快速扫描通知来源和发生时间。
+          Row({ space: 8 }) {
+            if (this.message.title.length > 0) {
+              Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color'))
+                .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+            } else { Blank().layoutWeight(1); }
+            Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.text_quinary_color')).flexShrink(0);
+          }.width('100%').alignItems(VerticalAlign.Center);
+          // 第二行正文与图标并列；副标题作为正文的语义补充保留在左侧。
           Row({ space: 8 }) {
             Column() {
-              if (this.message.title.length > 0) {
-                Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color'))
-                  .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
-              }
               if (this.message.subtitle.length > 0) {
                 Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.text_accent_color'))
                   .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -89,8 +94,6 @@ export struct NotifyMessageCard {
               Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).flexShrink(0).alt($r('app.media.app_icon'));
             }
           }.width('100%').alignItems(VerticalAlign.Top);
-          Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.text_quinary_color'))
-            .width('100%').textAlign(TextAlign.End);
         }.layoutWeight(1).alignItems(HorizontalAlign.Start);
       }.width('100%').padding(12).alignItems(VerticalAlign.Top);
       if (this.message.url.length > 0) {

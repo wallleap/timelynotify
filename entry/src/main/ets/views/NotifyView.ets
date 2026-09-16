@@ -53,7 +53,7 @@ const SYNC_PAGE_SIZE: number = 100;
 @Component
 export struct NotifyView {
   @State title: string = '';
-  @State messages: NotifyMessage[] = [];
+  @State @Watch('restoreVisibleExpandedGroups') messages: NotifyMessage[] = [];
   @State loading: boolean = false;
   @State errorMsg: string = '';
   @State refreshing: boolean = false;
@@ -101,6 +101,10 @@ export struct NotifyView {
   private pollingEnabled: boolean = false;
   // 轮询请求进行中标记：防止慢网络下请求堆积
   private pollInFlight: boolean = false;
+  // 持久化的全局展开记录；仅在切换展开/收起时变更，避免切换服务器时误删不可见分组。
+  private savedExpandedGroups: string[] = [];
+  // Preferences 异步读取完成前不恢复，避免把默认空数组误写回磁盘。
+  private expandedGroupsLoaded: boolean = false;
 
   aboutToAppear() {
     this.initAfterServerManagerReady();
@@ -109,6 +113,7 @@ export struct NotifyView {
       .then((value: string) => {
         this.groupEnabled = value === 'true';
       });
+    this.loadExpandedGroups();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.exitEditMode();
       // 从 ServerManager 同步视图模式（ServerSettingsContent 切换全部/单服务器时触发）
@@ -701,6 +706,7 @@ export struct NotifyView {
       return;
     }
     this.expandedGroups = NotifyGroupStateUtils.toggleExpanded(this.expandedGroups, groupKey);
+    this.updateSavedExpandedGroups(groupKey, expanded);
   }
 
   private toggleGroupExpanded(groupKey: string): void {
@@ -722,6 +728,55 @@ export struct NotifyView {
     this.expandedGroups = [];
     PreferencesUtil.putString(null, PreferencesUtil.KEY_GROUP_ENABLED,
       this.groupEnabled ? 'true' : 'false');
+    // 平铺模式不展示展开态；重新开启分组时投影已保存的全局展开记录。
+    if (this.groupEnabled) {
+      this.restoreVisibleExpandedGroups();
+    }
+  }
+
+  /** 从 Preferences 恢复全局展开记录；异常或旧格式均安全降级为空数组。 */
+  private async loadExpandedGroups(): Promise<void> {
+    const raw: string = await PreferencesUtil.getString(null, PreferencesUtil.KEY_NOTIFY_EXPANDED_GROUPS, '[]');
+    const groups: string[] = [];
+    try {
+      const parsed: Object = JSON.parse(raw);
+      if (parsed instanceof Array) {
+        for (let i = 0; i < parsed.length; i++) {
+          if (typeof parsed[i] === 'string' && groups.indexOf(String(parsed[i])) < 0) {
+            groups.push(String(parsed[i]));
+          }
+        }
+      }
+    } catch (_err) {
+      // 保留空数组，下一次用户展开/收起会用正确格式覆盖损坏的旧值。
+    }
+    this.savedExpandedGroups = groups;
+    this.expandedGroupsLoaded = true;
+    this.restoreVisibleExpandedGroups();
+  }
+
+  /** 将持久化记录投影为当前消息列表中真实存在的分组，避免不存在的分组影响渲染。 */
+  private restoreVisibleExpandedGroups(): void {
+    if (!this.expandedGroupsLoaded || !this.groupEnabled || this.messages.length === 0) {
+      return;
+    }
+    const visibleGroups: string[] = [];
+    for (let i = 0; i < this.messages.length; i++) {
+      const groupKey: string = this.messages[i].group;
+      if (this.savedExpandedGroups.indexOf(groupKey) >= 0 && visibleGroups.indexOf(groupKey) < 0) {
+        visibleGroups.push(groupKey);
+      }
+    }
+    this.expandedGroups = visibleGroups;
+  }
+
+  /** 仅用户主动展开/收起时更新全局记录，切换服务器和删除消息不会误清理同名分组状态。 */
+  private updateSavedExpandedGroups(groupKey: string, expanded: boolean): void {
+    const next: string[] = expanded
+      ? (this.savedExpandedGroups.indexOf(groupKey) >= 0 ? this.savedExpandedGroups : [...this.savedExpandedGroups, groupKey])
+      : this.savedExpandedGroups.filter((key: string) => key !== groupKey);
+    this.savedExpandedGroups = next;
+    PreferencesUtil.putString(null, PreferencesUtil.KEY_NOTIFY_EXPANDED_GROUPS, JSON.stringify(next));
   }
 
   private handleGroupHeaderClick(section: NotifySection): void {

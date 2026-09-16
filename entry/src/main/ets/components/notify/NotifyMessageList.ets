@@ -5,20 +5,21 @@ import { NotifyGroupCard } from './NotifyGroupCard';
 import { NotifyGroupExpandedHeader } from './NotifyGroupExpandedHeader';
 import { NotifyGroupMessageRow } from './NotifyGroupMessageRow';
 import { NotifySwipeDelete } from './NotifySwipeDelete';
+import { buildNotifyListRows, NotifyListDataSource, NotifyListRow, NOTIFY_LIST_ROW_GROUP_CARD, NOTIFY_LIST_ROW_GROUP_HEADER, NOTIFY_LIST_ROW_GROUP_MESSAGE, NOTIFY_LIST_ROW_GROUP_MORE, NOTIFY_LIST_ROW_MESSAGE } from './NotifyListDataSource';
 import { SUPPORTS_IMMERSIVE_MATERIAL } from '../../utils/ImmersiveUtil';
 
 /** 通知列表渲染层：只接收状态快照并通过回调将用户操作交还页面。 */
 @Component
 export struct NotifyMessageList {
-  @Prop messages: NotifyMessage[] = [];
+  @Prop @Watch('reloadDataSource') messages: NotifyMessage[] = [];
   @Prop isEditing: boolean = false;
   @Prop selectedIds: number[] = [];
-  @Prop expandedGroups: string[] = [];
+  @Prop @Watch('reloadDataSource') expandedGroups: string[] = [];
   @Prop groupCardHeights: Map<string, number> = new Map<string, number>();
-  @Prop groupTotals: Map<string, number> = new Map<string, number>();
+  @Prop @Watch('reloadDataSource') groupTotals: Map<string, number> = new Map<string, number>();
   @Prop groupLoadingMore: Set<string> = new Set<string>();
   // 是否启用分组显示（false 时所有消息平铺）
-  @Prop groupEnabled: boolean = true;
+  @Prop @Watch('reloadDataSource') groupEnabled: boolean = true;
   @Prop statusBarHeight: number = 0;
   @Prop navBarHeight: number = 0;
   @Prop immersiveLightEnabled: boolean = true;
@@ -35,11 +36,23 @@ export struct NotifyMessageList {
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
   onCopyUrl: (url: string) => void = (_url: string) => {};
+  // 主 List 唯一的数据源；分组内消息删除时可直接发送 onDataDelete。
+  private dataSource: NotifyListDataSource = new NotifyListDataSource();
 
   private isSelected(id: number): boolean { return this.selectedIds.indexOf(id) >= 0; }
   private isExpanded(groupKey: string): boolean { return this.expandedGroups.indexOf(groupKey) >= 0; }
   private groupSelected(messages: NotifyMessage[]): boolean {
     return messages.length > 0 && messages.every((message: NotifyMessage) => this.isSelected(message.id));
+  }
+  /** 返回当前已加载的分组消息中已选数量；真实总数由 section.total 单独展示。 */
+  private groupSelectedCount(messages: NotifyMessage[]): number {
+    let count: number = 0;
+    for (let i = 0; i < messages.length; i++) {
+      if (this.isSelected(messages[i].id)) {
+        count++;
+      }
+    }
+    return count;
   }
   /** 组内是否还有更多未加载的消息（内存数量 < 真实总数）。 */
   private groupHasMore(section: NotifySection): boolean {
@@ -48,6 +61,14 @@ export struct NotifyMessageList {
   /** 组内是否正在加载更多。 */
   private groupLoading(section: NotifySection): boolean {
     return this.groupLoadingMore.has(section.groupKey);
+  }
+
+  aboutToAppear(): void { this.reloadDataSource(); }
+
+  /** 由输入状态生成主 List 的平铺行；展开/收起或刷新时完整重载。 */
+  private reloadDataSource(): void {
+    this.dataSource.sync(buildNotifyListRows(
+      buildNotifySections(this.messages, this.groupTotals, this.groupEnabled), this.expandedGroups));
   }
 
   @Builder
@@ -69,59 +90,41 @@ export struct NotifyMessageList {
   }
 
   build() {
-    List({ space: 10, scroller: this.listScroller }) {
+    List({ space: 0, scroller: this.listScroller }) {
       ListItem() { Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 4 : this.statusBarHeight + 78); }
-      ForEach(buildNotifySections(this.messages, this.groupTotals, this.groupEnabled), (section: NotifySection) => {
-        // 已展开的组即使删除后暂时只剩一条，也保持展开结构；仅组内完全没有消息时才由状态清理逻辑移除。
-        if (!section.grouped && !this.isExpanded(section.groupKey)) {
+      LazyForEach(this.dataSource, (row: NotifyListRow) => {
+        if (row.type === NOTIFY_LIST_ROW_MESSAGE && row.message !== null) {
           ListItem() {
-            NotifyMessageCard({ message: section.messages[0], isEditing: this.isEditing, selected: this.isSelected(section.messages[0].id),
+            NotifyMessageCard({ message: row.message, isEditing: this.isEditing, selected: this.isSelected(row.message.id),
               onSelect: (id: number) => this.onToggleSelect(id), onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
               onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code),
               onCopyUrl: (url: string) => this.onCopyUrl(url) });
-          }.swipeAction({ end: { builder: () => { this.deleteOne(section.messages[0]); } } });
-        } else if (this.isExpanded(section.groupKey)) {
-          ListItemGroup({ space: 0, header: this.expandedHeader(section) }) {
-            ForEach(section.messages, (message: NotifyMessage, index: number) => {
-              ListItem() {
-                NotifyGroupMessageRow({ message: message, isLast: index === section.messages.length - 1 && !this.groupHasMore(section),
-                  isEditing: this.isEditing, selected: this.isSelected(message.id),
-                  contentTransitionId: index === 0 ? `gmc:${section.groupKey}` : '',
-                  onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
-                  onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code),
-                  onCopyUrl: (url: string) => this.onCopyUrl(url) });
-              }
-              .backgroundColor($r('app.color.card_background'))
-              .borderRadius({ topLeft: 0, topRight: 0,
-                bottomLeft: (index === section.messages.length - 1 && !this.groupHasMore(section)) ? 12 : 0,
-                bottomRight: (index === section.messages.length - 1 && !this.groupHasMore(section)) ? 12 : 0 })
-              .clip(true)
-              // 稳定分组对象使组内 ForEach 能单独销毁该行，淡出动画不会再被整组重建打断。
-              .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
-              .swipeAction({ end: { builder: () => { this.deleteOne(message); } } });
-            }, (message: NotifyMessage) => `group-child:${section.groupKey}:${message.id}`);
-            if (this.groupHasMore(section)) {
-              ListItem() {
-                this.groupLoadMoreFooter(section);
-              }.backgroundColor($r('app.color.card_background'))
-               .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: 12, bottomRight: 12 })
-               .clip(true)
-               .onClick(() => {
-                 if (!this.groupLoading(section)) {
-                   this.onLoadMoreInGroup(section.groupKey);
-                 }
-               });
-            }
-          }
-        } else {
+          }.margin({ bottom: row.spaceAfter }).swipeAction({ end: { builder: () => { this.deleteOne(row.message!); } } });
+        } else if (row.type === NOTIFY_LIST_ROW_GROUP_CARD && row.section !== null) {
           ListItem() {
-            NotifyGroupCard({ section: section, isEditing: this.isEditing, groupSelected: this.groupSelected(section.messages),
-              cardHeight: this.groupCardHeights.get(section.groupKey) ?? 0, onToggleSelection: () => this.onToggleGroupSelection(section.messages),
-              onOpen: () => this.onOpenGroup(section), onHeightChange: (height: number) => this.onHeightChange(section.groupKey, height),
+            NotifyGroupCard({ section: row.section, isEditing: this.isEditing, groupSelected: this.groupSelected(row.section.messages),
+              selectedCount: this.groupSelectedCount(row.section.messages),
+              cardHeight: this.groupCardHeights.get(row.section.groupKey) ?? 0, onToggleSelection: () => this.onToggleGroupSelection(row.section!.messages),
+              onOpen: () => this.onOpenGroup(row.section!), onHeightChange: (height: number) => this.onHeightChange(row.section!.groupKey, height),
               onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code) });
-          }.swipeAction({ end: { builder: () => { this.deleteGroup(section); } } });
+          }.margin({ bottom: row.spaceAfter }).swipeAction({ end: { builder: () => { this.deleteGroup(row.section!); } } });
+        } else if (row.type === NOTIFY_LIST_ROW_GROUP_HEADER && row.section !== null) {
+          ListItem() { this.expandedHeader(row.section); }.margin({ bottom: row.spaceAfter })
+        } else if (row.type === NOTIFY_LIST_ROW_GROUP_MESSAGE && row.message !== null && row.section !== null) {
+          ListItem() {
+            NotifyGroupMessageRow({ message: row.message, isLast: row.indexInGroup === row.section.messages.length - 1 && !this.groupHasMore(row.section),
+              isEditing: this.isEditing, selected: this.isSelected(row.message.id), contentTransitionId: row.indexInGroup === 0 ? `gmc:${row.section.groupKey}` : '',
+              onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item), onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code), onCopyUrl: (url: string) => this.onCopyUrl(url) });
+          // 外层 ListItem 不绘制卡片背景，避免复用后旧的方角背景遮住新末条的圆角；
+          // NotifyGroupMessageRow 自身依据 isLast 负责背景、裁剪和圆角。
+          }.margin({ bottom: row.spaceAfter }).transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
+            .swipeAction({ end: { builder: () => { this.deleteOne(row.message!); } } });
+        } else if (row.type === NOTIFY_LIST_ROW_GROUP_MORE && row.section !== null) {
+          ListItem() { this.groupLoadMoreFooter(row.section); }.backgroundColor($r('app.color.card_background'))
+            .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: 12, bottomRight: 12 }).clip(true)
+            .margin({ bottom: row.spaceAfter }).onClick(() => { if (!this.groupLoading(row.section!)) { this.onLoadMoreInGroup(row.section!.groupKey); } });
         }
-      }, (section: NotifySection) => section.key);
+      }, (row: NotifyListRow) => row.key);
       ListItem() {
         Row() {
           Text('没有更多了').fontSize(13).fontColor($r('app.color.text_quinary_color'));
@@ -135,6 +138,7 @@ export struct NotifyMessageList {
   @Builder
   private expandedHeader(section: NotifySection) {
     NotifyGroupExpandedHeader({ section: section, isEditing: this.isEditing, groupSelected: this.groupSelected(section.messages),
+      selectedCount: this.groupSelectedCount(section.messages),
       onToggle: () => this.isEditing ? this.onToggleGroupSelection(section.messages) : this.onToggleGroupExpanded(section.groupKey) });
   }
 }

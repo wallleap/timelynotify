@@ -7,7 +7,21 @@ export struct NotifyGroupExpandedHeader {
   @Prop section: NotifySection = { key: '', groupKey: '', messages: [], grouped: false, total: 0 };
   @Prop isEditing: boolean = false;
   @Prop groupSelected: boolean = false;
+  // 当前已选数量只覆盖已加载消息，不能等同于 section.total。
+  @Prop selectedCount: number = 0;
   onToggle: () => void = () => {};
+
+  /** 多选时显示局部选择进度，明确未加载历史不会被当前操作影响。 */
+  @Builder
+  private groupCount() {
+    if (this.isEditing) {
+      Text(`已选 ${this.selectedCount} / ${this.section.total}`).fontSize(10).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.group_count_badge_text')).padding({ left: 8, right: 8, top: 2, bottom: 2 })
+        .borderRadius(10).backgroundColor($r('app.color.group_count_badge_bg'));
+    } else {
+      NotifyGroupCountBadge({ count: this.section.total });
+    }
+  }
 
   build() {
     Column() {
@@ -21,7 +35,7 @@ export struct NotifyGroupExpandedHeader {
         }
         Text(displayGroupTitle(this.section.groupKey)).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1);
-        Row() { NotifyGroupCountBadge({ count: this.section.total }); }
+        Row() { this.groupCount(); }
           .flexShrink(0).geometryTransition(`gmb:${this.section.groupKey}`)
           .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
         Image($r('app.media.arrow_right')).width(20).height(20).fillColor($r('app.color.text_quinary_color')).draggable(false)
