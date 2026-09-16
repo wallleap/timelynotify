@@ -104,12 +104,9 @@ export struct NotifyMessageList {
             NotifyGroupMessageRow({ message: row.message, isLast: row.indexInGroup === row.section.messages.length - 1 && !this.groupHasMore(row.section),
               isEditing: this.isEditing, selected: this.isSelected(row.message.id), contentTransitionId: row.indexInGroup === 0 ? `gmc:${row.section.groupKey}` : '',
               onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item), onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code), onCopyUrl: (url: string) => this.onCopyUrl(url) });
-          }.backgroundColor($r('app.color.card_background'))
-            // ListItemGroup 已被扁平行替代，末条的外层圆角与左滑裁剪在这里恢复。
-            .borderRadius({ topLeft: 0, topRight: 0,
-              bottomLeft: row.indexInGroup === row.section.messages.length - 1 && !this.groupHasMore(row.section) ? 12 : 0,
-              bottomRight: row.indexInGroup === row.section.messages.length - 1 && !this.groupHasMore(row.section) ? 12 : 0 })
-            .clip(true).margin({ bottom: row.spaceAfter }).transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
+          // 外层 ListItem 不绘制卡片背景，避免复用后旧的方角背景遮住新末条的圆角；
+          // NotifyGroupMessageRow 自身依据 isLast 负责背景、裁剪和圆角。
+          }.margin({ bottom: row.spaceAfter }).transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
             .swipeAction({ end: { builder: () => { this.deleteOne(row.message!); } } });
         } else if (row.type === NOTIFY_LIST_ROW_GROUP_MORE && row.section !== null) {
           ListItem() { this.groupLoadMoreFooter(row.section); }.backgroundColor($r('app.color.card_background'))

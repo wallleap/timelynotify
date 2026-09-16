@@ -37,7 +37,8 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
     }
     if (!expanded) {
       const row: NotifyListRow = new NotifyListRow();
-      row.key = `group-card:${section.groupKey}`;
+      // 计数和预览内容会随删除变化；将总数与内存条数纳入卡片 key，确保徽标和首条预览同步刷新。
+      row.key = `group-card:${section.groupKey}:${section.total}:${section.messages.length}`;
       row.type = NOTIFY_LIST_ROW_GROUP_CARD;
       row.section = section;
       row.spaceAfter = 10;
@@ -45,18 +46,22 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
       continue;
     }
     const header: NotifyListRow = new NotifyListRow();
-    header.key = `group-header:${section.groupKey}`;
+    // 展开态只重建分组头以刷新“共 N 条”，组内未变化的消息行仍保持稳定 key。
+    header.key = `group-header:${section.groupKey}:${section.total}`;
     header.type = NOTIFY_LIST_ROW_GROUP_HEADER;
     header.section = section;
     rows.push(header);
     for (let j = 0; j < section.messages.length; j++) {
       const row: NotifyListRow = new NotifyListRow();
-      row.key = `group-message:${section.groupKey}:${section.messages[j].id}`;
+      const isGroupTail: boolean = j === section.messages.length - 1 && section.total <= section.messages.length;
+      // 末项状态影响圆角和裁剪。仅在某条消息变为末项时变更其 key，强制重建该行；
+      // 其余消息继续使用稳定 key，删除时不会引入整组重建或滚动位置跳动。
+      row.key = `group-message:${section.groupKey}:${section.messages[j].id}:${isGroupTail ? 'tail' : 'body'}`;
       row.type = NOTIFY_LIST_ROW_GROUP_MESSAGE;
       row.message = section.messages[j];
       row.section = section;
       row.indexInGroup = j;
-      row.spaceAfter = j === section.messages.length - 1 && section.total <= section.messages.length ? 10 : 0;
+      row.spaceAfter = isGroupTail ? 10 : 0;
       rows.push(row);
     }
     if (section.total > section.messages.length) {
