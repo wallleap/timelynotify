@@ -95,6 +95,8 @@ export struct NotifyView {
   private loadQueued: boolean = false;
   private scroller: Scroller = new Scroller();
   private pollTimer: number = -1;
+  // 当前列表对应的 device_key 快照；key 切换时需清空内存中的旧设备消息，即使处于“全部”模式。
+  private visibleDeviceKeys: string = '';
   // 防止飞行中的轮询请求在切走 Tab 后又重启循环
   private pollingEnabled: boolean = false;
   // 轮询请求进行中标记：防止慢网络下请求堆积
@@ -113,9 +115,12 @@ export struct NotifyView {
       const newViewAll: boolean = ServerManager.getInstance().getViewAllMode();
       const viewModeChanged: boolean = this.viewAll !== newViewAll;
       this.viewAll = newViewAll;
+      const nextDeviceKeys: string = this.getAllDeviceKeys().join('|');
+      const deviceKeysChanged: boolean = nextDeviceKeys !== this.visibleDeviceKeys;
+      this.visibleDeviceKeys = nextDeviceKeys;
       this.refresh();
-      // 视图模式变化或单服务器模式下切换服务器：清空列表重建
-      if (viewModeChanged || !this.viewAll) {
+      // 视图模式变化、单服务器切换或 device_key 变更时，清空内存中的旧数据后重建。
+      if (viewModeChanged || !this.viewAll || deviceKeysChanged) {
         this.messages = [];
         this.expandedGroups = [];
         this.groupCardHeights = new Map<string, number>();
@@ -421,6 +426,7 @@ export struct NotifyView {
       await ServerManager.getInstance().ensureLoaded();
       // 从 ServerManager 同步初始视图模式
       this.viewAll = ServerManager.getInstance().getViewAllMode();
+      this.visibleDeviceKeys = this.getAllDeviceKeys().join('|');
       this.refresh();
       const seq: number = ++this.loadSeq;
       if (this.viewAll) {
@@ -1110,7 +1116,8 @@ export struct NotifyView {
       if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
         return false;
       }
-      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, newDelCursor, server);
+      // 首次历史播种显式发送 after=0，服务端才会按从旧到新的方向完整分页。
+      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, newDelCursor, server, true);
       if (!result.ok) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
         // 本地无消息时透出错误，有消息时静默保留
