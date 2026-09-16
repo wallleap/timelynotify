@@ -97,7 +97,7 @@ export struct NotifyMessageCard {
             }
           }.width('100%').alignItems(VerticalAlign.Top);
         }.layoutWeight(1).alignItems(HorizontalAlign.Start);
-      }.width('100%').padding(12).alignItems(VerticalAlign.Top);
+      }.width('100%').padding({ left: 14, right: 14, top: 16, bottom: 16 }).alignItems(VerticalAlign.Top);
       if (this.message.url.length > 0) {
         this.linkActions(this.message.url);
       }

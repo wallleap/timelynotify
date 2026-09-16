@@ -101,13 +101,13 @@ export struct NotifyGroupMessageRow {
             }.width('100%').geometryTransition(this.contentTransitionId)
               .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
           }.layoutWeight(1).alignItems(HorizontalAlign.Start);
-        }.width('100%').alignItems(VerticalAlign.Top).padding({ left: 12, right: 12, top: 12, bottom: 12 });
+        }.width('100%').alignItems(VerticalAlign.Top).padding({ left: 14, right: 14, top: 16, bottom: 16 });
         if (this.message.url.length > 0) {
           this.linkActions(this.message.url);
         }
       }.width('100%');
       if (!this.isLast) {
-        Divider().color($r('app.color.color_border_subtle')).strokeWidth(0.5).width('100%').margin({ left: 12 });
+        Divider().color($r('app.color.color_border_subtle')).strokeWidth(0.5).width('100%').margin({ left: 14 });
       }
     }
     .width('100%').backgroundColor($r('app.color.color_bg_surface'))

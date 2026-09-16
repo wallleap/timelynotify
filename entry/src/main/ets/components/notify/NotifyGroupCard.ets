@@ -109,7 +109,7 @@ export struct NotifyGroupCard {
           }.width('100%');
         }.layoutWeight(1);
       }
-      .width('100%').padding(12).backgroundColor($r('app.color.color_bg_surface')).borderRadius(12)
+      .width('100%').padding({ left: 14, right: 14, top: 16, bottom: 16 }).backgroundColor($r('app.color.color_bg_surface')).borderRadius(12)
       .onAreaChange((_old: Area, value: Area) => this.onHeightChange(value.height as number))
       .onClick(() => this.isEditing ? this.onToggleSelection() : this.onOpen());
     }

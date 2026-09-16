@@ -197,8 +197,8 @@ export struct NotifyMessageDetail {
     Stack({ alignContent: Alignment.Top }) {
       Scroll() {
         Column() {
-          // 为悬浮顶栏预留高度，使内容卡片从顶栏下自然开始。
-          Row().width('100%').height(this.statusBarHeight + 76);
+          // 为悬浮顶栏预留高度，额外保留 16vp 使内容卡片与顶栏自然分隔。
+          Row().width('100%').height(this.statusBarHeight + 80);
           if (this.message) {
             // 外层统一裁剪圆角，正文与贴底 action 形成同一张分区卡片。
             Column() {
@@ -235,7 +235,7 @@ export struct NotifyMessageDetail {
                 .width('100%').maxLines(1).textAlign(TextAlign.End).margin({ top: 14 });
               this.recognizedActions(this.recognizedSegments());
               }
-              .width('100%').padding(20);
+              .width('100%').padding({ left: 14, right: 14, top: 16, bottom: 16 });
               if (this.message.url.length > 0) {
                 this.linkActions(this.message.url);
               }

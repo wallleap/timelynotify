@@ -91,7 +91,8 @@ export struct NotifyMessageList {
 
   build() {
     List({ space: 0, scroller: this.listScroller }) {
-      ListItem() { Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 4 : this.statusBarHeight + 78); }
+      // 非 HDS 标题栏高度为状态栏加 70vp，额外保留 16vp 使首张卡片自然分隔。
+      ListItem() { Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 4 : this.statusBarHeight + 86); }
       LazyForEach(this.dataSource, (row: NotifyListRow) => {
         if (row.type === NOTIFY_LIST_ROW_MESSAGE && row.message !== null) {
           ListItem() {
