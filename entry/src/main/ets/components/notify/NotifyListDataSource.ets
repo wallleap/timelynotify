@@ -99,8 +99,8 @@ export class NotifyListDataSource implements IDataSource {
   }
 
   /**
-   * 同步最新行快照。仅发生消息行删除时，逐项发送 onDataDelete，避免整组重载；
-   * 新增、展开收起及其它结构变化回退到 onDataReloaded，以保证列表结构正确。
+   * 同步最新行快照。所有结构变化均以精确增删通知交给 LazyForEach，避免展开收起时
+   * onDataReloaded 先销毁折叠卡片，导致 geometryTransition 丢失共享元素源节点。
    */
   sync(rows: NotifyListRow[]): void {
     if (this.rows.length === 0) {
@@ -111,33 +111,27 @@ export class NotifyListDataSource implements IDataSource {
     for (let i = 0; i < rows.length; i++) {
       nextKeys.add(rows[i].key);
     }
-    let hasAdded: boolean = false;
-    for (let i = 0; i < rows.length; i++) {
-      let found: boolean = false;
-      for (let j = 0; j < this.rows.length; j++) {
-        if (rows[i].key === this.rows[j].key) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        hasAdded = true;
-        break;
-      }
-    }
-    if (hasAdded) {
-      this.replace(rows);
-      return;
-    }
+    // 先剔除不再存在的行，例如折叠态 group-card；不要全量重载，以保留转场源节点。
     for (let i = this.rows.length - 1; i >= 0; i--) {
       if (!nextKeys.has(this.rows[i].key)) {
         this.rows.splice(i, 1);
         this.listeners.forEach((listener: DataChangeListener) => listener.onDataDelete(i));
       }
     }
+    // 再在目标位置补入新行，例如展开态的分组头和组内消息行。
     for (let i = 0; i < rows.length; i++) {
-      this.rows[i] = rows[i];
-      this.listeners.forEach((listener: DataChangeListener) => listener.onDataChange(i));
+      if (i >= this.rows.length || this.rows[i].key !== rows[i].key) {
+        this.rows.splice(i, 0, rows[i]);
+        this.listeners.forEach((listener: DataChangeListener) => listener.onDataAdd(i));
+      } else {
+        this.rows[i] = rows[i];
+        this.listeners.forEach((listener: DataChangeListener) => listener.onDataChange(i));
+      }
+    }
+    // 防御性清理：目标快照比现有行短时，移除末尾冗余行。
+    for (let i = this.rows.length - 1; i >= rows.length; i--) {
+      this.rows.splice(i, 1);
+      this.listeners.forEach((listener: DataChangeListener) => listener.onDataDelete(i));
     }
   }
 

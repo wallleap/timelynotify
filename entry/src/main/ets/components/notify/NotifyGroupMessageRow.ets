@@ -75,26 +75,29 @@ export struct NotifyGroupMessageRow {
             Checkbox().select(this.selected).selectedColor($r('app.color.text_accent_color')).shape(CheckBoxShape.CIRCLE).flexShrink(0);
           }
           Column({ space: 6 }) {
-            // 标题和时间共用首行，组内行与普通通知卡信息层级保持一致。
-            Row({ space: 8 }) {
-              if (this.message.title.length > 0) {
-                Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
-              } else { Blank().layoutWeight(1); }
-              Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.text_quinary_color')).flexShrink(0);
-            }.width('100%').alignItems(VerticalAlign.Center).geometryTransition(this.contentTransitionId)
-              .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-            // 正文与图标共用第二行，避免图标挤占标题的可读宽度。
-            Row({ space: 8 }) {
-              Column() {
-                if (this.message.subtitle.length > 0) {
-                  Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.text_accent_color')).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
+            // 首条组内消息与折叠预览的完整内容配对；其余消息使用空 id，不参与共享转场。
+            Column({ space: 6 }) {
+              // 标题和时间共用首行，组内行与普通通知卡信息层级保持一致。
+              Row({ space: 8 }) {
+                if (this.message.title.length > 0) {
+                  Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.text_primary_color')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+                } else { Blank().layoutWeight(1); }
+                Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.text_quinary_color')).flexShrink(0);
+              }.width('100%').alignItems(VerticalAlign.Center);
+              // 正文与图标共用第二行，避免图标挤占标题的可读宽度。
+              Row({ space: 8 }) {
+                Column() {
+                  if (this.message.subtitle.length > 0) {
+                    Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.text_accent_color')).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
+                  }
+                  this.body();
+                }.layoutWeight(1).alignItems(HorizontalAlign.Start);
+                if (this.message.image.length > 0) {
+                  Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).flexShrink(0).alt($r('app.media.app_icon'));
                 }
-                this.body();
-              }.layoutWeight(1).alignItems(HorizontalAlign.Start);
-              if (this.message.image.length > 0) {
-                Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).flexShrink(0).alt($r('app.media.app_icon'));
-              }
-            }.width('100%').alignItems(VerticalAlign.Top);
+              }.width('100%').alignItems(VerticalAlign.Top);
+            }.width('100%').geometryTransition(this.contentTransitionId)
+              .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
           }.layoutWeight(1).alignItems(HorizontalAlign.Start);
         }.width('100%').alignItems(VerticalAlign.Top).padding({ left: 12, right: 12, top: 12, bottom: 12 });
         if (this.message.url.length > 0) {
