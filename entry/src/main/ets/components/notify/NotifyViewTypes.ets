@@ -144,12 +144,12 @@ export const UNGROUPED_GROUP_KEY: string = '';
 
 /** 虚拟 groupKey 对应的展示名称（展开态顶栏标题 + 折叠态卡片标题） */
 export function displayGroupTitle(groupKey: string): string {
-  return groupKey.length === 0 ? '未分组' : groupKey;
+  return groupKey.length === 0 ? '默认' : groupKey;
 }
 
 /**
  * 依据消息当前顺序生成稳定的列表分组，避免渲染层重复维护排序逻辑。
- * groupEnabled=true（默认）：同 group_key 聚合，无 group（空串）的消息聚合到"未分组"虚拟 section。
+ * groupEnabled=true（默认）：同 group_key 聚合，无 group（空串）的消息聚合到“默认”虚拟 section。
  * groupEnabled=false：关闭分组，每条消息都是独立的平铺 section（grouped=false）。
  * totals 参数：每个 group_key 的真实总数，用于徽标和"加载更多"按钮。
  * 不传 totals 时回退到内存中 messages 数量（旧逻辑兼容）。
@@ -184,8 +184,8 @@ export function buildNotifySections(messages: NotifyMessage[],
       raw[position].messages.push(message);
     }
   }
-  // 第二遍：生成 section，key 同时含 total（删除/同步时变）和内存 size（组内加载更多 append 时变），
-  // 两者任一变化都强制 ForEach 重建子树，否则新增子项不会渲染
+  // 第二遍：key 需包含总数和内存条数。ArkUI 在外层 ForEach key 不变时会复用整棵子树，
+  // 使内层消息行与数量徽标无法及时刷新；两项任一变化时重建当前分组，保证删除和加载更多可见。
   const sections: NotifySection[] = [];
   for (let i = 0; i < raw.length; i++) {
     const groupKey: string = raw[i].groupKey;

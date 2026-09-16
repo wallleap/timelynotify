@@ -41,11 +41,11 @@ export struct NotifyMessageList {
   private groupSelected(messages: NotifyMessage[]): boolean {
     return messages.length > 0 && messages.every((message: NotifyMessage) => this.isSelected(message.id));
   }
-  // 组内是否还有更多未加载的消息（内存数量 < 真实总数）
+  /** 组内是否还有更多未加载的消息（内存数量 < 真实总数）。 */
   private groupHasMore(section: NotifySection): boolean {
     return section.grouped && section.total > section.messages.length;
   }
-  // 组内是否正在加载更多
+  /** 组内是否正在加载更多。 */
   private groupLoading(section: NotifySection): boolean {
     return this.groupLoadingMore.has(section.groupKey);
   }
@@ -72,7 +72,8 @@ export struct NotifyMessageList {
     List({ space: 10, scroller: this.listScroller }) {
       ListItem() { Row().width('100%').height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 4 : this.statusBarHeight + 78); }
       ForEach(buildNotifySections(this.messages, this.groupTotals, this.groupEnabled), (section: NotifySection) => {
-        if (!section.grouped) {
+        // 已展开的组即使删除后暂时只剩一条，也保持展开结构；仅组内完全没有消息时才由状态清理逻辑移除。
+        if (!section.grouped && !this.isExpanded(section.groupKey)) {
           ListItem() {
             NotifyMessageCard({ message: section.messages[0], isEditing: this.isEditing, selected: this.isSelected(section.messages[0].id),
               onSelect: (id: number) => this.onToggleSelect(id), onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
@@ -84,8 +85,8 @@ export struct NotifyMessageList {
             ForEach(section.messages, (message: NotifyMessage, index: number) => {
               ListItem() {
                 NotifyGroupMessageRow({ message: message, isLast: index === section.messages.length - 1 && !this.groupHasMore(section),
-                  isEditing: this.isEditing,
-                  selected: this.isSelected(message.id), contentTransitionId: index === 0 ? `gmc:${section.groupKey}` : '',
+                  isEditing: this.isEditing, selected: this.isSelected(message.id),
+                  contentTransitionId: index === 0 ? `gmc:${section.groupKey}` : '',
                   onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
                   onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code),
                   onCopyUrl: (url: string) => this.onCopyUrl(url) });
@@ -95,10 +96,10 @@ export struct NotifyMessageList {
                 bottomLeft: (index === section.messages.length - 1 && !this.groupHasMore(section)) ? 12 : 0,
                 bottomRight: (index === section.messages.length - 1 && !this.groupHasMore(section)) ? 12 : 0 })
               .clip(true)
+              // 稳定分组对象使组内 ForEach 能单独销毁该行，淡出动画不会再被整组重建打断。
+              .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
               .swipeAction({ end: { builder: () => { this.deleteOne(message); } } });
             }, (message: NotifyMessage) => `group-child:${section.groupKey}:${message.id}`);
-
-            // 组内"加载更多"按钮：组内末尾子 ListItem，与消息行同级（消息行点击可正常触发）
             if (this.groupHasMore(section)) {
               ListItem() {
                 this.groupLoadMoreFooter(section);
@@ -121,16 +122,10 @@ export struct NotifyMessageList {
           }.swipeAction({ end: { builder: () => { this.deleteGroup(section); } } });
         }
       }, (section: NotifySection) => section.key);
-      // 列表底部"没有更多了"提示（有消息时显示）
       ListItem() {
         Row() {
-          Text('没有更多了')
-            .fontSize(13)
-            .fontColor($r('app.color.text_quinary_color'));
-        }
-        .width('100%')
-        .height(40)
-        .justifyContent(FlexAlign.Center);
+          Text('没有更多了').fontSize(13).fontColor($r('app.color.text_quinary_color'));
+        }.width('100%').height(40).justifyContent(FlexAlign.Center);
       }
       ListItem() { Row().width('100%').height(this.navBarHeight + (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 72 : 64)); }
     }

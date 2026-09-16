@@ -47,14 +47,12 @@ export function toggleGroupMessages(selectedIds: number[], messages: NotifyMessa
   return next;
 }
 
-/** 删除消息后，保留仍拥有至少两条消息的分组展开状态。 */
+/** 删除消息后，保留仍有消息的分组展开状态（空 group_key 对应“默认”分组，也需纳入统计）。 */
 export function retainExpandableGroups(messages: NotifyMessage[], expandedGroups: string[]): string[] {
   const counts: Map<string, number> = new Map<string, number>();
   for (let i = 0; i < messages.length; i++) {
     const groupKey: string = messages[i].group;
-    if (groupKey.length > 0) {
-      counts.set(groupKey, (counts.get(groupKey) ?? 0) + 1);
-    }
+    counts.set(groupKey, (counts.get(groupKey) ?? 0) + 1);
   }
-  return expandedGroups.filter((groupKey: string) => (counts.get(groupKey) ?? 0) >= 2);
+  return expandedGroups.filter((groupKey: string) => (counts.get(groupKey) ?? 0) >= 1);
 }
