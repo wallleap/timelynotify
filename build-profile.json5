@@ -5,13 +5,13 @@
         "name": "default",
         "type": "HarmonyOS",
         "material": {
-          "storeFile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/debug.p12",
+          "storeFile": "./signature/debug.p12",
           "storePassword": "0000001B005A17B75D71766A4415B35ECFE360AC091C1E15644F684961AD812E466A5D3AA270C07434195C",
           "keyAlias": "debugKey",
           "keyPassword": "0000001B0BED11722E6D6D09B189581F8AFC6664AC47F02C49D397CDC221053ADB38409A52B1C4CA0D00E4",
           "signAlg": "SHA256withECDSA",
-          "profile": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/debug.p7b",
-          "certpath": "/Users/luwang/DevEcoStudioProjects/timelynotify/signature/debug.cer"
+          "profile": "./signature/debug.p7b",
+          "certpath": "./signature/debug.cer"
         }
       },
       {
