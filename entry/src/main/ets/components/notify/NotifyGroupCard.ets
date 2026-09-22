@@ -1,5 +1,5 @@
 import { displayGroupTitle, formatNotifyTime, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifySection, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
-import { NotifyGroupCountBadge, NotifyGroupShellLayer } from './NotifyGroupVisuals';
+import { NotifyEncryptionBadge, NotifyGroupCountBadge, NotifyGroupShellLayer } from './NotifyGroupVisuals';
 import { NotifyMessage } from '../../model/NotifyMessage';
 
 /** 折叠态分组卡片，页面负责持有展开状态、高度和实际操作。 */
@@ -102,10 +102,13 @@ export struct NotifyGroupCard {
           }
           .width('100%').geometryTransition(`gmc:${this.section.groupKey}`)
           .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
-          Row() {
+          Row({ space: 6 }) {
+            if (this.section.messages[0].encrypted) {
+              NotifyEncryptionBadge();
+            }
+            Blank();
             Row() { this.groupCount(); }
               .geometryTransition(`gmb:${this.section.groupKey}`);
-            Blank();
           }.width('100%');
         }.layoutWeight(1);
       }

@@ -78,6 +78,19 @@
     ],
     "extensionAbilities": [
       {
+        "name": "RemoteNotificationExtAbility",
+        "srcEntry": "./ets/abilities/RemoteNotificationExtAbility.ets",
+        "type": "remoteNotification",
+        "exported": false,
+        "skills": [
+          {
+            "actions": [
+              "action.hms.push.extension.remotenotification"
+            ]
+          }
+        ]
+      },
+      {
         "name": "EntryBackupAbility",
         "srcEntry": "./ets/abilities/EntryBackupAbility.ets",
         "type": "backup",

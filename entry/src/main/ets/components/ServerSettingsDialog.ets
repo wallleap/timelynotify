@@ -22,29 +22,35 @@ export struct ServerSettingsDialog {
   });
 
   build() {
-    Column({ space: 14 }) {
-      Text('服务器设置')
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
-        .width('100%')
-        .textAlign(TextAlign.Center);
+    Scroll() {
+      Column({ space: 14 }) {
+        Text('服务器设置')
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .width('100%')
+          .textAlign(TextAlign.Center);
 
-      ServerSettingsContent({ maxListHeight: 280 });
+        ServerSettingsContent({ maxListHeight: 280 });
 
-      Text('关闭')
-        .fontSize(14)
-        .fontColor($r('app.color.color_text_hint'))
-        .padding(8)
-        .onClick(() => {
-          try {
-            if (this.controller) {
-              this.controller.close();
+        Text('关闭')
+          .fontSize(14)
+          .fontColor($r('app.color.color_text_hint'))
+          .padding(8)
+          .onClick(() => {
+            try {
+              if (this.controller) {
+                this.controller.close();
+              }
+            } catch (err) {
+              hilog.warn(DOMAIN, TAG, 'close dialog 调用失败');
             }
-          } catch (err) {
-            hilog.warn(DOMAIN, TAG, 'close dialog 调用失败');
-          }
-        });
+          });
+      }
+      .width('100%');
     }
+    .constraintSize({ maxHeight: '80%' })
+    .scrollBar(BarState.Auto)
+    .edgeEffect(EdgeEffect.Spring)
     .padding(18)
     .backgroundColor($r('app.color.color_bg_dialog'))
     .borderRadius(14);

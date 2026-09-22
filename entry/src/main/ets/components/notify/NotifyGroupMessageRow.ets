@@ -1,5 +1,6 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
 import { formatNotifyTime, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
+import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
 
 /** 展开分组内的一条消息行，保留共享元素转场、富文本与选择交互。 */
 @Component
@@ -98,7 +99,10 @@ export struct NotifyGroupMessageRow {
                   Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).flexShrink(0).alt($r('app.media.app_icon'));
                 }
               }.width('100%').alignItems(VerticalAlign.Top);
-            }.width('100%').geometryTransition(this.contentTransitionId)
+              if (this.message.encrypted) {
+                NotifyEncryptionBadge();
+              }
+            }.width('100%').alignItems(HorizontalAlign.Start).geometryTransition(this.contentTransitionId)
               .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
           }.layoutWeight(1).alignItems(HorizontalAlign.Start);
         }.width('100%').alignItems(VerticalAlign.Top).padding({ left: 14, right: 14, top: 16, bottom: 16 });

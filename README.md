@@ -11,7 +11,7 @@ push 链接同时发送到 iOS 和 HarmonyOS。
 
 TODO:
 
-- [ ] 加密
+- [x] 客户端端到端解密（AES128/AES192/AES256，CBC/ECB/GCM，按服务器独立配置）
 - [ ] 多语言
 - [ ] 等 PushKit API 完善点，实现更多推送参数
     - 实测结论：鸿蒙 Push Kit 通知点击仅支持 `actionType` 0（应用首页）/ 1（应用内页 + params 传数据），无通知栏操作按钮（复制等只能在
@@ -22,6 +22,10 @@ TODO:
 
 - 兼容 bark 的所有接口（`/register`、`/push` 等）
 - ⚠ 由于鸿蒙 PushKit 只有推送后台消息可以不用保活应用存储消息，但是约束有点多，就只能在服务器端存储消息了
+- 加密配置按服务器分别保存在 Harmony 客户端；Key 可明文输入或点击重置图标安全随机生成，并使用 Asset Store 安全存储、禁止设备/云同步，普通 Preferences 只保存非敏感配置。生成的新 Key 在保存前仅为候选值；保存变更过的 Key、算法或模式时会提醒先备份旧 Key并同步更新发送端，旧密文不保证继续可解密。服务器将 `ciphertext` 和 `iv` 保存在消息历史中，并向 Harmony 通知栏发送固定安全占位内容，不持有 Key、不解密明文
+- 通知原始数据携带 `ciphertext` 时，解密后的通知列表项会显示“加密”状态标签；本地缓存只保存该状态，不重复保存密文和 IV
+- CBC 使用发送端携带的 16 字节 IV，GCM 使用 12 字节 IV，ECB 不使用 IV；GCM 密文格式为 `Base64(ciphertext || 16-byte authTag)`，不使用 AAD
+- 当前实际链路为：系统通知显示固定安全占位内容，用户打开 App 后拉取消息历史并在本地解密。RemoteNotification 扩展解密代码作为未来取得 `push-type: 2` 权益后的预留能力保留，当前普通 `push-type: 0` 推送不会进入该扩展
 
 ## 应用流程
 
@@ -107,11 +111,15 @@ TODO:
     ├─ server_list_json              [{id,name,baseURL,isBuiltIn,deviceKey,clientToken}]（仅自定义）
     ├─ server_builtin_device_keys    {builtinId: deviceKey}（内置 key 专用）
     ├─ server_builtin_client_tokens  {builtinId: clientToken}（内置 token 专用）
+    ├─ server_encryption_configs     {serverId: {enabled,algorithm,mode,padding,deviceKey}}（不含 Key）
     ├─ server_current_id             当前选中 server
     ├─ server_deleted_builtin        已删除内置 id 列表
     ├─ color_mode                    主题颜色模式（system/light/dark）
     ├─ notify_enabled                通知开关
     └─ client_token                  旧版全局 token：仅作迁移源，迁移进 per-server 后删除
+
+  Asset Store（关键资产安全存储，SYNC_TYPE.NEVER）
+    └─ timelynotify.encryption.{serverId}  各服务器的端到端解密 Key
 ```
 
 ## 发版

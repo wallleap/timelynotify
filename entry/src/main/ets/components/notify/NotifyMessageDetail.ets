@@ -7,6 +7,7 @@ import {
   parseNotifyTextSegments
 } from './NotifyViewTypes';
 import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
+import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
 
 /** 通知详情全屏内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
@@ -230,9 +231,18 @@ export struct NotifyMessageDetail {
               } else if (this.message.body.length > 0) {
                 this.body(this.message.body);
               }
-              // 时间作为正文元信息的收尾；识别结果紧随其后，避免打断内容阅读。
-              Text(formatNotifyTime(this.message.timestamp)).fontSize(12).fontColor($r('app.color.color_text_hint'))
-                .width('100%').maxLines(1).textAlign(TextAlign.End).margin({ top: 14 });
+              // 加密状态与时间共用正文元信息行；识别结果紧随其后，避免打断内容阅读。
+              Row() {
+                if (this.message.encrypted) {
+                  NotifyEncryptionBadge();
+                }
+                Blank();
+                Text(formatNotifyTime(this.message.timestamp))
+                  .fontSize(12)
+                  .fontColor($r('app.color.color_text_hint'))
+                  .maxLines(1);
+              }
+              .width('100%').margin({ top: 14 }).alignItems(VerticalAlign.Center);
               this.recognizedActions(this.recognizedSegments());
               }
               .width('100%').padding({ left: 14, right: 14, top: 16, bottom: 16 });

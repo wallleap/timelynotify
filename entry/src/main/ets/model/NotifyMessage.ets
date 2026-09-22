@@ -26,6 +26,11 @@ export class NotifyMessage extends Object {
   // 运行时字段：消息所属服务器的 device_key（从本地缓存读出时赋值，不参与服务端 JSON 解析）。
   // 用于跨服务器场景下精确定位删除目标（不同服务器 id 空间独立，仅靠 id 会误删）
   deviceKey: string = '';
+  // 端到端加密字段仅用于客户端解密，不写入展示内容。
+  ciphertext: string = '';
+  iv: string = '';
+  // 原始消息是否携带 ciphertext；持久化到本地缓存，供解密后的列表展示状态标签。
+  encrypted: boolean = false;
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {
@@ -74,6 +79,10 @@ export class NotifyMessage extends Object {
       // 跳转 URL 从 extras.url 取，纯空白视为无链接
       const urlVal: Object | undefined = extras['url'];
       m.url = typeof urlVal === 'string' ? urlVal.trim() : '';
+      const ciphertextVal: Object | undefined = extras['ciphertext'];
+      m.ciphertext = typeof ciphertextVal === 'string' ? ciphertextVal.trim() : '';
+      const ivVal: Object | undefined = extras['iv'];
+      m.iv = typeof ivVal === 'string' ? ivVal : '';
     }
     // 兼容部分推送通道把 group 放在消息顶层的情况
     if (m.group.length === 0) {
@@ -85,6 +94,16 @@ export class NotifyMessage extends Object {
       const topUrlVal: Object | undefined = raw['url'];
       m.url = typeof topUrlVal === 'string' ? topUrlVal.trim() : '';
     }
+    // 兼容 ciphertext/iv 位于消息顶层的透传格式。
+    if (m.ciphertext.length === 0) {
+      const topCiphertextVal: Object | undefined = raw['ciphertext'];
+      m.ciphertext = typeof topCiphertextVal === 'string' ? topCiphertextVal.trim() : '';
+    }
+    if (m.iv.length === 0) {
+      const topIvVal: Object | undefined = raw['iv'];
+      m.iv = typeof topIvVal === 'string' ? topIvVal : '';
+    }
+    m.encrypted = m.ciphertext.length > 0;
 
     const dateVal: Object | undefined = raw['date'];
     m.date = typeof dateVal === 'string' ? dateVal : '';
@@ -93,6 +112,35 @@ export class NotifyMessage extends Object {
 
     m.timestamp = NotifyMessage.parseTimestamp(m.date.length > 0 ? m.date : m.createdAt);
     return m;
+  }
+
+  // 将解密后的 Bark 风格 JSON 内容覆盖到消息展示字段，服务端元数据（id/时间）保持不变。
+  applyDecrypted(raw: Record<string, Object>): void {
+    const titleVal: Object | undefined = raw['title'];
+    this.title = typeof titleVal === 'string' ? titleVal : '';
+    const bodyVal: Object | undefined = raw['body'];
+    const messageVal: Object | undefined = raw['message'];
+    this.body = typeof bodyVal === 'string' ? bodyVal :
+      (typeof messageVal === 'string' ? messageVal : '');
+    const subtitleVal: Object | undefined = raw['subtitle'];
+    this.subtitle = typeof subtitleVal === 'string' ? subtitleVal : '';
+    const iconVal: Object | undefined = raw['icon'];
+    this.image = typeof iconVal === 'string' ? iconVal : '';
+    const groupVal: Object | undefined = raw['group'];
+    this.group = typeof groupVal === 'string' ? groupVal.trim() : '';
+    const urlVal: Object | undefined = raw['url'];
+    this.url = typeof urlVal === 'string' ? urlVal.trim() : '';
+    const inboxVal: Object | undefined = raw['inboxContent'] !== undefined ?
+      raw['inboxContent'] : raw['inboxcontent'];
+    this.inboxContent = [];
+    if (inboxVal instanceof Array) {
+      const values: Object[] = inboxVal as Object[];
+      for (let i: number = 0; i < values.length; i++) {
+        if (typeof values[i] === 'string') {
+          this.inboxContent.push(values[i] as string);
+        }
+      }
+    }
   }
 
   // 解析时间字符串/数字为毫秒时间戳；失败返回 0

@@ -24,13 +24,16 @@ export struct ServerActionMenuDialog {
   };
   onClientToken: () => void = () => {
   };
+  onEncryption: () => void = () => {
+  };
   onRename: () => void = () => {
   };
   onDelete: () => void = () => {
   };
 
   build() {
-    Column() {
+    Scroll() {
+      Column() {
       // 顶部：标题 + 右上角 close icon
       Stack({ alignContent: Alignment.TopEnd }) {
         Text('操作')
@@ -96,6 +99,19 @@ export struct ServerActionMenuDialog {
 
       Divider().color($r('app.color.color_border_subtle'));
 
+      Text('加密设置')
+        .fontSize(16)
+        .fontColor($r('app.color.color_text_primary'))
+        .width('100%')
+        .height(52)
+        .textAlign(TextAlign.Center)
+        .onClick(() => {
+          this.close();
+          this.onEncryption();
+        });
+
+      Divider().color($r('app.color.color_border_subtle'));
+
       Text('设置服务器名称')
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
@@ -119,13 +135,13 @@ export struct ServerActionMenuDialog {
           this.close();
           this.onDelete();
         });
+      }
+      .width('100%');
     }
-    .padding({
-      top: 16,
-      bottom: 8,
-      left: 16,
-      right: 16
-    })
+    .constraintSize({ maxHeight: '80%' })
+    .scrollBar(BarState.Auto)
+    .edgeEffect(EdgeEffect.Spring)
+    .padding({ top: 16, bottom: 8, left: 16, right: 16 })
     .backgroundColor($r('app.color.color_bg_dialog'))
     .borderRadius(14);
   }

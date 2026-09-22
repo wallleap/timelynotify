@@ -1,5 +1,6 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
 import { formatNotifyTime, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
+import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
 
 /** 单条通知卡片；详情、选择与富文本交互通过页面回调处理。 */
 @Component
@@ -96,6 +97,9 @@ export struct NotifyMessageCard {
               Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover).flexShrink(0).alt($r('app.media.app_icon'));
             }
           }.width('100%').alignItems(VerticalAlign.Top);
+          if (this.message.encrypted) {
+            NotifyEncryptionBadge();
+          }
         }.layoutWeight(1).alignItems(HorizontalAlign.Start);
       }.width('100%').padding({ left: 14, right: 14, top: 16, bottom: 16 }).alignItems(VerticalAlign.Top);
       if (this.message.url.length > 0) {

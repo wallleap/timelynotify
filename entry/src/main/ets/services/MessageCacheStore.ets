@@ -29,6 +29,8 @@ const SQL_CREATE_MSG: string =
   'group_key TEXT NOT NULL DEFAULT \'\', ' +
   // 点击跳转 URL（对应 NotifyMessage.url，来自 extras.url）
   'url TEXT NOT NULL DEFAULT \'\', ' +
+  // 仅保存是否携带密文，不重复落库 ciphertext 与 IV。
+  'encrypted INTEGER NOT NULL DEFAULT 0, ' +
   'PRIMARY KEY (device_key, id)' +
   ')';
 
@@ -96,6 +98,7 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'inbox_content': JSON.stringify(m.inboxContent),
     'group_key': m.group,
     'url': m.url,
+    'encrypted': m.encrypted ? 1 : 0,
   };
   return bucket;
 }
@@ -118,6 +121,7 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.image = rs.getString(rs.getColumnIndex('image'));
     m.group = rs.getString(rs.getColumnIndex('group_key'));
     m.url = rs.getString(rs.getColumnIndex('url'));
+    m.encrypted = rs.getLong(rs.getColumnIndex('encrypted')) === 1;
     m.deviceKey = rs.getString(rs.getColumnIndex('device_key'));
     const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
     if (inboxStr && inboxStr.length > 0) {
@@ -157,10 +161,12 @@ export class MessageCacheStore {
   /**
    * 旧库结构迁移。
    * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效；
-   * v2 补充跳转链接 url 列；v3 为同步元信息增加一次性历史播种进度。
+   * v2 补充跳转链接 url 列；v3 为同步元信息增加一次性历史播种进度；
+   * v4 补充加密状态 encrypted 列，供解密后的消息显示状态标签。
    * 检测到缺失列时逐列补齐：
    * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
    * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
+   * - encrypted 缺失：旧行无法判断原始消息是否携带密文，清空消息与元信息后重新播种。
    */
   private static async migrateSchema(db: relationalStore.RdbStore): Promise<void> {
     try {
@@ -168,6 +174,7 @@ export class MessageCacheStore {
         await db.querySql(`PRAGMA table_info(${TABLE_MSG})`);
       let hasGroupKey: boolean = false;
       let hasUrl: boolean = false;
+      let hasEncrypted: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
@@ -176,6 +183,8 @@ export class MessageCacheStore {
             hasGroupKey = true;
           } else if (col === 'url') {
             hasUrl = true;
+          } else if (col === 'encrypted') {
+            hasEncrypted = true;
           }
         } while (rs.goToNextRow());
       }
@@ -193,6 +202,13 @@ export class MessageCacheStore {
         hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 url 列');
         await db.executeSql(
           `ALTER TABLE ${TABLE_MSG} ADD COLUMN url TEXT NOT NULL DEFAULT ''`);
+      }
+      if (!hasEncrypted) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 encrypted 列并清空旧缓存');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`);
+        await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
+        await db.executeSql(`DELETE FROM ${TABLE_META}`);
       }
 
       // 旧版本的 max_id 只代表“已拉到的最新消息”，不能证明历史已完整。

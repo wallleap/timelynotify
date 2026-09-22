@@ -7,6 +7,9 @@ import { HttpResponse, HttpUtil } from '../utils/HttpUtil';
 import { AppContextStore } from '../common/AppContextStore';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { DOMAIN } from '../common/Constant';
+import { EncryptionConfig } from '../model/EncryptionConfig';
+import { EncryptionConfigService } from './EncryptionConfigService';
+import { MessageCryptoService } from './MessageCryptoService';
 
 const TAG: string = 'NotifyMsgSvc';
 
@@ -219,12 +222,14 @@ export class NotifyMessageService {
     await ServerManager.getInstance().ensureLoaded();
     let deviceKey: string = '';
     let baseURL: string = '';
+    let activeServer: ServerEntry | null = server;
     if (server) {
       deviceKey = server.deviceKey;
       baseURL = server.baseURL;
     } else {
       deviceKey = await ServerManager.getInstance().getCurrentDeviceKey(context);
       baseURL = ServerManager.getInstance().getCurrentBaseURL();
+      activeServer = ServerManager.getInstance().getCurrentServer();
     }
     if (!deviceKey || deviceKey.length === 0) {
       result.errorMsg = '设备未注册';
@@ -288,6 +293,32 @@ export class NotifyMessageService {
 
     // 顶层直接是 {paging, messages}，不走服务端统一 envelope
     result.messages = NotifyMessageService.extractMessages(resp.result as Object);
+    if (activeServer) {
+      const encryption: EncryptionConfig = await EncryptionConfigService.get(context, activeServer.id);
+      for (let i: number = 0; i < result.messages.length; i++) {
+        const message: NotifyMessage = result.messages[i];
+        message.deviceKey = deviceKey;
+        if (message.ciphertext.length === 0) {
+          continue;
+        }
+        if (!encryption.enabled) {
+          message.title = '加密消息';
+          message.body = '此服务器尚未配置加密密钥';
+          continue;
+        }
+        try {
+          const decrypted: Record<string, Object> = await MessageCryptoService.decrypt(
+            encryption, message.ciphertext, message.iv);
+          message.applyDecrypted(decrypted);
+        } catch (err) {
+          // 不记录密钥、IV 或密文，仅记录无敏感信息的失败原因。
+          hilog.warn(DOMAIN, TAG, '消息解密失败：%{public}s',
+            err instanceof Error ? err.message : String(err));
+          message.title = '加密消息';
+          message.body = '解密失败，请检查算法、模式、Padding 和 Key';
+        }
+      }
+    }
 
     // 解析 paging.hasMore（after 增量翻页用）
     const raw = resp.result as Object as Record<string, Object>;

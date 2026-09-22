@@ -6,6 +6,7 @@ import { AppContextStore } from '../common/AppContextStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { HttpResponse, HttpUtil } from '../utils/HttpUtil';
 import { DeviceRegisterService } from './DeviceRegisterService';
+import { EncryptionConfigService } from './EncryptionConfigService';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'ServerMgr';
@@ -410,14 +411,15 @@ export class ServerManager {
     const ctx: common.Context | null = resolveContext(context);
     const entry: ServerEntry | null = this.findById(serverId);
     if (entry) {
-      if (entry.deviceKey === deviceKey) {
-        return;
+      if (entry.deviceKey !== deviceKey) {
+        entry.deviceKey = deviceKey;
+        await this.persist(ctx);
+        hilog.info(DOMAIN, TAG, '已更新 device_key：serverId=%{public}s key=%{public}s', serverId, deviceKey);
+        // key 决定通知缓存与远端历史的归属；变更后必须通知视图丢弃旧 key 的内存数据并重新同步。
+        this.emitChange();
       }
-      entry.deviceKey = deviceKey;
-      await this.persist(ctx);
-      hilog.info(DOMAIN, TAG, '已更新 device_key：serverId=%{public}s key=%{public}s', serverId, deviceKey);
-      // key 决定通知缓存与远端历史的归属；变更后必须通知视图丢弃旧 key 的内存数据并重新同步。
-      this.emitChange();
+      // 即使 ServerEntry 已是同一 deviceKey，也要修复旧版或中断流程留下的加密配置索引。
+      await EncryptionConfigService.updateDeviceKey(ctx, serverId, deviceKey);
     }
   }
 

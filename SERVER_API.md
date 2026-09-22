@@ -285,7 +285,8 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 | icon           | string     | 图标 URL（iOS 15+）                                          | 华为会自动校验图片是否合规，必须是 HTTPS URL，支持图片格式为PNG、JPG、JPEG、BMP、WEBP，图片像素的总字节数不超过192KB，若超过则图片不展示 |
 | image          | string     | 图片 URL（iOS 15+）                                          | -                                                            |
 | group          | string     | 通知分组                                                     |                                                              |
-| ciphertext     | string     | 加密推送的密文                                               | -                                                            |
+| ciphertext     | string     | 加密推送的 Base64 密文                                       | 系统通知显示安全占位内容；密文保留在历史消息中供客户端打开后解密 |
+| iv             | string     | 发送端为每条消息随机生成的 IV；CBC 16 UTF-8 字节，GCM 12 UTF-8 字节；ECB 省略 | 与密文一起保存在消息历史中，供客户端解密                     |
 | markdown       | string     | Markdown 正文，覆盖 `body`                                   |                                                              |
 | isArchive      | string     | `1` 时由 App 归档                                            | -                                                            |
 | ttl            | integer    | 归档消息存活秒数，过期自动删除                               | -                                                            |
@@ -297,6 +298,19 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 | data           | `string`   | -                                                            | 自定义数据载荷                                               |
 
 > 表外字段原样透传为 APNs 自定义字段（`payload.custom`），key 转小写。
+
+#### HarmonyOS 端到端加密载荷约定
+
+加密设置按服务器独立保存在客户端，Key 使用 HarmonyOS Asset Store 安全存储并设置为禁止设备/云同步，不进入普通 Preferences，也不上传服务器。旧版本曾写入 Preferences 的 Key 会在首次读取配置时自动迁移，安全写入成功后才清除旧值。发送端先把完整通知内容编码为 UTF-8 JSON（可包含 `title`、`body`、`subtitle`、`icon`、`group`、`url`、`inboxContent`），再使用该服务器约定的配置加密。
+
+- 算法：`AES128`、`AES192`、`AES256`，Key 分别为 16、24、32 个 UTF-8 字节。
+- 模式：`CBC`、`ECB`、`GCM`。
+- Padding：CBC/ECB 固定 `PKCS7`，GCM 固定 `NoPadding`；客户端仅展示该值，不允许单独选择。
+- IV：CBC 为 16 个 UTF-8 字节，GCM 为 12 个 UTF-8 字节，必须由发送端为每条消息重新生成并随请求携带；ECB 不使用 IV。
+- GCM：不使用 AAD，16 字节认证标签拼接在密文末尾，整个 `ciphertext || authTag` 再编码为 Base64。
+- 解密失败时客户端只展示占位提示，不回退到其它服务器的 Key，也不会把 Key、IV 或密文写入日志。
+
+> Harmony 服务端保持端到端加密边界：Key 不上传，系统通知只显示固定安全占位内容；`ciphertext` 与 `iv` 保存在消息历史中，用户打开客户端后再拉取并本地解密。由于普通应用无法取得 Push Kit `push-type: 2` 权益，通知栏展示前无法运行解密扩展。
 
 ### 多平台扇出
 

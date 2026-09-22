@@ -7,6 +7,11 @@ import { ServerActionMenuDialog, ServerKeyDialog, ServerRenameDialog, } from './
 import { ClientTokenDialog } from './ClientTokenDialog';
 import showToast from './showToast';
 import { DOMAIN } from '../common/Constant';
+import { KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
+import { EncryptionConfig } from '../model/EncryptionConfig';
+import { EncryptionConfigService } from '../services/EncryptionConfigService';
+import { MessageCacheStore } from '../services/MessageCacheStore';
+import { EncryptionSettingsDialog } from './EncryptionSettingsDialog';
 
 const TAG: string = 'ServerContent';
 
@@ -40,6 +45,7 @@ export struct ServerSettingsContent {
   @State currentDeviceKey: string = '';
   // 当前 server 的 per-server client token（客户端 Token 弹窗预填/参考用）
   @State currentClientToken: string = '';
+  @State currentEncryptionConfig: EncryptionConfig = new EncryptionConfig();
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   // 操作菜单 controller（目标由 targetId 持有，回调闭包捕获 this 取最新值）
   private actionMenuController: CustomDialogController = new CustomDialogController({
@@ -52,6 +58,9 @@ export struct ServerSettingsContent {
       },
       onClientToken: () => {
         this.openClientTokenDialog();
+      },
+      onEncryption: () => {
+        this.openEncryptionDialog();
       },
       onRename: () => {
         this.openRenameDialog();
@@ -99,6 +108,20 @@ export struct ServerSettingsContent {
     autoCancel: true,
     offset: { dx: 0, dy: 0 },
   });
+  private encryptionController: CustomDialogController = new CustomDialogController({
+    builder: EncryptionSettingsDialog({
+      getConfig: (): EncryptionConfig => this.currentEncryptionConfig,
+      getServerName: (): string => this.targetName,
+      onSave: (config: EncryptionConfig): void => {
+        this.saveEncryption(config);
+      },
+      onClear: (): void => {
+        this.clearEncryption();
+      },
+    }),
+    alignment: DialogAlignment.Center,
+    autoCancel: true,
+  });
 
   aboutToAppear() {
     this.refresh();
@@ -141,6 +164,7 @@ export struct ServerSettingsContent {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .width('100%');
+
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1);
@@ -357,6 +381,56 @@ export struct ServerSettingsContent {
     }
   }
 
+  private async openEncryptionDialog(): Promise<void> {
+    const server: ServerEntry | null = this.findTarget();
+    if (!server) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
+    this.currentEncryptionConfig = await EncryptionConfigService.get(null, server.id);
+    try {
+      this.encryptionController.open();
+    } catch (_err) {
+      hilog.warn(DOMAIN, TAG, 'encryption dialog open 失败');
+      showToast(this.getUIContext(), '弹窗无法打开');
+    }
+  }
+
+  private async saveEncryption(config: EncryptionConfig): Promise<void> {
+    const server: ServerEntry | null = this.findTarget();
+    if (!server) {
+      return;
+    }
+    config.deviceKey = server.deviceKey;
+    const ok: boolean = await EncryptionConfigService.save(null, server.id, config);
+    if (ok) {
+      this.currentEncryptionConfig = config;
+      await this.refreshEncryptedMessages(server.deviceKey);
+    }
+    showToast(this.getUIContext(), ok ? '加密设置已保存' : '保存失败');
+  }
+
+  private async clearEncryption(): Promise<void> {
+    const server: ServerEntry | null = this.findTarget();
+    if (!server) {
+      return;
+    }
+    const ok: boolean = await EncryptionConfigService.remove(null, server.id);
+    if (ok) {
+      this.currentEncryptionConfig = new EncryptionConfig();
+      await this.refreshEncryptedMessages(server.deviceKey);
+    }
+    showToast(this.getUIContext(), ok ? '加密设置已清除' : '清除失败');
+  }
+
+  private async refreshEncryptedMessages(deviceKey: string): Promise<void> {
+    if (deviceKey.length > 0) {
+      await MessageCacheStore.clearDevice(deviceKey);
+    }
+    const current: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
+    AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, current + 1);
+  }
+
   // 复制 {baseURL}/{device_key} 到剪贴板
   private async handleCopy(): Promise<void> {
     const server: ServerEntry | null = this.findTarget();
@@ -480,6 +554,8 @@ export struct ServerSettingsContent {
     }
     const ok: boolean = await mgr.deleteServer(null, id);
     if (ok) {
+      // 服务器删除后同时清除其本地密钥，避免孤立的敏感配置长期残留。
+      await EncryptionConfigService.remove(null, id);
       showToast(this.getUIContext(), '已删除', 1200);
     } else {
       showToast(this.getUIContext(), '删除失败');
