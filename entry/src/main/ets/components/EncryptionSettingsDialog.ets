@@ -189,13 +189,14 @@ export struct EncryptionSettingsDialog {
         }
         .width('100%');
       }
-      .width('100%');
+      .width('100%')
+      .padding(18);
     }
     .width('92%')
     .constraintSize({ maxHeight: '80%' })
-    .scrollBar(BarState.Auto)
+    // 系统滚动条会在自定义圆角弹窗内额外缩进；隐藏指示条但保留手势滚动。
+    .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
-    .padding(18)
     .backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius(14);
   }
