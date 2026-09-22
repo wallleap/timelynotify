@@ -23,7 +23,7 @@ TODO:
 - 兼容 bark 的所有接口（`/register`、`/push` 等）
 - ⚠ 由于鸿蒙 PushKit 只有推送后台消息可以不用保活应用存储消息，但是约束有点多，就只能在服务器端存储消息了
 - 加密配置按服务器分别保存在 Harmony 客户端；Key 可明文输入或点击重置图标安全随机生成，并使用 Asset Store 安全存储、禁止设备/云同步，普通 Preferences 只保存非敏感配置。生成的新 Key 在保存前仅为候选值；保存变更过的 Key、算法或模式时会提醒先备份旧 Key并同步更新发送端，旧密文不保证继续可解密。服务器将 `ciphertext` 和 `iv` 保存在消息历史中，并向 Harmony 通知栏发送固定安全占位内容，不持有 Key、不解密明文
-- 通知原始数据携带 `ciphertext` 时，解密后的通知列表项会显示“加密”状态标签；本地缓存只保存该状态，不重复保存密文和 IV
+- 通知原始数据携带 `ciphertext` 时，客户端先解密再落库：本地同时保存解密明文、原始 `ciphertext`/`iv` 和“加密”状态标签，便于远程记录删除后仍可更换配置重新解密
 - CBC 使用发送端携带的 16 字节 IV，GCM 使用 12 字节 IV，ECB 不使用 IV；GCM 密文格式为 `Base64(ciphertext || 16-byte authTag)`，不使用 AAD
 - 当前实际链路为：系统通知显示固定安全占位内容，用户打开 App 后拉取消息历史并在本地解密。RemoteNotification 扩展解密代码作为未来取得 `push-type: 2` 权益后的预留能力保留，当前普通 `push-type: 0` 推送不会进入该扩展
 
@@ -78,18 +78,20 @@ TODO:
     └─ 异步 syncKeyForServer（新 server 的 key 验证/还原/重置）
 
 ┌─────────────────────────────────────────────────────────────────┐
-│               拉取/删除消息（NotifyMessageService）               │
+│               迁移远程消息（NotifyMessageService）               │
 └─────────────────────────────────────────────────────────────────┘
-  getMessages / deleteMessage / deleteAllMessages
+  getMessages
     └─ ServerManager.getCurrentDeviceKey()
           ├─ 当前 server 的 per-server deviceKey 非空 → 直接用
           └─ 为空（刚切换/首次）→ 内联 syncKeyForServer → 拿到 key
     └─ resolveURL(`/{key}/message...`) → 请求当前 server
+          └─ 每页：解密 → 明文+密文写入本地成功 → 删除对应远程记录
+                └─ 远程删除失败 → 保留服务器副本，下次从 after=0 幂等重试
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                  通知列表刷新（NotifyView）                      │
 └─────────────────────────────────────────────────────────────────┘
-  全量刷新 getMessages（重置列表/分页）：
+  后台迁移 getMessages（每次从远程待迁移队列 after=0 开始）：
     ├─ 组件初始化 / 服务器切换 / 下拉刷新
     ├─ 切回「通知」Tab（homeTabIndex watch）
     └─ App 回前台 / 点击系统通知拉起
@@ -97,10 +99,14 @@ TODO:
              → AppStorage KEY_NOTIFY_REFRESH_SIGNAL 信号
 
   增量轮询（「通知」Tab 可见期间，间隔 15s）：
-    ├─ 仅插入 id > 当前列表最大 id 的新消息（不打断滚动/分页）
+    ├─ 新消息写入本地后删除远程副本（不打断滚动/分页）
     └─ 启停：通知 Tab 可见 && 主页栈顶 && App 前台
          └─ 主页栈顶可见性：Index.onPageShow/onPageHide
             → AppStorage KEY_INDEX_PAGE_VISIBLE
+
+  用户删除：仅删除本地副本，不再请求远程删除
+    ├─ 单条/多选/清空均明确提示“删除后无法恢复”
+    └─ 删除分组按 group_key 一次删除数据库中的全部通知（含未加载部分）
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                         存储结构                                 │

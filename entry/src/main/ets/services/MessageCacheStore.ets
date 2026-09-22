@@ -29,8 +29,10 @@ const SQL_CREATE_MSG: string =
   'group_key TEXT NOT NULL DEFAULT \'\', ' +
   // 点击跳转 URL（对应 NotifyMessage.url，来自 extras.url）
   'url TEXT NOT NULL DEFAULT \'\', ' +
-  // 仅保存是否携带密文，不重复落库 ciphertext 与 IV。
+  // 保存加密标记与原始密文，便于远程历史删除后仍可在本地更换 Key 重新解密。
   'encrypted INTEGER NOT NULL DEFAULT 0, ' +
+  'ciphertext TEXT NOT NULL DEFAULT \'\', ' +
+  'iv TEXT NOT NULL DEFAULT \'\', ' +
   'PRIMARY KEY (device_key, id)' +
   ')';
 
@@ -99,6 +101,8 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'group_key': m.group,
     'url': m.url,
     'encrypted': m.encrypted ? 1 : 0,
+    'ciphertext': m.ciphertext,
+    'iv': m.iv,
   };
   return bucket;
 }
@@ -122,6 +126,8 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.group = rs.getString(rs.getColumnIndex('group_key'));
     m.url = rs.getString(rs.getColumnIndex('url'));
     m.encrypted = rs.getLong(rs.getColumnIndex('encrypted')) === 1;
+    m.ciphertext = rs.getString(rs.getColumnIndex('ciphertext'));
+    m.iv = rs.getString(rs.getColumnIndex('iv'));
     m.deviceKey = rs.getString(rs.getColumnIndex('device_key'));
     const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
     if (inboxStr && inboxStr.length > 0) {
@@ -152,7 +158,7 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
 
 /**
  * 消息本地缓存（关系型数据库 SQLite）。
- * 按 device_key 隔离，缓存优先于网络渲染，配合服务端 after/deletedSince 协议增量同步。
+ * 按 device_key 隔离，缓存优先于网络渲染；远程通知迁移完成后由本地缓存承载历史展示。
  * 单例 + 静态方法风格，与项目其它服务层一致。
  */
 export class MessageCacheStore {
@@ -162,7 +168,8 @@ export class MessageCacheStore {
    * 旧库结构迁移。
    * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效；
    * v2 补充跳转链接 url 列；v3 为同步元信息增加一次性历史播种进度；
-   * v4 补充加密状态 encrypted 列，供解密后的消息显示状态标签。
+   * v4 补充加密状态 encrypted 列，供解密后的消息显示状态标签；
+   * v5 补充 ciphertext/iv 列，使远程记录迁移删除后仍可在本地重新解密。
    * 检测到缺失列时逐列补齐：
    * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
    * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
@@ -175,6 +182,8 @@ export class MessageCacheStore {
       let hasGroupKey: boolean = false;
       let hasUrl: boolean = false;
       let hasEncrypted: boolean = false;
+      let hasCiphertext: boolean = false;
+      let hasIv: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
@@ -185,6 +194,10 @@ export class MessageCacheStore {
             hasUrl = true;
           } else if (col === 'encrypted') {
             hasEncrypted = true;
+          } else if (col === 'ciphertext') {
+            hasCiphertext = true;
+          } else if (col === 'iv') {
+            hasIv = true;
           }
         } while (rs.goToNextRow());
       }
@@ -209,6 +222,16 @@ export class MessageCacheStore {
           `ALTER TABLE ${TABLE_MSG} ADD COLUMN encrypted INTEGER NOT NULL DEFAULT 0`);
         await db.executeSql(`DELETE FROM ${TABLE_MSG}`);
         await db.executeSql(`DELETE FROM ${TABLE_META}`);
+      }
+      if (!hasCiphertext) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 ciphertext 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN ciphertext TEXT NOT NULL DEFAULT ''`);
+      }
+      if (!hasIv) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 iv 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN iv TEXT NOT NULL DEFAULT ''`);
       }
 
       // 旧版本的 max_id 只代表“已拉到的最新消息”，不能证明历史已完整。
@@ -443,6 +466,54 @@ export class MessageCacheStore {
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'upsertMessages 失败：%{public}s', formatError(err));
       return false;
+    }
+  }
+
+  /** 读取某设备全部仍保留原始密文的通知，供 Key 或算法变更后在本地重新解密。 */
+  static async loadEncryptedMessages(deviceKey: string): Promise<NotifyMessage[]> {
+    const db = await MessageCacheStore.getStore();
+    const messages: NotifyMessage[] = [];
+    if (!db) {
+      return messages;
+    }
+    try {
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key=? AND ciphertext<>'' ORDER BY id ASC`, [deviceKey]);
+      if (rs.goToFirstRow()) {
+        do {
+          messages.push(rowToMessage(rs));
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadEncryptedMessages 失败：%{public}s', formatError(err));
+    }
+    return messages;
+  }
+
+  /** 删除一个或多个设备中指定分组的全部本地通知，返回实际删除条数。 */
+  static async deleteGroup(deviceKeys: string[], groupKey: string): Promise<number> {
+    const db = await MessageCacheStore.getStore();
+    if (!db || deviceKeys.length === 0) {
+      return 0;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const args: string[] = deviceKeys.slice();
+      args.push(groupKey);
+      const where: string = `device_key IN (${placeholders}) AND group_key=?`;
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT COUNT(*) AS cnt FROM ${TABLE_MSG} WHERE ${where}`, args);
+      let count: number = 0;
+      if (rs.goToFirstRow()) {
+        count = rs.getLong(rs.getColumnIndex('cnt'));
+      }
+      rs.close();
+      await db.executeSql(`DELETE FROM ${TABLE_MSG} WHERE ${where}`, args);
+      return count;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'deleteGroup 失败：%{public}s', formatError(err));
+      return -1;
     }
   }
 

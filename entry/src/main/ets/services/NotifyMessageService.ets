@@ -10,6 +10,7 @@ import { DOMAIN } from '../common/Constant';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from './EncryptionConfigService';
 import { MessageCryptoService } from './MessageCryptoService';
+import { MessageCacheStore } from './MessageCacheStore';
 
 const TAG: string = 'NotifyMsgSvc';
 
@@ -505,6 +506,35 @@ export class NotifyMessageService {
       hilog.warn(DOMAIN, TAG, '删除消息异常：%{public}s', msg);
       return `删除失败：${msg}`;
     }
+  }
+
+  /**
+   * 使用服务器当前配置重新解密本地密文。只在成功时覆盖明文，错误配置不会破坏已保存内容。
+   */
+  async redecryptCachedMessages(server: ServerEntry,
+    context: common.Context | null = null): Promise<number> {
+    if (!server.deviceKey || server.deviceKey.length === 0) {
+      return 0;
+    }
+    const encryption: EncryptionConfig = await EncryptionConfigService.get(context, server.id);
+    if (!encryption.enabled) {
+      return 0;
+    }
+    const messages: NotifyMessage[] = await MessageCacheStore.loadEncryptedMessages(server.deviceKey);
+    let successCount: number = 0;
+    for (let i: number = 0; i < messages.length; i++) {
+      try {
+        const decrypted: Record<string, Object> = await MessageCryptoService.decrypt(
+          encryption, messages[i].ciphertext, messages[i].iv);
+        messages[i].applyDecrypted(decrypted);
+        if (await MessageCacheStore.upsertMessages(server.deviceKey, [messages[i]])) {
+          successCount++;
+        }
+      } catch (_err) {
+        // 保留已有明文和原始密文；可能属于旧 Key，不能用失败占位内容覆盖。
+      }
+    }
+    return successCount;
   }
 
   // 删除全部消息（服务端 API）：DELETE /{device_key}/message。server 为空时操作当前服务器。

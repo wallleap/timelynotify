@@ -31,6 +31,8 @@ export class NotifyMessage extends Object {
   iv: string = '';
   // 原始消息是否携带 ciphertext；持久化到本地缓存，供解密后的列表展示状态标签。
   encrypted: boolean = false;
+  // 仅用于本次远程迁移：普通消息默认可清理；加密消息必须成功解密后才允许删除远程副本。
+  migrationReady: boolean = true;
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {
@@ -104,6 +106,7 @@ export class NotifyMessage extends Object {
       m.iv = typeof topIvVal === 'string' ? topIvVal : '';
     }
     m.encrypted = m.ciphertext.length > 0;
+    m.migrationReady = !m.encrypted;
 
     const dateVal: Object | undefined = raw['date'];
     m.date = typeof dateVal === 'string' ? dateVal : '';
@@ -141,6 +144,7 @@ export class NotifyMessage extends Object {
         }
       }
     }
+    this.migrationReady = true;
   }
 
   // 解析时间字符串/数字为毫秒时间戳；失败返回 0

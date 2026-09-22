@@ -47,6 +47,8 @@ const TAG: string = 'NotifyView';
 const POLL_INTERVAL_MS: number = 15000;
 // 服务端单页上限；首次历史播种持续分页，直到服务端明确返回 hasMore=false。
 const SYNC_PAGE_SIZE: number = 100;
+// 远程迁移清理采用小批量并发，避免首次历史较多时同时发出 100 个 DELETE 请求。
+const REMOTE_DELETE_CONCURRENCY: number = 6;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -819,12 +821,25 @@ export struct NotifyView {
     });
   }
 
+  /** 从当前内存列表移除整个分组，数据库删除会覆盖该组尚未加载的历史通知。 */
+  private removeGroupFromList(groupKey: string): void {
+    const remaining: NotifyMessage[] = this.messages.filter((message: NotifyMessage) => message.group !== groupKey);
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
+      this.messages = remaining;
+      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups);
+      if (this.messages.length === 0) {
+        this.exitEditMode();
+      }
+    });
+  }
+
   // ====== 删除确认与执行 ======
   private confirmDeleteOne(m: NotifyMessage): void {
     const uiCtx: UIContext = this.getUIContext();
     uiCtx.getPromptAction().showDialog({
-      title: '确认删除',
-      message: `确定要删除这条消息吗？${m.title && m.title.length > 0 ? '\n「' + m.title + '」' : ''}`,
+      title: '从本机删除通知',
+      message: `此通知已从服务器迁移到本机。删除后无法恢复。${m.title && m.title.length > 0 ?
+        '\n\n「' + m.title + '」' : ''}`,
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '删除', color: $r('app.color.color_error') },
@@ -833,15 +848,7 @@ export struct NotifyView {
       if (err || result.index !== 1) {
         return;
       }
-      const svc = NotifyMessageService.getInstance();
-      // 用消息自带的 deviceKey 定位来源服务器，避免跨服务器同 id 误删
-      const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
-      const errMsg: string = await svc.deleteMessage(m.id, null, server);
-      if (errMsg.length > 0) {
-        showToast(uiCtx, errMsg);
-        return;
-      }
-      // 同步删除本地缓存（按 deviceKey + id 精确删除）
+      // 远程记录已在同步落库后清理；用户操作只删除本地副本。
       if (m.deviceKey && m.deviceKey.length > 0) {
         const pair: DeviceIdPair = { deviceKey: m.deviceKey, id: m.id };
         await MessageCacheStore.deleteByDeviceIdPairs([pair]);
@@ -857,11 +864,10 @@ export struct NotifyView {
 
   private confirmDeleteGroup(section: NotifySection): void {
     const uiCtx: UIContext = this.getUIContext();
-    const messages: NotifyMessage[] = section.messages;
-    const count: number = messages.length;
+    const count: number = section.total;
     uiCtx.getPromptAction().showDialog({
-      title: '删除整个分组',
-      message: `确定要删除该分组的 ${count} 条消息吗？此操作不可恢复。`,
+      title: '从本机删除整个分组',
+      message: `将删除该分组的全部 ${count} 条本地通知，包括尚未加载的历史通知。删除后无法恢复。`,
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
@@ -870,34 +876,19 @@ export struct NotifyView {
       if (err || result.index !== 1) {
         return;
       }
-      const svc = NotifyMessageService.getInstance();
-      let failCount = 0;
-      // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
-      const pairs: DeviceIdPair[] = [];
-      for (let i = 0; i < messages.length; i++) {
-        const m: NotifyMessage = messages[i];
-        const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
-        const errMsg: string = await svc.deleteMessage(m.id, null, server);
-        if (errMsg.length > 0) {
-          failCount++;
-          hilog.warn(DOMAIN, TAG, '删除分组消息 %{public}d 失败：%{public}s', m.id, errMsg);
-        } else if (m.deviceKey && m.deviceKey.length > 0) {
-          pairs.push({ deviceKey: m.deviceKey, id: m.id });
-        }
+      showToast(uiCtx, `正在删除 ${count} 条本地通知…`);
+      const deviceKeys: string[] = this.viewAll ? this.getAllDeviceKeys() : [this.findCurrentDeviceKey()];
+      const deleted: number = await MessageCacheStore.deleteGroup(deviceKeys, section.groupKey);
+      if (deleted < 0) {
+        showToast(uiCtx, '删除失败，请稍后重试');
+        return;
       }
-      if (pairs.length > 0) {
-        await MessageCacheStore.deleteByDeviceIdPairs(pairs);
-      }
-      this.removeFromList(section.messages.map((m: NotifyMessage) => m.id));
+      this.removeGroupFromList(section.groupKey);
       // 刷新分组总数
       this.groupTotals = this.viewAll
         ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
         : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
-      if (failCount > 0) {
-        showToast(uiCtx, `删除完成，${failCount} 条失败`);
-      } else {
-        showToast(uiCtx, `已删除 ${count} 条`);
-      }
+      showToast(uiCtx, `已从本机删除 ${deleted} 条`);
     });
   }
 
@@ -911,8 +902,8 @@ export struct NotifyView {
     const uiCtx: UIContext = this.getUIContext();
     const count: number = this.selectedIds.length;
     uiCtx.getPromptAction().showDialog({
-      title: '确认删除',
-      message: `确定要删除选中的 ${count} 条消息吗？此操作不可恢复。`,
+      title: '从本机删除通知',
+      message: `将删除选中的 ${count} 条本地通知。删除后无法恢复。`,
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
@@ -922,8 +913,6 @@ export struct NotifyView {
         return;
       }
       const ids: number[] = [...this.selectedIds];
-      const svc = NotifyMessageService.getInstance();
-      let failCount = 0;
       // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
       const pairs: DeviceIdPair[] = [];
       for (let i = 0; i < this.messages.length; i++) {
@@ -931,12 +920,7 @@ export struct NotifyView {
         if (ids.indexOf(m.id) < 0) {
           continue;
         }
-        const server: ServerEntry | null = this.findServerByDeviceKey(m.deviceKey);
-        const errMsg: string = await svc.deleteMessage(m.id, null, server);
-        if (errMsg.length > 0) {
-          failCount++;
-          hilog.warn(DOMAIN, TAG, '删除消息 %{public}d 失败：%{public}s', m.id, errMsg);
-        } else if (m.deviceKey && m.deviceKey.length > 0) {
+        if (m.deviceKey && m.deviceKey.length > 0) {
           pairs.push({ deviceKey: m.deviceKey, id: m.id });
         }
       }
@@ -948,11 +932,7 @@ export struct NotifyView {
         : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
       this.removeFromList(ids);
       this.exitEditMode();
-      if (failCount > 0) {
-        showToast(uiCtx, `删除完成，${failCount} 条失败`);
-      } else {
-        showToast(uiCtx, `已删除 ${ids.length} 条`);
-      }
+      showToast(uiCtx, `已从本机删除 ${pairs.length} 条`);
     });
   }
 
@@ -966,8 +946,8 @@ export struct NotifyView {
     uiCtx.getPromptAction().showDialog({
       title: '清空全部消息',
       message: this.viewAll
-        ? '将删除所有服务器的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！'
-        : '将删除当前设备的全部消息（包括未加载的历史消息），删除后无法找回。\n\n注意：此操作不可恢复！',
+        ? '将删除本机保存的所有服务器通知，包括未加载的历史通知。服务器副本已在同步后清理，删除后无法恢复。'
+        : '将删除本机保存的当前服务器全部通知，包括未加载的历史通知。服务器副本已在同步后清理，删除后无法恢复。',
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
@@ -976,35 +956,15 @@ export struct NotifyView {
       if (err || result.index !== 1) {
         return;
       }
-      const svc = NotifyMessageService.getInstance();
       if (this.viewAll) {
-        // 全部模式：逐个清空所有已注册服务器
-        const servers: ServerEntry[] = this.getAllRegisteredServers();
-        let failCount = 0;
-        for (let i = 0; i < servers.length; i++) {
-          const errMsg: string = await svc.deleteAllMessages(null, servers[i]);
-          if (errMsg.length > 0) {
-            failCount++;
-            hilog.warn(DOMAIN, TAG, '清空服务器 %{public}s 失败：%{public}s', servers[i].name, errMsg);
-          }
-        }
         await MessageCacheStore.clearAllDevices();
-        if (failCount > 0) {
-          showToast(uiCtx, `清空完成，${failCount} 个服务器失败`);
-        } else {
-          showToast(uiCtx, '已清空全部消息');
-        }
+        showToast(uiCtx, '已清空本机全部通知');
       } else {
-        const errMsg: string = await svc.deleteAllMessages();
-        if (errMsg.length > 0) {
-          showToast(uiCtx, errMsg);
-          return;
-        }
         const deviceKey: string = this.findCurrentDeviceKey();
         if (deviceKey && deviceKey.length > 0) {
           await MessageCacheStore.clearDevice(deviceKey);
         }
-        showToast(uiCtx, '已清空全部消息');
+        showToast(uiCtx, '已清空本机全部通知');
       }
       this.exitEditMode();
       this.messages = [];
@@ -1048,17 +1008,6 @@ export struct NotifyView {
       keys.push(servers[i].deviceKey);
     }
     return keys;
-  }
-
-  /** 根据 deviceKey 查找对应的 ServerEntry（删除时定位来源服务器用） */
-  private findServerByDeviceKey(deviceKey: string): ServerEntry | null {
-    const list: ServerEntry[] = ServerManager.getInstance().getList();
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].deviceKey === deviceKey) {
-        return list[i];
-      }
-    }
-    return null;
   }
 
   /**
@@ -1118,10 +1067,8 @@ export struct NotifyView {
   }
 
   /**
-   * 同步单个服务器（首次完整历史播种 + 后续增量协议）。
-   * 返回 true 表示本地数据有变化（新消息/删除/reset），调用方需刷新列表；
-   * 返回 false 表示无变化。
-   * server：目标服务器；forceFull：是否清空重播种；expectedSeq：代际校验。
+   * 同步单个服务器的远程暂存消息。
+   * 每页先解密并完整写入本地，再删除远程副本；删除失败项会在下一轮幂等重试。
    */
   private async syncSingleServer(server: ServerEntry, forceFull: boolean,
     expectedSeq: number = -1): Promise<boolean> {
@@ -1136,45 +1083,23 @@ export struct NotifyView {
       return false;
     }
 
-    // 读取同步基线。未完成首次播种时，只能使用已安全落盘的历史游标；
-    // 不能使用 maxId，否则旧的“仅拉到最新部分”缓存会永久跳过更早消息。
+    // 远程历史是待迁移队列。每轮必须从 0 检查，才能重试上次已落库但远程删除失败的消息。
     let after: number = 0;
-    let delCursor: number = 0;
-    let historyCursor: number = 0;
-    let historyComplete: boolean = false;
     let newMaxId: number = 0;
     if (forceFull) {
       await MessageCacheStore.clearDevice(deviceKey);
     } else {
       const meta = await MessageCacheStore.getMeta(deviceKey);
-      delCursor = meta.delCursor;
       newMaxId = meta.maxId;
-      historyCursor = meta.historyCursor;
-      historyComplete = meta.historyComplete;
-      if (historyComplete) {
-        after = meta.maxId;
-      } else {
-        after = historyCursor;
-      }
-      // 兼容早期已完整写入、但 max_id 曾因异常未持久化的缓存。
-      if (historyComplete && after === 0) {
-        after = await MessageCacheStore.getMaxId(deviceKey);
-        newMaxId = after;
-      }
     }
 
-    let newDelCursor: number = delCursor;
     let hasNewMessages: boolean = false;
-    const deletedIds: number[] = [];
-    let purgeCeiling: number = 0;
-    let didReset: boolean = false;
 
     while (true) {
       if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
         return false;
       }
-      // 首次历史播种显式发送 after=0，服务端才会按从旧到新的方向完整分页。
-      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, newDelCursor, server, true);
+      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, 0, server, true);
       if (!result.ok) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
         // 本地无消息时透出错误，有消息时静默保留
@@ -1184,44 +1109,9 @@ export struct NotifyView {
         return false;
       }
 
-      if (result.reset) {
-        hilog.info(DOMAIN, TAG, 'syncSingleServer reset：%{public}s', deviceKey);
-        await MessageCacheStore.clearDevice(deviceKey);
-        after = 0;
-        newMaxId = 0;
-        newDelCursor = 0;
-        historyCursor = 0;
-        historyComplete = false;
-        didReset = true;
-      } else {
-        if (result.deletionIds.length > 0) {
-          await MessageCacheStore.deleteByIds(deviceKey, result.deletionIds);
-          for (let i = 0; i < result.deletionIds.length; i++) {
-            deletedIds.push(result.deletionIds[i]);
-          }
-        }
-        if (result.purges.length > 0) {
-          let maxCeiling: number = 0;
-          for (let i = 0; i < result.purges.length; i++) {
-            if (result.purges[i] > maxCeiling) {
-              maxCeiling = result.purges[i];
-            }
-          }
-          if (maxCeiling > 0) {
-            await MessageCacheStore.purgeBefore(deviceKey, maxCeiling);
-            if (maxCeiling > purgeCeiling) {
-              purgeCeiling = maxCeiling;
-            }
-          }
-        }
-      }
-      if (result.delCursor > 0) {
-        newDelCursor = result.delCursor;
-      }
-
       let nextAfter: number = after;
       if (result.messages.length > 0) {
-        // 本页先成功写入消息，才允许推进历史游标，保证中断后不会漏页。
+        // 解密已在 getMessages 中完成；明文、ciphertext 和 IV 必须一起成功落库后才能删远程。
         const written: boolean = await MessageCacheStore.upsertMessages(deviceKey, result.messages);
         if (!written) {
           hilog.warn(DOMAIN, TAG, 'syncSingleServer 本地写入失败，保留历史游标：%{public}s', deviceKey);
@@ -1236,6 +1126,7 @@ export struct NotifyView {
             nextAfter = result.messages[i].id;
           }
         }
+        await this.deleteMigratedRemoteMessages(server, result.messages);
       }
 
       // 服务端有下一页却没有推进 id，会导致无限请求；保持未完成状态并下次重试。
@@ -1244,17 +1135,9 @@ export struct NotifyView {
         return false;
       }
 
-      const completedThisRound: boolean = !result.hasMore;
-      if (completedThisRound) {
-        historyComplete = true;
-        historyCursor = 0;
-      } else if (!historyComplete) {
-        historyCursor = nextAfter;
-      }
-
-      // 每页都持久化进度；首次历史播种中断后会从 historyCursor 继续。
+      // maxId 仅用于本地统计；远程扫描起点固定为 0，不以它跳过删除失败项。
       const metaSaved: boolean = await MessageCacheStore.saveMeta(
-        deviceKey, newMaxId, newDelCursor, historyCursor, historyComplete);
+        deviceKey, newMaxId, 0, 0, true);
       if (!metaSaved) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 同步进度保存失败：%{public}s', deviceKey);
         return false;
@@ -1271,8 +1154,31 @@ export struct NotifyView {
     }
 
     this.errorMsg = '';
-    const hasDeletions: boolean = deletedIds.length > 0 || purgeCeiling > 0;
-    return hasNewMessages || hasDeletions || didReset;
+    return hasNewMessages;
+  }
+
+  /** 本地落库完成后并行清理远程副本；失败记录留在服务器供下一轮同步重试。 */
+  private async deleteMigratedRemoteMessages(server: ServerEntry, messages: NotifyMessage[]): Promise<void> {
+    const svc = NotifyMessageService.getInstance();
+    const readyMessages: NotifyMessage[] = messages.filter((message: NotifyMessage) => message.migrationReady);
+    let failed: number = 0;
+    for (let offset: number = 0; offset < readyMessages.length; offset += REMOTE_DELETE_CONCURRENCY) {
+      const tasks: Promise<string>[] = [];
+      const end: number = Math.min(offset + REMOTE_DELETE_CONCURRENCY, readyMessages.length);
+      for (let i: number = offset; i < end; i++) {
+        tasks.push(svc.deleteMessage(readyMessages[i].id, null, server));
+      }
+      const results: string[] = await Promise.all(tasks);
+      for (let i: number = 0; i < results.length; i++) {
+        if (results[i].length > 0) {
+          failed++;
+        }
+      }
+    }
+    if (failed > 0) {
+      hilog.warn(DOMAIN, TAG, '远程迁移清理失败：server=%{public}s failed=%{public}d total=%{public}d',
+        server.name, failed, readyMessages.length);
+    }
   }
 
   /**

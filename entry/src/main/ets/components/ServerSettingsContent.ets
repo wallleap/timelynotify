@@ -10,7 +10,7 @@ import { DOMAIN } from '../common/Constant';
 import { KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
-import { MessageCacheStore } from '../services/MessageCacheStore';
+import { NotifyMessageService } from '../services/NotifyMessageService';
 import { EncryptionSettingsDialog } from './EncryptionSettingsDialog';
 
 const TAG: string = 'ServerContent';
@@ -424,8 +424,10 @@ export struct ServerSettingsContent {
   }
 
   private async refreshEncryptedMessages(deviceKey: string): Promise<void> {
-    if (deviceKey.length > 0) {
-      await MessageCacheStore.clearDevice(deviceKey);
+    const server: ServerEntry | null = this.findTarget();
+    if (server && deviceKey.length > 0) {
+      // 远程历史在成功迁移后会删除；配置变更时直接用本地保留的密文重新解密，不能清空缓存。
+      await NotifyMessageService.getInstance().redecryptCachedMessages(server);
     }
     const current: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
     AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, current + 1);

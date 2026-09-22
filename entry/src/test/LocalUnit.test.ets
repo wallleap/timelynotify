@@ -121,10 +121,15 @@ export default function localUnitTest() {
       const encrypted: NotifyMessage = NotifyMessage.fromRaw(encryptedRaw as Object as Record<string, Object>);
       const plain: NotifyMessage = NotifyMessage.fromRaw(plainRaw as Object as Record<string, Object>);
       expect(encrypted.encrypted).assertTrue();
+      expect(encrypted.migrationReady).assertFalse();
       expect(plain.encrypted).assertFalse();
+      expect(plain.migrationReady).assertTrue();
     });
     it('appliesAllDecryptedDisplayFields', 0, () => {
       const message = new NotifyMessage();
+      message.ciphertext = 'original-ciphertext';
+      message.iv = 'original-iv';
+      message.encrypted = true;
       message.applyDecrypted({
         'title': 'T',
         'body': 'B',
@@ -140,6 +145,10 @@ export default function localUnitTest() {
       expect(message.group).assertEqual('G');
       expect(message.url).assertEqual('https://example.com');
       expect(message.inboxContent.length).assertEqual(2);
+      expect(message.ciphertext).assertEqual('original-ciphertext');
+      expect(message.iv).assertEqual('original-iv');
+      expect(message.encrypted).assertTrue();
+      expect(message.migrationReady).assertTrue();
     });
     it('decryptsAllSupportedAesVariants', 0, async () => {
       for (let i: number = 0; i < CRYPTO_VECTORS.length; i++) {
