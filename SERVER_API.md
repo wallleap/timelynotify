@@ -278,8 +278,8 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 | volume         | string     | critical 通知铃声音量                                        | -                                                            |
 | badge          | integer    | App 图标角标数，值为 `0` 时清除角标                          | 同 iOS                                                       |
 | call           | string     | `1` 时铃声持续播放 30 秒                                     | -                                                            |
-| autoCopy       | string     | `1` 时自动复制                                               | -                                                            |
-| copy           | string     | 待复制的文本                                                 | -                                                            |
+| autoCopy       | string     | `1` 时自动复制                                               | `1` 时客户端同步到新通知后自动复制最新一条到剪贴板并 Toast 提示：仅非首次历史同步才触发、通知产生 5 分钟内有效、同一轮多条只取时间最新的一条（时间相同取 id 最大），避免打开 App 时积压的旧验证码覆盖剪贴板；首轮其余消息可在通知详情手动复制。**后台不触发**：App 在后台被系统冻结/未启动时，无法拉取消息并执行复制，需用户切回前台（或点系统通知跳进 App）才会触发；要实现"推送到达即复制"需 Push Kit `push-type: 2` 扩展通知权益，普通应用暂申请不到 |
+| copy           | string     | 待复制的文本                                                 | 详情页 action 区在最左侧显示"复制"按钮（仅 copy 时独占整行，与 url 并存时三项等宽）；autoCopy 触发时优先复制此字段，为空则回退复制 body；可放入加密载荷 |
 | sound          | string     | 铃声名（自动补 `.caf` 后缀），见 [Bark Sounds](https://github.com/Finb/Bark/tree/master/Sounds) | 铃声名与 Bark 一致，自动补 `.mp3` 后缀（已带 `.mp3`/`.wav`/`.mpeg` 后缀则保持不变，`.caf` 自动转 `.mp3`）；铃声文件需放在应用 `/resources/rawfile` 目录，且需在 AGC 申请「自定义铃声权益」，`category=MARKETING` 时自定义铃声无效 |
 | soundDuration  | integer    | -                                                            | 通知铃声时长（单位秒），仅同时传了 `sound` 才生效，取值范围 `[1, 60]`（超出自动截断为 60），铃声不足该时长会循环播放；不传时铃声超过 30 秒截断 |
 | icon           | string     | 图标 URL（iOS 15+）                                          | 优先映射到华为 `notification.image`；客户端列表和详情标题区作为左侧图标显示 |
@@ -303,7 +303,7 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 
 #### HarmonyOS 端到端加密载荷约定
 
-加密设置按服务器独立保存在客户端，Key 使用 HarmonyOS Asset Store 安全存储并设置为禁止设备/云同步，不进入普通 Preferences，也不上传服务器。旧版本曾写入 Preferences 的 Key 会在首次读取配置时自动迁移，安全写入成功后才清除旧值。发送端先把完整通知内容编码为 UTF-8 JSON（可包含 `title`、`body`、`subtitle`、`icon`、`image`、`group`、`url`、`inboxContent`、`isArchive`、`ttl`），再使用该服务器约定的配置加密。
+加密设置按服务器独立保存在客户端，Key 使用 HarmonyOS Asset Store 安全存储并设置为禁止设备/云同步，不进入普通 Preferences，也不上传服务器。旧版本曾写入 Preferences 的 Key 会在首次读取配置时自动迁移，安全写入成功后才清除旧值。发送端先把完整通知内容编码为 UTF-8 JSON（可包含 `title`、`body`、`subtitle`、`icon`、`image`、`group`、`url`、`copy`、`autoCopy`、`inboxContent`、`isArchive`、`ttl`），再使用该服务器约定的配置加密。
 
 - 算法：`AES128`、`AES192`、`AES256`，Key 分别为 16、24、32 个 UTF-8 字节。
 - 模式：`CBC`、`ECB`、`GCM`。
@@ -312,7 +312,7 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 - GCM：不使用 AAD，16 字节认证标签拼接在密文末尾，整个 `ciphertext || authTag` 再编码为 Base64。
 - 解密失败时客户端只展示占位提示，不回退到其它服务器的 Key，也不会把 Key、IV 或密文写入日志。
 
-> Harmony 服务端保持端到端加密边界：Key 不上传，系统通知只显示固定安全占位内容；`ciphertext` 与 `iv` 保存在消息历史中，用户打开客户端后再拉取并本地解密。由于普通应用无法取得 Push Kit `push-type: 2` 权益，通知栏展示前无法运行解密扩展。
+> Harmony 服务端保持端到端加密边界：Key 不上传，系统通知只显示固定安全占位内容；`ciphertext` 与 `iv` 保存在消息历史中，用户打开客户端后再拉取并本地解密。由于普通应用无法取得 Push Kit `push-type: 2` 权益，通知栏展示前无法运行解密扩展；同样地，App 在后台被冻结/未启动时也无法触发 `autoCopy` 自动复制，需用户切回前台后才会执行。要实现"推送到达即解密/复制"需 `push-type: 2` 扩展通知权益（类似 iOS Bark 的 Notification Service Extension），普通应用暂申请不到，当前只能等用户主动打开 App 后由客户端拉取并处理。
 
 Harmony 客户端把服务端消息历史作为待迁移队列：首次进入和后续轮询都会从 `after=0` 检查远程记录；每页消息先解密，再应用 `isArchive`/`ttl`。缺省或 `isArchive=1` 且尚未过期的消息会把明文、原始 `ciphertext`/`iv`、加密标记与绝对过期时间完整写入本地数据库；显式关闭归档或同步时已经过期的消息不落本地。TTL 剩余不足 1 小时时列表显示“即将过期”标签；详情页按剩余时间显示约 N 分钟、约 N 小时或具体过期时间，不使用秒级倒计时。对于密文且不归档、尚未过期的消息，客户端会通过 Notification Kit 逐条发布包含解密后真实标题和正文的本地通知；只有本地通知发布成功后才允许删除远程密文，发布失败会保留远程记录供下次同步重试。同一消息使用稳定的通知 id 与 label，重试只更新现有通知，不会重复堆叠。用户在客户端手动删除时只删除本地副本，不再请求服务器，因此删除后无法恢复。
 
