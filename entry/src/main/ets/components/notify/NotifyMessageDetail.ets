@@ -181,7 +181,7 @@ export struct NotifyMessageDetail {
   private titleBar() {
     Column() {
       Row() {
-        Text('消息详情').fontSize(18).fontWeight(FontWeight.Medium)
+        Text('通知详情').fontSize(18).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_primary')).layoutWeight(1);
         Row() {
           Image($r('app.media.close')).width(22).height(22).objectFit(ImageFit.Contain).draggable(false)

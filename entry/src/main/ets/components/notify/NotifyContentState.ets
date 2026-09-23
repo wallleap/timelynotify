@@ -9,7 +9,7 @@ export struct NotifyContentState {
     Column({ space: 12 }) {
       if (this.mode === 'guide') {
         Text('未配置客户端 Token').fontSize(16).fontColor($r('app.color.color_text_tertiary'));
-        Text('查询历史消息需要客户端 Token 认证，请到「我的」页面配置').fontSize(13)
+        Text('同步历史通知需要客户端 Token 认证，请到「我的」页面配置').fontSize(13)
           .fontColor($r('app.color.color_text_hint')).textAlign(TextAlign.Center).width('70%');
       } else if (this.mode === 'loading') {
         LoadingProgress().width(40).height(40).color($r('app.color.color_brand'));
@@ -18,7 +18,7 @@ export struct NotifyContentState {
         Text(this.errorMsg).fontSize(14).fontColor($r('app.color.color_error')).textAlign(TextAlign.Center).width('80%');
         Text('下拉重试').fontSize(13).fontColor($r('app.color.color_brand')).padding(8).onClick(() => this.onRetry());
       } else {
-        Text('暂无消息').fontSize(15).fontColor($r('app.color.color_text_hint'));
+        Text('暂无通知').fontSize(15).fontColor($r('app.color.color_text_hint'));
       }
     }
     .width('100%').height('100%').justifyContent(FlexAlign.Center).alignItems(HorizontalAlign.Center);

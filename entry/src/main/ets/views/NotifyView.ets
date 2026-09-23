@@ -399,7 +399,7 @@ export struct NotifyView {
       return;
     }
     if (this.selectedIds.length === 0) {
-      showToast(this.getUIContext(), '请先选择要导出的消息');
+      showToast(this.getUIContext(), '请先选择要导出的通知');
       return;
     }
     this.exportSelectedMessages();
@@ -408,7 +408,7 @@ export struct NotifyView {
   /** 处理删除入口，保留空选择提示。 */
   private handleDeleteSelected(): void {
     if (this.selectedIds.length === 0) {
-      showToast(this.getUIContext(), '请先选择要删除的消息');
+      showToast(this.getUIContext(), '请先选择要删除的通知');
       return;
     }
     this.confirmDeleteSelected();
@@ -655,7 +655,7 @@ export struct NotifyView {
 
   private handleMultiSelectClicked(): void {
     if (this.messages.length === 0) {
-      showToast(this.getUIContext(), '暂无可多选的消息');
+      showToast(this.getUIContext(), '暂无可多选的通知');
       return;
     }
     if (this.isEditing) {
@@ -676,7 +676,7 @@ export struct NotifyView {
       if (this.selectedIds.length > 0) {
         this.confirmDeleteSelected();
       } else {
-        showToast(this.getUIContext(), '请先选择要删除的消息');
+        showToast(this.getUIContext(), '请先选择要删除的通知');
       }
     } else {
       this.confirmDeleteAll();
@@ -941,11 +941,11 @@ export struct NotifyView {
     const uiCtx: UIContext = this.getUIContext();
     // 本地无消息时无需调用清空接口
     if (this.messages.length === 0) {
-      showToast(uiCtx, '暂无可删除的消息');
+      showToast(uiCtx, '暂无可删除的通知');
       return;
     }
     uiCtx.getPromptAction().showDialog({
-      title: '清空全部消息',
+      title: '清空全部通知',
       message: this.viewAll
         ? '将删除本机保存的所有服务器通知，包括未加载的历史通知。服务器副本已在同步后清理，删除后无法恢复。'
         : '将删除本机保存的当前服务器全部通知，包括未加载的历史通知。服务器副本已在同步后清理，删除后无法恢复。',
@@ -1348,7 +1348,7 @@ export struct NotifyView {
       if (count < 0) {
         showToast(uiContext, '设备未注册，无法导出');
       } else if (count > 0) {
-        showToast(uiContext, `已导出 ${count} 条消息`, 1500);
+        showToast(uiContext, `已导出 ${count} 条通知`, 1500);
       }
     } catch (err) {
       const message: string = err instanceof Error ? err.message : String(err);

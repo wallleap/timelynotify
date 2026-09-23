@@ -124,7 +124,7 @@ export struct MineView {
           .width('100%')
           .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 0 : this.statusBarHeight + 56 + 10);
 
-        // 通知设置板块（开关 / 通知权限设置 / 测试通知 / 导出消息）
+        // 通知设置板块（开关 / 通知权限设置 / 测试通知 / 导出通知）
         NotifySettingsSection();
 
         // 配置板块（服务器入口卡片）

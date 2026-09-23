@@ -3,6 +3,7 @@ import { EncryptionConfigService } from '../main/ets/services/EncryptionConfigSe
 import { EncryptionConfig } from '../main/ets/model/EncryptionConfig';
 import { MessageCryptoService } from '../main/ets/services/MessageCryptoService';
 import { NotifyMessage } from '../main/ets/model/NotifyMessage';
+import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 
 class RawMessageExtras extends Object {
@@ -87,6 +88,28 @@ export default function localUnitTest() {
       // Defines a variety of assertion methods, which are used to declare expected boolean conditions.
       expect(a).assertContain(b);
       expect(a).assertEqual(a);
+    });
+    it('exportsEveryLocalNotificationWithDecryptedFields', 0, () => {
+      const first: NotifyMessage = new NotifyMessage();
+      first.id = 1;
+      first.title = '第一条';
+      first.body = '解密后的正文';
+      first.icon = 'https://example.com/icon.png';
+      first.image = 'https://example.com/image.png';
+      first.encrypted = true;
+      first.ciphertext = 'encrypted-data';
+      first.deviceKey = 'device-a';
+      const second: NotifyMessage = new NotifyMessage();
+      second.id = 2;
+      second.title = '第二条';
+      second.deviceKey = 'device-a';
+      const text: string = NotifyExportService.serializeMessages([first, second], 'device-a');
+      const records: Object[] = JSON.parse(text) as Object[];
+      expect(records.length).assertEqual(2);
+      expect(text).assertContain('解密后的正文');
+      expect(text).assertContain('https://example.com/icon.png');
+      expect(text).assertContain('https://example.com/image.png');
+      expect(text).assertContain('encrypted-data');
     });
     it('matchesAesKeyLengths', 0, () => {
       expect(EncryptionConfigService.expectedKeyBytes('AES128')).assertEqual(16);

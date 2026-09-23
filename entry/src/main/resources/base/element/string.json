@@ -2,7 +2,7 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "及时通知，接收 HTTP 推送消息，实现自定义通知提醒，不错过重要通知"
+      "value": "及时通知，接收 HTTP 推送通知，实现自定义提醒，不错过重要通知"
     },
     {
       "name": "EntryAbility_desc",

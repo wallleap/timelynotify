@@ -356,6 +356,33 @@ export class MessageCacheStore {
     return list;
   }
 
+  /** 导出当前服务器全部未过期的本地通知，不受列表分页和分组加载数量限制。 */
+  static async loadAllForExport(deviceKey: string): Promise<NotifyMessage[] | null> {
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return null;
+    }
+    try {
+      const sql: string = `SELECT * FROM ${TABLE_MSG} WHERE device_key=? ` +
+        `AND (expires_at=0 OR expires_at>?) ORDER BY timestamp DESC, id DESC`;
+      const rs: relationalStore.ResultSet = await db.querySql(sql, [deviceKey, Date.now()]);
+      const messages: NotifyMessage[] = [];
+      try {
+        if (rs.goToFirstRow()) {
+          do {
+            messages.push(rowToMessage(rs));
+          } while (rs.goToNextRow());
+        }
+      } finally {
+        rs.close();
+      }
+      return messages;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadAllForExport 失败：%{public}s', formatError(err));
+      return null;
+    }
+  }
+
   /**
    * 分组加载：每个 group_key 取最新 perGroupLimit 条，合并按 timestamp DESC 排序。
    * 同时返回每个 group_key 的真实总数，用于徽标显示。

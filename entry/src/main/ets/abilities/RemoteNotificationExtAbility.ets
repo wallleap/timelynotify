@@ -15,7 +15,7 @@ class NotificationContent implements pushCommon.RemoteNotificationContent {
 export default class RemoteNotificationExtAbility extends RemoteNotificationExtensionAbility {
   async onReceiveMessage(info: pushCommon.RemoteNotificationInfo): Promise<pushCommon.RemoteNotificationContent> {
     const fallback = new NotificationContent();
-    fallback.title = '加密消息';
+    fallback.title = '加密通知';
     fallback.text = '无法解密，请打开应用检查加密设置';
     try {
       const payload: Record<string, Object> = this.parsePayload(info.data);

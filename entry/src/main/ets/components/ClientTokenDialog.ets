@@ -40,7 +40,7 @@ export struct ClientTokenDialog {
         .textAlign(TextAlign.Center);
 
       Column({ space: 4 }) {
-        Text('用于查询历史消息（X-Gotify-Key 认证）')
+        Text('用于同步历史通知（X-Gotify-Key 认证）')
           .fontSize(12)
           .fontColor($r('app.color.color_text_hint'))
           .width('100%');

@@ -14,7 +14,7 @@ import { DOMAIN } from '../../common/Constant';
 const TAG: string = 'NotifySettingsSec';
 
 /**
- * 「通知设置」板块：开启订阅通知开关 + 通知权限设置 + 测试通知 + 导出消息。
+ * 「通知设置」板块：开启订阅通知开关 + 通知权限设置 + 测试通知 + 导出通知。
  * 全自治：自身管理 notifyEnabled/testingPush/exporting 状态，业务下沉到各 Service。
  */
 @Component
@@ -23,7 +23,7 @@ export struct NotifySettingsSection {
   @State notifyEnabled: boolean = false;
   // 是否正在发送测试通知（请求期间置 true，防止重复触发）
   @State testingPush: boolean = false;
-  // 是否正在执行消息导出（拉取 + 保存全程置 true，防止重复触发）
+  // 是否正在执行通知导出（读取本地缓存 + 保存全程置 true，防止重复触发）
   @State exporting: boolean = false;
 
   aboutToAppear() {
@@ -106,14 +106,14 @@ export struct NotifySettingsSection {
 
       Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
-      // 导出消息行（点击导出当前设备全部消息为 txt 文件，内容为 JSON 数组）
+      // 导出通知行（点击导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
       Row() {
         Column({ space: 2 }) {
-          Text('导出消息')
+          Text('导出通知')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.color_text_primary'));
-          Text(this.exporting ? '正在导出…' : '导出当前设备全部消息为 txt 文件')
+          Text(this.exporting ? '正在导出…' : '导出当前服务器本地保存的全部通知')
             .fontSize(12)
             .fontColor($r('app.color.color_text_hint'));
         }.alignItems(HorizontalAlign.Start).layoutWeight(1);
@@ -221,7 +221,7 @@ export struct NotifySettingsSection {
     }
   }
 
-  // 导出当前设备全部消息：调 NotifyExportService.exportAll（拉取 + 保存 + 写文件一体化）
+  // 导出当前服务器全部本地通知：调 NotifyExportService.exportAll（读取 + 保存 + 写文件）
   // 成功后展示条数；失败透出原因
   private async exportMessages(): Promise<void> {
     if (this.exporting) {
@@ -243,12 +243,7 @@ export struct NotifySettingsSection {
         showToast(uiCtx, result.errorMsg.length > 0 ? result.errorMsg : '导出失败');
         return;
       }
-      // 成功提示；流被截断时额外说明数据可能不完整
-      if (result.truncated) {
-        showToast(uiCtx, `导出完成（流中断，可能不完整），共 ${result.count} 条`, 3000);
-      } else {
-        showToast(uiCtx, `已导出 ${result.count} 条消息`, 1500);
-      }
+      showToast(uiCtx, `已导出 ${result.count} 条通知`, 1500);
     } finally {
       this.exporting = false;
     }

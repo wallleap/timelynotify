@@ -2,17 +2,25 @@ import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { NotifyMessage } from '../model/NotifyMessage';
-import { NotifyMessageService } from './NotifyMessageService';
+import { MessageCacheStore } from './MessageCacheStore';
 import { ServerManager } from './ServerManager';
 import { DOMAIN } from '../common/Constant';
 
 const EXPORT_TAG: string = 'NotifyExportSvc';
 
-/** 导出文件中消息 extras 的显式类型，满足 ArkTS 对对象字面量的约束。 */
+/** 导出文件中通知 extras 的显式类型，满足 ArkTS 对对象字面量的约束。 */
 class NotifyExportExtras {
   device_key: string = '';
   subtitle: string = '';
-  // 点击跳转 URL（对应消息 extras.url）
+  icon: string = '';
+  image: string = '';
+  group: string = '';
+  inboxcontent: string[] = [];
+  ciphertext: string = '';
+  iv: string = '';
+  isarchive: string = '1';
+  expires_at: number = 0;
+  // 点击跳转 URL（对应通知 extras.url）
   url: string = '';
 }
 
@@ -31,10 +39,8 @@ class NotifyExportMessage {
 export class ExportAllResult {
   // 是否成功写入文件
   ok: boolean = false;
-  // 写入的消息条数（成功时 > 0）
+  // 写入的通知条数（成功时 > 0）
   count: number = 0;
-  // 服务端流式返回是否被截断（数据可能不完整）
-  truncated: boolean = false;
   // 用户在系统保存对话框中取消（静默结束，不弹 Toast）
   cancelled: boolean = false;
   // 失败时的错误文案（UI 层展示）
@@ -54,7 +60,6 @@ export class NotifyExportService {
     if (selected.length === 0) {
       return 0;
     }
-    const raw: NotifyExportMessage[] = selected.map((message: NotifyMessage) => NotifyExportService.toRaw(message, deviceKey));
     const options = new picker.DocumentSaveOptions();
     options.newFileNames = [`timelynotify_selected_${NotifyExportService.fileTime(new Date())}.txt`];
     options.fileSuffixChoices = ['文档|.txt'];
@@ -73,7 +78,7 @@ export class NotifyExportService {
       return 0;
     }
     try {
-      fileIo.writeSync(file.fd, JSON.stringify(raw, null, 2));
+      fileIo.writeSync(file.fd, NotifyExportService.serializeMessages(selected, deviceKey));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, EXPORT_TAG, '导出文件写入失败：%{public}s', msg);
@@ -89,25 +94,34 @@ export class NotifyExportService {
   }
 
   /**
-   * 全量导出当前设备所有消息为 txt 文件（JSON 数组格式，2 空格缩进）。
+   * 全量导出当前服务器本地保存的通知为 txt 文件（JSON 数组格式，2 空格缩进）。
    * 完整流程：
-   *  1. 调 NotifyMessageService.exportAllMessages 全量拉取（limit=-1 服务端流式返回）
+   *  1. 从本地数据库读取当前 device_key 全部未过期通知，不受列表分页限制
    *  2. DocumentViewPicker 拉起系统保存对话框（无需权限），用户选择位置后写入 txt
    *  3. 返回 ExportAllResult 供 UI 层展示 Toast
    *
    * @param context UIAbilityContext（DocumentViewPicker 需要）
-   * @returns ExportAllResult：ok / count / truncated / cancelled / errorMsg
+   * @returns ExportAllResult：ok / count / cancelled / errorMsg
    */
   static async exportAll(context: common.UIAbilityContext): Promise<ExportAllResult> {
     const result: ExportAllResult = new ExportAllResult();
     try {
-      const pulled = await NotifyMessageService.getInstance().exportAllMessages(null);
-      if (!pulled.ok) {
-        result.errorMsg = pulled.errorMsg.length > 0 ? pulled.errorMsg : '导出失败';
+      await ServerManager.getInstance().ensureLoaded();
+      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
+      if (deviceKey.length === 0) {
+        result.errorMsg = '设备未注册，无法导出';
         return result;
       }
-      // 纯 JSON 数组文本（2 空格缩进便于阅读，整体仍是合法 JSON）
-      const text: string = JSON.stringify(pulled.rawMessages, null, 2);
+      const messages: NotifyMessage[] | null = await MessageCacheStore.loadAllForExport(deviceKey);
+      if (messages === null) {
+        result.errorMsg = '读取本地通知失败';
+        return result;
+      }
+      if (messages.length === 0) {
+        result.errorMsg = '暂无可导出的通知';
+        return result;
+      }
+      const text: string = NotifyExportService.serializeMessages(messages, deviceKey);
 
       // 系统保存对话框：预设文件名 + txt 过滤；Picker 保存无需申请权限
       const saveOptions = new picker.DocumentSaveOptions();
@@ -135,13 +149,11 @@ export class NotifyExportService {
       }
 
       result.ok = true;
-      result.count = pulled.rawMessages.length;
-      result.truncated = pulled.truncated;
-      hilog.info(DOMAIN, EXPORT_TAG, '消息导出完成：count=%{public}d truncated=%{public}s',
-        result.count, String(result.truncated));
+      result.count = messages.length;
+      hilog.info(DOMAIN, EXPORT_TAG, '通知导出完成：count=%{public}d', result.count);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, EXPORT_TAG, '导出消息失败：%{public}s', msg);
+      hilog.warn(DOMAIN, EXPORT_TAG, '导出通知失败：%{public}s', msg);
       result.errorMsg = '导出失败';
     }
     return result;
@@ -152,6 +164,13 @@ export class NotifyExportService {
     return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
   }
 
+  /** 将本地通知转换为兼容既有 Gotify 导出格式的 JSON 数组。 */
+  static serializeMessages(messages: NotifyMessage[], deviceKey: string): string {
+    const raw: NotifyExportMessage[] = messages.map((message: NotifyMessage) =>
+      NotifyExportService.toRaw(message, deviceKey));
+    return JSON.stringify(raw, null, 2);
+  }
+
   private static toRaw(message: NotifyMessage, deviceKey: string): NotifyExportMessage {
     const raw: NotifyExportMessage = new NotifyExportMessage();
     raw.id = message.id;
@@ -160,7 +179,15 @@ export class NotifyExportService {
     raw.message = message.body;
     raw.priority = message.priority;
     raw.date = message.date.length > 0 ? message.date : message.createdAt;
-    raw.extras.device_key = deviceKey;
+    raw.extras.device_key = message.deviceKey.length > 0 ? message.deviceKey : deviceKey;
+    raw.extras.icon = message.icon;
+    raw.extras.image = message.image;
+    raw.extras.group = message.group;
+    raw.extras.inboxcontent = message.inboxContent;
+    raw.extras.ciphertext = message.ciphertext;
+    raw.extras.iv = message.iv;
+    raw.extras.isarchive = message.archive ? '1' : '0';
+    raw.extras.expires_at = message.expiresAt;
     if (message.subtitle.length > 0) {
       raw.extras.subtitle = message.subtitle;
     }
