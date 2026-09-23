@@ -22,6 +22,10 @@ class NotifyExportExtras {
   expires_at: number = 0;
   // 点击跳转 URL（对应通知 extras.url）
   url: string = '';
+  // 待复制文本（对应通知 extras.copy）
+  copy: string = '';
+  // 是否自动复制（对应通知 extras.autocopy，真值 "1"/"0"）
+  autocopy: string = '0';
 }
 
 /** 导出文件中单条通知的显式结构。 */
@@ -193,6 +197,12 @@ export class NotifyExportService {
     }
     if (message.url.length > 0) {
       raw.extras.url = message.url;
+    }
+    if (message.copy.length > 0) {
+      raw.extras.copy = message.copy;
+    }
+    if (message.autoCopy) {
+      raw.extras.autocopy = '1';
     }
     return raw;
   }

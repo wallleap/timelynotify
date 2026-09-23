@@ -30,6 +30,10 @@ const SQL_CREATE_MSG: string =
   'group_key TEXT NOT NULL DEFAULT \'\', ' +
   // 点击跳转 URL（对应 NotifyMessage.url，来自 extras.url）
   'url TEXT NOT NULL DEFAULT \'\', ' +
+  // 待复制文本（对应 NotifyMessage.copy，来自 extras.copy 或加密载荷 copy）
+  'copy TEXT NOT NULL DEFAULT \'\', ' +
+  // 是否自动复制（对应 NotifyMessage.autoCopy，来自 extras.autocopy 或加密载荷 autoCopy）
+  'auto_copy INTEGER NOT NULL DEFAULT 0, ' +
   // 保存加密标记与原始密文，便于远程历史删除后仍可在本地更换 Key 重新解密。
   'encrypted INTEGER NOT NULL DEFAULT 0, ' +
   'ciphertext TEXT NOT NULL DEFAULT \'\', ' +
@@ -105,6 +109,8 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'inbox_content': JSON.stringify(m.inboxContent),
     'group_key': m.group,
     'url': m.url,
+    'copy': m.copy,
+    'auto_copy': m.autoCopy ? 1 : 0,
     'encrypted': m.encrypted ? 1 : 0,
     'ciphertext': m.ciphertext,
     'iv': m.iv,
@@ -133,6 +139,8 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.image = rs.getString(rs.getColumnIndex('image'));
     m.group = rs.getString(rs.getColumnIndex('group_key'));
     m.url = rs.getString(rs.getColumnIndex('url'));
+    m.copy = rs.getString(rs.getColumnIndex('copy'));
+    m.autoCopy = rs.getLong(rs.getColumnIndex('auto_copy')) === 1;
     m.encrypted = rs.getLong(rs.getColumnIndex('encrypted')) === 1;
     m.ciphertext = rs.getString(rs.getColumnIndex('ciphertext'));
     m.iv = rs.getString(rs.getColumnIndex('iv'));
@@ -193,6 +201,8 @@ export class MessageCacheStore {
         await db.querySql(`PRAGMA table_info(${TABLE_MSG})`);
       let hasGroupKey: boolean = false;
       let hasUrl: boolean = false;
+      let hasCopy: boolean = false;
+      let hasAutoCopy: boolean = false;
       let hasEncrypted: boolean = false;
       let hasCiphertext: boolean = false;
       let hasIv: boolean = false;
@@ -207,6 +217,10 @@ export class MessageCacheStore {
             hasGroupKey = true;
           } else if (col === 'url') {
             hasUrl = true;
+          } else if (col === 'copy') {
+            hasCopy = true;
+          } else if (col === 'auto_copy') {
+            hasAutoCopy = true;
           } else if (col === 'encrypted') {
             hasEncrypted = true;
           } else if (col === 'ciphertext') {
@@ -236,6 +250,16 @@ export class MessageCacheStore {
         hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 url 列');
         await db.executeSql(
           `ALTER TABLE ${TABLE_MSG} ADD COLUMN url TEXT NOT NULL DEFAULT ''`);
+      }
+      if (!hasCopy) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 copy 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN copy TEXT NOT NULL DEFAULT ''`);
+      }
+      if (!hasAutoCopy) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 auto_copy 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN auto_copy INTEGER NOT NULL DEFAULT 0`);
       }
       if (!hasEncrypted) {
         hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 encrypted 列并清空旧缓存');

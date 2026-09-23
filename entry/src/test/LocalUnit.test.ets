@@ -4,6 +4,7 @@ import { EncryptionConfig } from '../main/ets/model/EncryptionConfig';
 import { MessageCryptoService } from '../main/ets/services/MessageCryptoService';
 import { NotifyMessage } from '../main/ets/model/NotifyMessage';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
+import { AutoCopyService, AutoCopySelection } from '../main/ets/services/AutoCopyService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
 
@@ -14,6 +15,8 @@ class RawMessageExtras extends Object {
   image: string = '';
   isarchive: Object | undefined = undefined;
   ttl: Object | undefined = undefined;
+  copy: string = '';
+  autocopy: Object | undefined = undefined;
 }
 
 class RawNotifyMessage extends Object {
@@ -38,6 +41,20 @@ function vector(algorithm: string, mode: string, key: string, iv: string, cipher
   value.iv = iv;
   value.ciphertext = ciphertext;
   return value;
+}
+
+/** AutoCopyService.selectCandidate 单测用消息构造器。 */
+class AutoCopyTestHelper {
+  static makeMessage(deviceKey: string, id: number, timestamp: number,
+    copy: string, autoCopy: boolean): NotifyMessage {
+    const m: NotifyMessage = new NotifyMessage();
+    m.deviceKey = deviceKey;
+    m.id = id;
+    m.timestamp = timestamp;
+    m.copy = copy;
+    m.autoCopy = autoCopy;
+    return m;
+  }
 }
 
 const CRYPTO_VECTORS: CryptoVector[] = [
@@ -325,6 +342,201 @@ export default function localUnitTest() {
         tamperedTagRejected = true;
       }
       expect(tamperedTagRejected).assertTrue();
+    });
+    it('parsesCopyAndAutoCopyFromExtras', 0, () => {
+      const raw: RawNotifyMessage = new RawNotifyMessage();
+      raw.id = 1;
+      raw.extras.copy = '  123456  ';
+      raw.extras.autocopy = '1';
+      const message: NotifyMessage = NotifyMessage.fromRaw(raw as Object as Record<string, Object>);
+      expect(message.copy).assertEqual('123456');
+      expect(message.autoCopy).assertTrue();
+
+      // autocopy 真值兼容多种字符串形式
+      const truthyStrings: string[] = ['1', 'true', 'TRUE', 'yes', 'on'];
+      for (let i = 0; i < truthyStrings.length; i++) {
+        const v: RawNotifyMessage = new RawNotifyMessage();
+        v.extras.autocopy = truthyStrings[i];
+        const m: NotifyMessage = NotifyMessage.fromRaw(v as Object as Record<string, Object>);
+        expect(m.autoCopy).assertTrue();
+      }
+      // 假值
+      const falsyStrings: string[] = ['0', 'no', 'off', '', 'maybe'];
+      for (let i = 0; i < falsyStrings.length; i++) {
+        const v: RawNotifyMessage = new RawNotifyMessage();
+        v.extras.autocopy = falsyStrings[i];
+        const m: NotifyMessage = NotifyMessage.fromRaw(v as Object as Record<string, Object>);
+        expect(m.autoCopy).assertFalse();
+      }
+      // 不设 autocopy 字段（undefined）时默认 false
+      const unset: NotifyMessage = NotifyMessage.fromRaw(new RawNotifyMessage() as Object as Record<string, Object>);
+      expect(unset.autoCopy).assertFalse();
+    });
+    it('parsesCopyAutoCopyCamelCaseFromExtras', 0, () => {
+      // 兼容 Bark 风格不区分大小写：extras.autoCopy（驼峰）/extras.autocopy（小写）都能解析到。
+      const raw: RawNotifyMessage = new RawNotifyMessage();
+      raw.id = 1;
+      const record: Record<string, Object> = raw.extras as Object as Record<string, Object>;
+      record['autoCopy'] = 1;
+      record['copy'] = '  123456  ';
+      const message: NotifyMessage = NotifyMessage.fromRaw(raw as Object as Record<string, Object>);
+      expect(message.copy).assertEqual('123456');
+      expect(message.autoCopy).assertTrue();
+
+      // extras.autoCopy=true 布尔值
+      const rawBool: RawNotifyMessage = new RawNotifyMessage();
+      const recBool: Record<string, Object> = rawBool.extras as Object as Record<string, Object>;
+      recBool['autoCopy'] = true;
+      const mBool: NotifyMessage = NotifyMessage.fromRaw(rawBool as Object as Record<string, Object>);
+      expect(mBool.autoCopy).assertTrue();
+
+      // extras.Copy 驼峰（首字母大写）也能解析到 copy
+      const rawCopyPascal: RawNotifyMessage = new RawNotifyMessage();
+      const recPascal: Record<string, Object> = rawCopyPascal.extras as Object as Record<string, Object>;
+      recPascal['Copy'] = 'abc';
+      const mPascal: NotifyMessage = NotifyMessage.fromRaw(rawCopyPascal as Object as Record<string, Object>);
+      expect(mPascal.copy).assertEqual('abc');
+    });
+    it('parsesCopyAutoCopyFromTopLevelPassthrough', 0, () => {
+      const raw: RawNotifyMessage = new RawNotifyMessage();
+      raw.id = 2;
+      const record: Record<string, Object> = raw as Object as Record<string, Object>;
+      record['copy'] = 'topcode';
+      record['autocopy'] = 'true';
+      const message: NotifyMessage = NotifyMessage.fromRaw(record);
+      expect(message.copy).assertEqual('topcode');
+      expect(message.autoCopy).assertTrue();
+    });
+    it('parsesCopyAutoCopyCamelCaseFromTopLevel', 0, () => {
+      // 顶层驼峰 copy/autoCopy 也能解析到（兼容部分推送通道的透传格式）。
+      const raw: RawNotifyMessage = new RawNotifyMessage();
+      raw.id = 3;
+      const record: Record<string, Object> = raw as Object as Record<string, Object>;
+      record['autoCopy'] = 1;
+      record['copy'] = 'topcamel';
+      const message: NotifyMessage = NotifyMessage.fromRaw(record);
+      expect(message.copy).assertEqual('topcamel');
+      expect(message.autoCopy).assertTrue();
+    });
+    it('appliesDecryptedCopyAndAutoCopy', 0, () => {
+      const message = new NotifyMessage();
+      message.ciphertext = 'c';
+      message.iv = 'i';
+      message.encrypted = true;
+      message.applyDecrypted({
+        'title': 'T',
+        'body': 'B',
+        'copy': '  decCode  ',
+        'autoCopy': true,
+      });
+      expect(message.copy).assertEqual('decCode');
+      expect(message.autoCopy).assertTrue();
+      expect(message.body).assertEqual('B');
+
+      // 兼容小写 autocopy 键
+      const second = new NotifyMessage();
+      second.applyDecrypted({ 'copy': 'c2', 'autocopy': '1' });
+      expect(second.copy).assertEqual('c2');
+      expect(second.autoCopy).assertTrue();
+
+      // 解密载荷不含 copy/autoCopy 时回退为空与 false
+      const third = new NotifyMessage();
+      third.applyDecrypted({ 'title': 'T', 'body': 'B' });
+      expect(third.copy).assertEqual('');
+      expect(third.autoCopy).assertFalse();
+    });
+    it('isTruthyFlagHandlesBooleanNumberAndString', 0, () => {
+      // 布尔/数字通过 applyDecrypted/fromRaw 路径覆盖；这里聚焦字符串与 undefined。
+      expect(NotifyMessage.isTruthyFlag(undefined)).assertFalse();
+      expect(NotifyMessage.isTruthyFlag('1')).assertTrue();
+      expect(NotifyMessage.isTruthyFlag('true')).assertTrue();
+      expect(NotifyMessage.isTruthyFlag('YES')).assertTrue();
+      expect(NotifyMessage.isTruthyFlag('on')).assertTrue();
+      expect(NotifyMessage.isTruthyFlag('0')).assertFalse();
+      expect(NotifyMessage.isTruthyFlag('')).assertFalse();
+      expect(NotifyMessage.isTruthyFlag('maybe')).assertFalse();
+    });
+    it('autoCopySelectsLatestWithinWindow', 0, () => {
+      const now: number = Date.parse('2026-09-23T12:00:00Z');
+      // 三条 autoCopy 消息：3 分钟前、1 分钟前、6 分钟前（超窗口）
+      const m1: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-a', 101,
+        now - 3 * 60 * 1000, 'code-old', true);
+      const m2: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-a', 102,
+        now - 1 * 60 * 1000, 'code-new', true);
+      const m3: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-a', 103,
+        now - 6 * 60 * 1000, 'code-stale', true);
+      const processed: Set<string> = new Set<string>();
+      const selection: AutoCopySelection = AutoCopyService.selectCandidate([m1, m2, m3], processed, now);
+      // 选中的是时间最新的 m2
+      expect(selection.target).assertEqual(m2);
+      expect(selection.text).assertEqual('code-new');
+      // 超窗口的 m3 计入 identitiesToMark；候选 m1、m2 也计入
+      expect(selection.identitiesToMark.length).assertEqual(3);
+      expect(selection.identitiesToMark.indexOf('dev-a:103') >= 0).assertTrue();
+      expect(selection.identitiesToMark.indexOf('dev-a:101') >= 0).assertTrue();
+      expect(selection.identitiesToMark.indexOf('dev-a:102') >= 0).assertTrue();
+    });
+    it('autoCopySkipsProcessedAndEmptyText', 0, () => {
+      const now: number = Date.parse('2026-09-23T12:00:00Z');
+      const processed: Set<string> = new Set<string>();
+      // 已处理的不再选中
+      const m1: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-b', 1,
+        now - 60 * 1000, 'code1', true);
+      processed.add('dev-b:1');
+      const sel1: AutoCopySelection = AutoCopyService.selectCandidate([m1], processed, now);
+      expect(sel1.target === null).assertTrue();
+      expect(sel1.text).assertEqual('');
+
+      // copy 与 body 都空时，仍标记候选但 target.text 为空，调用方据此跳过复制
+      const m2: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-b', 2,
+        now - 60 * 1000, '', true);
+      m2.body = '';
+      const sel2: AutoCopySelection = AutoCopyService.selectCandidate([m2], new Set<string>(), now);
+      expect(sel2.target).assertEqual(m2);
+      expect(sel2.text).assertEqual('');
+      expect(sel2.identitiesToMark.indexOf('dev-b:2') >= 0).assertTrue();
+
+      // autoCopy=false 的消息不参与
+      const m3: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-b', 3,
+        now - 60 * 1000, 'code3', false);
+      const sel3: AutoCopySelection = AutoCopyService.selectCandidate([m3], new Set<string>(), now);
+      expect(sel3.target === null).assertTrue();
+      expect(sel3.identitiesToMark.length).assertEqual(0);
+    });
+    it('autoCopyFallsBackToBodyWhenCopyAbsent', 0, () => {
+      const now: number = Date.parse('2026-09-23T12:00:00Z');
+      // copy 为空，autoCopy=true：复制回退到 body
+      const m: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-c', 5,
+        now - 30 * 1000, '', true);
+      m.body = 'body-content';
+      const sel: AutoCopySelection = AutoCopyService.selectCandidate([m], new Set<string>(), now);
+      expect(sel.target).assertEqual(m);
+      expect(sel.text).assertEqual('body-content');
+    });
+    it('autoCopyBreaksTimestampTieByIdDesc', 0, () => {
+      const now: number = Date.parse('2026-09-23T12:00:00Z');
+      // 相同时间戳，id 大的优先；保证结果稳定不随机
+      const m1: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-d', 10,
+        now - 60 * 1000, 'a', true);
+      const m2: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-d', 20,
+        now - 60 * 1000, 'b', true);
+      const sel: AutoCopySelection = AutoCopyService.selectCandidate([m1, m2], new Set<string>(), now);
+      expect(sel.target).assertEqual(m2);
+      expect(sel.text).assertEqual('b');
+    });
+    it('autoCopyDistinguishesSameIdAcrossDevices', 0, () => {
+      const now: number = Date.parse('2026-09-23T12:00:00Z');
+      // 两个服务器同 id=1；只标记其中一个已处理，另一个仍可选中
+      const processed: Set<string> = new Set<string>();
+      processed.add('dev-e:1');
+      const m1: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-e', 1,
+        now - 60 * 1000, 'e-code', true);
+      const m2: NotifyMessage = AutoCopyTestHelper.makeMessage('dev-f', 1,
+        now - 60 * 1000, 'f-code', true);
+      const sel: AutoCopySelection = AutoCopyService.selectCandidate([m1, m2], processed, now);
+      // dev-e:1 已处理被跳过；选中的是 dev-f:1
+      expect(sel.target).assertEqual(m2);
+      expect(sel.text).assertEqual('f-code');
     });
   });
 }

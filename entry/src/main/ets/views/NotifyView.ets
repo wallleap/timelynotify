@@ -8,6 +8,7 @@ import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
 import { DecryptedNotificationService } from '../services/DecryptedNotificationService';
+import { AutoCopyService } from '../services/AutoCopyService';
 import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
@@ -110,6 +111,9 @@ export struct NotifyView {
   private savedExpandedGroups: string[] = [];
   // Preferences 异步读取完成前不恢复，避免把默认空数组误写回磁盘。
   private expandedGroupsLoaded: boolean = false;
+  // 当前一轮同步新拉到的消息（跨服务器、跨分页聚合），用于同步完成后交给 AutoCopyService。
+  // 仅记录本轮首次拉到、尚未远程删除的批次；上一轮的记录在下一轮开始时清空。
+  private newMessagesThisRound: NotifyMessage[] = [];
 
   aboutToAppear() {
     this.initAfterServerManagerReady();
@@ -428,12 +432,14 @@ export struct NotifyView {
       onOpenUrl: (url: string) => { this.openUrl(url); },
       onCopyCode: (code: string) => { this.copyCode(code); },
       onCopyUrl: (url: string) => { this.copyUrl(url); },
-      onCopyText: (text: string) => { this.copyText(text); }
+      onCopyText: (text: string) => { this.copyText(text); },
+      onCopyContent: (text: string) => { this.copyContent(text); }
     });
   }
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
   private async initAfterServerManagerReady(): Promise<void> {
+    this.newMessagesThisRound = [];
     try {
       await ServerManager.getInstance().ensureLoaded();
       // 从 ServerManager 同步初始视图模式
@@ -477,6 +483,10 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
+    } finally {
+      // 首次历史同步：AutoCopyService 内部会把首批消息标记为已处理，不触发自动复制。
+      await AutoCopyService.handleSyncRound(this.newMessagesThisRound, this.getUIContext());
+      this.newMessagesThisRound = [];
     }
   }
 
@@ -532,6 +542,25 @@ export struct NotifyView {
     }
   }
 
+  /** 复制通知 extras.copy 指定的待复制文本，供详情页 action 区“复制”按钮使用。 */
+  private async copyContent(text: string): Promise<void> {
+    if (text.length === 0) {
+      return;
+    }
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      await sys.setData(data);
+      // copy 文本可能是长内容，截断后展示，避免 Toast 撑满屏幕
+      const display: string = text.length > 20 ? `${text.substring(0, 20)}…` : text;
+      showToast(this.getUIContext(), `已复制 ${display}`, 1500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '复制待复制文本失败：%{public}s', msg);
+      showToast(this.getUIContext(), '复制失败');
+    }
+  }
+
   /** 复制消息 extras.url 到剪贴板，供列表卡片链接 action 使用 */
   private async copyUrl(url: string): Promise<void> {
     try {
@@ -578,6 +607,9 @@ export struct NotifyView {
   private onPageVisibleChanged(): void {
     if (this.indexPageVisible) {
       if (this.homeTabIndex === 0) {
+        // 切回前台时立即拉一次，避免用户看到旧列表还要等 15s 第一次 poll。
+        // autoCopy 场景下也能让点系统通知跳进 App 后立即触发剪贴板复制 + Toast。
+        this.loadMessages();
         this.startPolling();
       }
     } else {
@@ -624,6 +656,7 @@ export struct NotifyView {
       return;
     }
     this.pollInFlight = true;
+    this.newMessagesThisRound = [];
     try {
       await ServerManager.getInstance().ensureLoaded();
       if (this.viewAll) {
@@ -648,6 +681,9 @@ export struct NotifyView {
       hilog.warn(DOMAIN, TAG, '轮询异常：%{public}s', msg);
     } finally {
       this.pollInFlight = false;
+      // 轮询到新通知时评估自动复制；用户停留在通知页时才触发 Toast。
+      await AutoCopyService.handleSyncRound(this.newMessagesThisRound, this.getUIContext());
+      this.newMessagesThisRound = [];
     }
   }
 
@@ -1045,6 +1081,7 @@ export struct NotifyView {
       return;
     }
     this.loading = true;
+    this.newMessagesThisRound = [];
     const seq: number = ++this.loadSeq;
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
@@ -1085,6 +1122,9 @@ export struct NotifyView {
     } finally {
       this.loading = false;
       this.refreshing = false;
+      // 同步完成后评估自动复制：从本轮新消息中选最新一条 autoCopy 写入剪贴板。
+      await AutoCopyService.handleSyncRound(this.newMessagesThisRound, this.getUIContext());
+      this.newMessagesThisRound = [];
       if (this.loadQueued) {
         this.loadQueued = false;
         this.loadMessages(); // 补拉：消费排队期间产生的最新拉取需求
@@ -1142,6 +1182,12 @@ export struct NotifyView {
         if (!written) {
           hilog.warn(DOMAIN, TAG, 'syncSingleServer 本地写入失败，保留历史游标：%{public}s', deviceKey);
           return false;
+        }
+        // 本轮新消息收集到 newMessagesThisRound，供同步完成后交给 AutoCopyService 评估自动复制。
+        // deviceKey 是运行时字段，fromRaw 不解析；这里补齐以便 AutoCopyService 跨服务器去重。
+        for (let i = 0; i < result.messages.length; i++) {
+          result.messages[i].deviceKey = deviceKey;
+          this.newMessagesThisRound.push(result.messages[i]);
         }
         // 非归档加密消息不会显示在 App 列表；先逐条发布解密后的本地通知，成功后才允许删除远端密文。
         for (let i: number = 0; i < result.messages.length; i++) {

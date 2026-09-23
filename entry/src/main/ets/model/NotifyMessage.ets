@@ -25,6 +25,11 @@ export class NotifyMessage extends Object {
   group: string = '';
   // 点击跳转 URL（来自 extras.url，Bark 语义：点击通知跳转）：非空时点击卡片/系统通知直接打开
   url: string = '';
+  // 待复制文本（来自 extras.copy 或加密载荷 copy）：详情页 action 区显示“复制”按钮，非空时优先复制它而非 body
+  copy: string = '';
+  // 是否在客户端拉到后自动复制到剪贴板（来自 extras.autocopy 或加密载荷 autoCopy，真值 1/true）
+  // 仅在非首次历史同步、通知产生 5 分钟内、且为本轮最新一条 autoCopy 消息时触发，避免旧积压验证码覆盖剪贴板
+  autoCopy: boolean = false;
   // 运行时字段：消息所属服务器的 device_key（从本地缓存读出时赋值，不参与服务端 JSON 解析）。
   // 用于跨服务器场景下精确定位删除目标（不同服务器 id 空间独立，仅靠 id 会误删）
   deviceKey: string = '';
@@ -89,6 +94,14 @@ export class NotifyMessage extends Object {
       // 跳转 URL 从 extras.url 取，纯空白视为无链接
       const urlVal: Object | undefined = extras['url'];
       m.url = typeof urlVal === 'string' ? urlVal.trim() : '';
+      // 待复制文本：兼容 extras.copy 与 extras.Copy（Bark 风格不区分大小写），驼峰优先。
+      const copyVal: Object | undefined =
+        extras['copy'] !== undefined ? extras['copy'] : extras['Copy'];
+      m.copy = typeof copyVal === 'string' ? copyVal.trim() : '';
+      // autoCopy 真值：1/true/yes/on 等字符串或布尔 true；兼容 extras.autoCopy 与 extras.autocopy，驼峰优先。
+      const autoCopyVal: Object | undefined =
+        extras['autoCopy'] !== undefined ? extras['autoCopy'] : extras['autocopy'];
+      m.autoCopy = NotifyMessage.isTruthyFlag(autoCopyVal);
       const ciphertextVal: Object | undefined = extras['ciphertext'];
       m.ciphertext = typeof ciphertextVal === 'string' ? ciphertextVal.trim() : '';
       const ivVal: Object | undefined = extras['iv'];
@@ -103,6 +116,17 @@ export class NotifyMessage extends Object {
     if (m.url.length === 0) {
       const topUrlVal: Object | undefined = raw['url'];
       m.url = typeof topUrlVal === 'string' ? topUrlVal.trim() : '';
+    }
+    // 兼容 copy/autoCopy 位于消息顶层的透传格式，驼峰优先
+    if (m.copy.length === 0) {
+      const topCopyVal: Object | undefined =
+        raw['copy'] !== undefined ? raw['copy'] : raw['Copy'];
+      m.copy = typeof topCopyVal === 'string' ? topCopyVal.trim() : '';
+    }
+    if (!m.autoCopy) {
+      const topAutoCopyVal: Object | undefined =
+        raw['autoCopy'] !== undefined ? raw['autoCopy'] : raw['autocopy'];
+      m.autoCopy = NotifyMessage.isTruthyFlag(topAutoCopyVal);
     }
     // 兼容部分通道把 icon/image 放在消息顶层的透传格式。
     if (m.icon.length === 0) {
@@ -155,6 +179,12 @@ export class NotifyMessage extends Object {
     this.group = typeof groupVal === 'string' ? groupVal.trim() : '';
     const urlVal: Object | undefined = raw['url'];
     this.url = typeof urlVal === 'string' ? urlVal.trim() : '';
+    // 待复制文本：加密载荷驼峰 copy 优先，兼容小写 copy
+    const copyVal: Object | undefined = raw['copy'];
+    this.copy = typeof copyVal === 'string' ? copyVal.trim() : '';
+    // autoCopy：加密载荷驼峰 autoCopy 优先，兼容小写 autocopy
+    this.autoCopy = NotifyMessage.isTruthyFlag(
+      raw['autoCopy'] !== undefined ? raw['autoCopy'] : raw['autocopy']);
     const inboxVal: Object | undefined = raw['inboxContent'] !== undefined ?
       raw['inboxContent'] : raw['inboxcontent'];
     this.inboxContent = [];
@@ -248,5 +278,24 @@ export class NotifyMessage extends Object {
       }
     }
     return isNaN(t) ? 0 : t;
+  }
+
+  // 真值判定：布尔 true、数字 1、字符串 "1"/"true"/"yes"/"on"（不区分大小写）视为真，其余为假。
+  // 用于 autoCopy 等 Bark 风格的布尔字段，兼容 JSON 布尔与 query/form 字符串两种来源。
+  static isTruthyFlag(value: Object | undefined): boolean {
+    if (value === undefined) {
+      return false;
+    }
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'number') {
+      return value === 1;
+    }
+    if (typeof value === 'string') {
+      const s: string = value.trim().toLowerCase();
+      return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+    }
+    return false;
   }
 }
