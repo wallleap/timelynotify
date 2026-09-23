@@ -288,8 +288,8 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 | ciphertext     | string     | 加密推送的 Base64 密文                                       | 系统通知显示安全占位内容；密文保留在历史消息中供客户端打开后解密 |
 | iv             | string     | 发送端为每条消息随机生成的 IV；CBC 16 UTF-8 字节，GCM 12 UTF-8 字节；ECB 省略 | 与密文一起保存在消息历史中，供客户端解密                     |
 | markdown       | string     | Markdown 正文，覆盖 `body`                                   |                                                              |
-| isArchive      | string     | `1` 时由 App 归档                                            | -                                                            |
-| ttl            | integer    | 归档消息存活秒数，过期自动删除                               | -                                                            |
+| isArchive      | string     | `1` 或省略时由 App 归档；显式传其它值时不归档                | 同 iOS；未归档普通通知不写历史，加密通知暂存到客户端下载解密后删除且不在本地保留 |
+| ttl            | integer    | 归档消息存活秒数，过期自动删除                               | 同 iOS；客户端按消息时间计算绝对过期时间并清理本地历史         |
 | url            | string     | 点击通知跳转的 URL                                           | 写入 `notification.clickAction.data.url`；若同时传 `data`，会保留其中其它键，且此字段覆盖 `data.url` |
 | action         | string     | 传 "alert" 时，点击推送跳转到APP时会弹出操作弹窗             | 目前固定点击跳转应用首页                                     |
 | delete         | string     | `1` 时静默推送（不展示，ContentAvailable）                   | -                                                            |
@@ -301,7 +301,7 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 
 #### HarmonyOS 端到端加密载荷约定
 
-加密设置按服务器独立保存在客户端，Key 使用 HarmonyOS Asset Store 安全存储并设置为禁止设备/云同步，不进入普通 Preferences，也不上传服务器。旧版本曾写入 Preferences 的 Key 会在首次读取配置时自动迁移，安全写入成功后才清除旧值。发送端先把完整通知内容编码为 UTF-8 JSON（可包含 `title`、`body`、`subtitle`、`icon`、`group`、`url`、`inboxContent`），再使用该服务器约定的配置加密。
+加密设置按服务器独立保存在客户端，Key 使用 HarmonyOS Asset Store 安全存储并设置为禁止设备/云同步，不进入普通 Preferences，也不上传服务器。旧版本曾写入 Preferences 的 Key 会在首次读取配置时自动迁移，安全写入成功后才清除旧值。发送端先把完整通知内容编码为 UTF-8 JSON（可包含 `title`、`body`、`subtitle`、`icon`、`group`、`url`、`inboxContent`、`isArchive`、`ttl`），再使用该服务器约定的配置加密。
 
 - 算法：`AES128`、`AES192`、`AES256`，Key 分别为 16、24、32 个 UTF-8 字节。
 - 模式：`CBC`、`ECB`、`GCM`。
@@ -312,7 +312,7 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 
 > Harmony 服务端保持端到端加密边界：Key 不上传，系统通知只显示固定安全占位内容；`ciphertext` 与 `iv` 保存在消息历史中，用户打开客户端后再拉取并本地解密。由于普通应用无法取得 Push Kit `push-type: 2` 权益，通知栏展示前无法运行解密扩展。
 
-Harmony 客户端把服务端消息历史作为待迁移队列：首次进入和后续轮询都会从 `after=0` 检查远程记录；每页消息先解密，再把明文、原始 `ciphertext`/`iv` 和加密标记完整写入本地数据库，确认落库成功后才逐条调用删除接口清理远程副本。远程删除失败不会回滚本地数据，记录会留在服务器并在下一轮幂等重试。用户在客户端手动删除时只删除本地副本，不再请求服务器，因此删除后无法恢复。
+Harmony 客户端把服务端消息历史作为待迁移队列：首次进入和后续轮询都会从 `after=0` 检查远程记录；每页消息先解密，再应用 `isArchive`/`ttl`。缺省或 `isArchive=1` 且尚未过期的消息会把明文、原始 `ciphertext`/`iv`、加密标记与绝对过期时间完整写入本地数据库；显式关闭归档或同步时已经过期的消息不落本地。处理成功后才逐条调用删除接口清理远程副本。远程删除失败不会回滚本地数据，记录会留在服务器并在下一轮幂等重试。用户在客户端手动删除时只删除本地副本，不再请求服务器，因此删除后无法恢复。
 
 ### 多平台扇出
 
@@ -734,8 +734,8 @@ curl -X POST "http://127.0.0.1:18080/mcp/my-device" \
 | icon        | string | 否                               | 图标 URL                                        |
 | image       | string | 否                               | 图片 URL                                        |
 | group       | string | 否                               | 通知分组                                          |
-| isArchive   | string | 否                               | `1` 时归档                                       |
-| ttl         | number | 否                               | 归档消息存活秒数                                      |
+| isArchive   | string | 否                               | `1` 或省略时归档；其它值不归档（加密鸿蒙通知仅暂存到同步完成） |
+| ttl         | number | 否                               | 归档消息存活秒数；服务端与 Harmony 本地历史均会过期清理 |
 | url         | string | 否                               | 点击跳转 URL                                      |
 | copy        | string | 否                               | 待复制文本                                         |
 

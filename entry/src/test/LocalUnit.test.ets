@@ -7,6 +7,8 @@ import { NotifyMessage } from '../main/ets/model/NotifyMessage';
 class RawMessageExtras extends Object {
   ciphertext: string = '';
   iv: string = '';
+  isarchive: Object | undefined = undefined;
+  ttl: Object | undefined = undefined;
 }
 
 class RawNotifyMessage extends Object {
@@ -124,6 +126,37 @@ export default function localUnitTest() {
       expect(encrypted.migrationReady).assertFalse();
       expect(plain.encrypted).assertFalse();
       expect(plain.migrationReady).assertTrue();
+    });
+    it('parsesArchiveAndTtlWithBackwardCompatibleDefaults', 0, () => {
+      const defaultRaw: RawNotifyMessage = new RawNotifyMessage();
+      const defaultMessage: NotifyMessage = NotifyMessage.fromRaw(
+        defaultRaw as Object as Record<string, Object>);
+      expect(defaultMessage.archive).assertTrue();
+      expect(defaultMessage.expiresAt).assertEqual(0);
+
+      const retainedRaw: RawNotifyMessage = new RawNotifyMessage();
+      retainedRaw.extras.isarchive = '1';
+      retainedRaw.extras.ttl = '60';
+      const retainedRecord = retainedRaw as Object as Record<string, Object>;
+      retainedRecord['date'] = '2026-09-23T00:00:00Z';
+      const retained: NotifyMessage = NotifyMessage.fromRaw(retainedRecord);
+      expect(retained.archive).assertTrue();
+      expect(retained.expiresAt).assertEqual(Date.parse('2026-09-23T00:01:00Z'));
+
+      const transientRaw: RawNotifyMessage = new RawNotifyMessage();
+      transientRaw.extras.isarchive = '0';
+      const transient: NotifyMessage = NotifyMessage.fromRaw(
+        transientRaw as Object as Record<string, Object>);
+      expect(transient.archive).assertFalse();
+    });
+    it('appliesEncryptedArchiveAndTtlPolicyAfterDecryption', 0, () => {
+      const message = new NotifyMessage();
+      message.timestamp = Date.parse('2026-09-23T00:00:00Z');
+      message.applyDecrypted({ 'isArchive': 0, 'ttl': 30 });
+      expect(message.archive).assertFalse();
+      expect(message.expiresAt).assertEqual(Date.parse('2026-09-23T00:00:30Z'));
+      expect(message.isExpired(Date.parse('2026-09-23T00:00:29Z'))).assertFalse();
+      expect(message.isExpired(Date.parse('2026-09-23T00:00:30Z'))).assertTrue();
     });
     it('appliesAllDecryptedDisplayFields', 0, () => {
       const message = new NotifyMessage();

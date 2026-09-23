@@ -33,6 +33,10 @@ export class NotifyMessage extends Object {
   encrypted: boolean = false;
   // 仅用于本次远程迁移：普通消息默认可清理；加密消息必须成功解密后才允许删除远程副本。
   migrationReady: boolean = true;
+  // Bark isArchive 语义：缺省保留历史，显式非 1 时仅展示系统通知、不写本地历史。
+  archive: boolean = true;
+  // ttl 换算后的绝对过期时间（毫秒）；0 表示永不过期。
+  expiresAt: number = 0;
 
   // 从服务端 JSON 对象解析（容错多种字段命名）
   static fromRaw(raw: Record<string, Object>): NotifyMessage {
@@ -114,6 +118,9 @@ export class NotifyMessage extends Object {
     m.createdAt = typeof createdAtVal === 'string' ? createdAtVal : '';
 
     m.timestamp = NotifyMessage.parseTimestamp(m.date.length > 0 ? m.date : m.createdAt);
+    const extras: Record<string, Object> | null = extrasVal && typeof extrasVal === 'object' ?
+      extrasVal as Record<string, Object> : null;
+    m.applyRetentionValues(extras, raw);
     return m;
   }
 
@@ -144,7 +151,52 @@ export class NotifyMessage extends Object {
         }
       }
     }
+    this.applyRetentionValues(raw, null);
     this.migrationReady = true;
+  }
+
+  // 判断本地历史是否已经达到 ttl 的绝对过期时间。
+  isExpired(now: number = Date.now()): boolean {
+    return this.expiresAt > 0 && this.expiresAt <= now;
+  }
+
+  // 从 Bark 参数读取归档与 ttl；primary 优先，兼容服务端小写键与加密内容驼峰键。
+  private applyRetentionValues(primary: Record<string, Object> | null,
+    fallback: Record<string, Object> | null): void {
+    const archiveVal: Object | undefined = NotifyMessage.firstDefined(
+      primary, fallback, ['isArchive', 'isarchive']);
+    if (archiveVal !== undefined) {
+      this.archive = archiveVal === true || archiveVal === 1 || archiveVal === '1';
+    }
+    const ttlVal: Object | undefined = NotifyMessage.firstDefined(primary, fallback, ['ttl']);
+    if (ttlVal !== undefined) {
+      const ttlSeconds: number = typeof ttlVal === 'number' ? ttlVal :
+        (typeof ttlVal === 'string' ? Number(ttlVal) : 0);
+      if (isFinite(ttlSeconds) && ttlSeconds > 0) {
+        const baseTime: number = this.timestamp > 0 ? this.timestamp : Date.now();
+        this.expiresAt = baseTime + Math.floor(ttlSeconds) * 1000;
+      } else {
+        this.expiresAt = 0;
+      }
+    }
+  }
+
+  private static firstDefined(primary: Record<string, Object> | null,
+    fallback: Record<string, Object> | null, keys: string[]): Object | undefined {
+    const sources: Array<Record<string, Object> | null> = [primary, fallback];
+    for (let sourceIndex: number = 0; sourceIndex < sources.length; sourceIndex++) {
+      const source: Record<string, Object> | null = sources[sourceIndex];
+      if (!source) {
+        continue;
+      }
+      for (let keyIndex: number = 0; keyIndex < keys.length; keyIndex++) {
+        const value: Object | undefined = source[keys[keyIndex]];
+        if (value !== undefined) {
+          return value;
+        }
+      }
+    }
+    return undefined;
   }
 
   // 解析时间字符串/数字为毫秒时间戳；失败返回 0

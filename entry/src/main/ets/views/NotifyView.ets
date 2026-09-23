@@ -1030,6 +1030,12 @@ export struct NotifyView {
     this.errorMsg = '';
     try {
       await ServerManager.getInstance().ensureLoaded();
+      // 每次进入或刷新列表前清理 ttl 已到期的本地历史；清空内存以强制从缓存回填。
+      const expiredDeleted: number = await MessageCacheStore.purgeExpired();
+      if (expiredDeleted > 0) {
+        this.messages = [];
+        this.groupTotals = new Map<string, number>();
+      }
       if (this.viewAll) {
         // 全部模式：并行同步所有已注册服务器
         await this.syncAllServers(seq);

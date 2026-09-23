@@ -33,6 +33,9 @@ const SQL_CREATE_MSG: string =
   'encrypted INTEGER NOT NULL DEFAULT 0, ' +
   'ciphertext TEXT NOT NULL DEFAULT \'\', ' +
   'iv TEXT NOT NULL DEFAULT \'\', ' +
+  // Bark 归档策略及 ttl 的绝对过期时间；旧记录默认继续保留且永不过期。
+  'archive INTEGER NOT NULL DEFAULT 1, ' +
+  'expires_at INTEGER NOT NULL DEFAULT 0, ' +
   'PRIMARY KEY (device_key, id)' +
   ')';
 
@@ -103,6 +106,8 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'encrypted': m.encrypted ? 1 : 0,
     'ciphertext': m.ciphertext,
     'iv': m.iv,
+    'archive': m.archive ? 1 : 0,
+    'expires_at': m.expiresAt,
   };
   return bucket;
 }
@@ -128,6 +133,8 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.encrypted = rs.getLong(rs.getColumnIndex('encrypted')) === 1;
     m.ciphertext = rs.getString(rs.getColumnIndex('ciphertext'));
     m.iv = rs.getString(rs.getColumnIndex('iv'));
+    m.archive = rs.getLong(rs.getColumnIndex('archive')) === 1;
+    m.expiresAt = rs.getLong(rs.getColumnIndex('expires_at'));
     m.deviceKey = rs.getString(rs.getColumnIndex('device_key'));
     const inboxStr: string = rs.getString(rs.getColumnIndex('inbox_content'));
     if (inboxStr && inboxStr.length > 0) {
@@ -169,7 +176,8 @@ export class MessageCacheStore {
    * v1 建表时漏了分组标识列，导致从缓存读出的消息 group 恒为空、列表分组失效；
    * v2 补充跳转链接 url 列；v3 为同步元信息增加一次性历史播种进度；
    * v4 补充加密状态 encrypted 列，供解密后的消息显示状态标签；
-   * v5 补充 ciphertext/iv 列，使远程记录迁移删除后仍可在本地重新解密。
+   * v5 补充 ciphertext/iv 列，使远程记录迁移删除后仍可在本地重新解密；
+   * v6 补充 archive/expires_at，接入 Bark isArchive 与 ttl，旧记录默认永久保留。
    * 检测到缺失列时逐列补齐：
    * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
    * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
@@ -184,6 +192,8 @@ export class MessageCacheStore {
       let hasEncrypted: boolean = false;
       let hasCiphertext: boolean = false;
       let hasIv: boolean = false;
+      let hasArchive: boolean = false;
+      let hasExpiresAt: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
@@ -198,6 +208,10 @@ export class MessageCacheStore {
             hasCiphertext = true;
           } else if (col === 'iv') {
             hasIv = true;
+          } else if (col === 'archive') {
+            hasArchive = true;
+          } else if (col === 'expires_at') {
+            hasExpiresAt = true;
           }
         } while (rs.goToNextRow());
       }
@@ -232,6 +246,16 @@ export class MessageCacheStore {
         hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 iv 列');
         await db.executeSql(
           `ALTER TABLE ${TABLE_MSG} ADD COLUMN iv TEXT NOT NULL DEFAULT ''`);
+      }
+      if (!hasArchive) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 archive 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN archive INTEGER NOT NULL DEFAULT 1`);
+      }
+      if (!hasExpiresAt) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 expires_at 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0`);
       }
 
       // 旧版本的 max_id 只代表“已拉到的最新消息”，不能证明历史已完整。
@@ -458,14 +482,47 @@ export class MessageCacheStore {
       return false;
     }
     try {
+      const now: number = Date.now();
       for (let i = 0; i < messages.length; i++) {
-        const bucket: relationalStore.ValuesBucket = toBucket(deviceKey, messages[i]);
+        const message: NotifyMessage = messages[i];
+        if (!message.archive || message.isExpired(now)) {
+          // 非归档或已过期消息可能已有旧缓存，必须同步移除以保证重解密后策略生效。
+          await db.executeSql(
+            `DELETE FROM ${TABLE_MSG} WHERE device_key=? AND id=?`, [deviceKey, message.id]);
+          continue;
+        }
+        const bucket: relationalStore.ValuesBucket = toBucket(deviceKey, message);
         await db.insert(TABLE_MSG, bucket, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
       }
       return true;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'upsertMessages 失败：%{public}s', formatError(err));
       return false;
+    }
+  }
+
+  /** 清理所有设备中已经达到 ttl 的本地历史，返回实际删除条数。 */
+  static async purgeExpired(now: number = Date.now()): Promise<number> {
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return 0;
+    }
+    try {
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT COUNT(*) AS cnt FROM ${TABLE_MSG} WHERE expires_at>0 AND expires_at<=?`, [now]);
+      let count: number = 0;
+      if (rs.goToFirstRow()) {
+        count = rs.getLong(rs.getColumnIndex('cnt'));
+      }
+      rs.close();
+      if (count > 0) {
+        await db.executeSql(
+          `DELETE FROM ${TABLE_MSG} WHERE expires_at>0 AND expires_at<=?`, [now]);
+      }
+      return count;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'purgeExpired 失败：%{public}s', formatError(err));
+      return -1;
     }
   }
 
