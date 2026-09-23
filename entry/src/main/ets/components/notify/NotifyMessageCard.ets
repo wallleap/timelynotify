@@ -1,6 +1,6 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
-import { formatNotifyTime, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
-import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
+import { formatNotifyTime, isExpiringSoon, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
+import { NotifyEncryptionBadge, NotifyExpiryBadge } from './NotifyGroupVisuals';
 
 /** 单条通知卡片；详情、选择与富文本交互通过页面回调处理。 */
 @Component
@@ -82,6 +82,9 @@ export struct NotifyMessageCard {
               Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.color_text_primary'))
                 .layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
             } else { Blank().layoutWeight(1); }
+            if (isExpiringSoon(this.message.expiresAt)) {
+              NotifyExpiryBadge();
+            }
             Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.color_text_hint')).flexShrink(0);
           }.width('100%').alignItems(VerticalAlign.Center);
           // 第二行正文与图标并列；副标题作为正文的语义补充保留在左侧。

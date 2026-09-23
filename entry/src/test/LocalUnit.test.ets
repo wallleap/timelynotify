@@ -3,6 +3,7 @@ import { EncryptionConfigService } from '../main/ets/services/EncryptionConfigSe
 import { EncryptionConfig } from '../main/ets/model/EncryptionConfig';
 import { MessageCryptoService } from '../main/ets/services/MessageCryptoService';
 import { NotifyMessage } from '../main/ets/model/NotifyMessage';
+import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 
 class RawMessageExtras extends Object {
   ciphertext: string = '';
@@ -157,6 +158,33 @@ export default function localUnitTest() {
       expect(message.expiresAt).assertEqual(Date.parse('2026-09-23T00:00:30Z'));
       expect(message.isExpired(Date.parse('2026-09-23T00:00:29Z'))).assertFalse();
       expect(message.isExpired(Date.parse('2026-09-23T00:00:30Z'))).assertTrue();
+    });
+    it('requestsLocalNotificationOnlyForDecryptedTransientCiphertext', 0, () => {
+      const message = new NotifyMessage();
+      message.encrypted = true;
+      message.archive = false;
+      message.migrationReady = true;
+      expect(message.needsDecryptedNotification(100)).assertTrue();
+      message.migrationReady = false;
+      expect(message.needsDecryptedNotification(100)).assertFalse();
+      message.migrationReady = true;
+      message.archive = true;
+      expect(message.needsDecryptedNotification(100)).assertFalse();
+      message.archive = false;
+      message.expiresAt = 100;
+      expect(message.needsDecryptedNotification(100)).assertFalse();
+    });
+    it('formatsTtlExpiryForListAndDetail', 0, () => {
+      const now: number = Date.parse('2026-09-23T00:00:00Z');
+      expect(isExpiringSoon(0, now)).assertFalse();
+      expect(isExpiringSoon(now + 30 * 60 * 1000, now)).assertTrue();
+      expect(isExpiringSoon(now + 60 * 60 * 1000, now)).assertFalse();
+      expect(formatExpiryDescription(0, now)).assertEqual('');
+      expect(formatExpiryDescription(now + 30 * 60 * 1000, now)).assertEqual('约 30 分钟后过期');
+      expect(formatExpiryDescription(now + 3 * 60 * 60 * 1000, now)).assertEqual('约 3 小时后过期');
+      expect(formatExpiryDescription(Date.parse('2026-09-25T12:30:00Z'), now))
+        .assertEqual(`${formatNotifyTime(Date.parse('2026-09-25T12:30:00Z'))} 过期`);
+      expect(formatExpiryDescription(now, now)).assertEqual('已过期');
     });
     it('appliesAllDecryptedDisplayFields', 0, () => {
       const message = new NotifyMessage();

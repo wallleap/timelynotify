@@ -1,6 +1,6 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
-import { formatNotifyTime, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
-import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
+import { formatNotifyTime, isExpiringSoon, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
+import { NotifyEncryptionBadge, NotifyExpiryBadge } from './NotifyGroupVisuals';
 
 /** 展开分组内的一条消息行，保留共享元素转场、富文本与选择交互。 */
 @Component
@@ -85,6 +85,9 @@ export struct NotifyGroupMessageRow {
                 if (this.message.title.length > 0) {
                   Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.color_text_primary')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
                 } else { Blank().layoutWeight(1); }
+                if (isExpiringSoon(this.message.expiresAt)) {
+                  NotifyExpiryBadge();
+                }
                 Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.color_text_hint')).flexShrink(0);
               }.width('100%').alignItems(VerticalAlign.Center);
               // 正文与图标共用第二行，避免图标挤占标题的可读宽度。

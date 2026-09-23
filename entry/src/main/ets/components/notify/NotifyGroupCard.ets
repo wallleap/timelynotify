@@ -1,5 +1,5 @@
-import { displayGroupTitle, formatNotifyTime, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifySection, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
-import { NotifyEncryptionBadge, NotifyGroupCountBadge, NotifyGroupShellLayer } from './NotifyGroupVisuals';
+import { displayGroupTitle, formatNotifyTime, isExpiringSoon, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifySection, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
+import { NotifyEncryptionBadge, NotifyExpiryBadge, NotifyGroupCountBadge, NotifyGroupShellLayer } from './NotifyGroupVisuals';
 import { NotifyMessage } from '../../model/NotifyMessage';
 
 /** 折叠态分组卡片，页面负责持有展开状态、高度和实际操作。 */
@@ -82,6 +82,9 @@ export struct NotifyGroupCard {
                   .fontColor($r('app.color.color_text_primary')).layoutWeight(1).maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis });
               } else { Blank().layoutWeight(1); }
+              if (isExpiringSoon(this.section.messages[0].expiresAt)) {
+                NotifyExpiryBadge();
+              }
               Text(formatNotifyTime(this.section.messages[0].timestamp)).fontSize(11)
                 .fontColor($r('app.color.color_text_hint')).flexShrink(0);
             }.width('100%').alignItems(VerticalAlign.Center);

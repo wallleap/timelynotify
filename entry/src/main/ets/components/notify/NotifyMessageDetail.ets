@@ -1,6 +1,7 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
 import {
   formatNotifyTime,
+  formatExpiryDescription,
   NOTIFY_SEGMENT_CODE,
   NOTIFY_SEGMENT_URL,
   NotifyTextSegment,
@@ -243,6 +244,14 @@ export struct NotifyMessageDetail {
                   .maxLines(1);
               }
               .width('100%').margin({ top: 14 }).alignItems(VerticalAlign.Center);
+              if (formatExpiryDescription(this.message.expiresAt).length > 0) {
+                Text(formatExpiryDescription(this.message.expiresAt))
+                  .fontSize(12)
+                  .fontColor($r('app.color.color_warning'))
+                  .width('100%')
+                  .textAlign(TextAlign.End)
+                  .margin({ top: 6 });
+              }
               this.recognizedActions(this.recognizedSegments());
               }
               .width('100%').padding({ left: 14, right: 14, top: 16, bottom: 16 });

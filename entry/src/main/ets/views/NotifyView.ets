@@ -7,6 +7,7 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
+import { DecryptedNotificationService } from '../services/DecryptedNotificationService';
 import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
@@ -1122,6 +1123,16 @@ export struct NotifyView {
         if (!written) {
           hilog.warn(DOMAIN, TAG, 'syncSingleServer 本地写入失败，保留历史游标：%{public}s', deviceKey);
           return false;
+        }
+        // 非归档加密消息不会显示在 App 列表；先逐条发布解密后的本地通知，成功后才允许删除远端密文。
+        for (let i: number = 0; i < result.messages.length; i++) {
+          const message: NotifyMessage = result.messages[i];
+          if (message.needsDecryptedNotification()) {
+            const published: boolean = await DecryptedNotificationService.publish(message, server);
+            if (!published) {
+              message.migrationReady = false;
+            }
+          }
         }
         hasNewMessages = true;
         for (let i = 0; i < result.messages.length; i++) {

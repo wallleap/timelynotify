@@ -211,3 +211,28 @@ export function formatNotifyTime(timestamp: number): string {
   const pad = (value: number): string => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+
+/** 列表只对一小时内即将到期的归档通知显示轻量提示。 */
+export function isExpiringSoon(expiresAt: number, now: number = Date.now()): boolean {
+  const remaining: number = expiresAt - now;
+  return expiresAt > 0 && remaining > 0 && remaining < 60 * 60 * 1000;
+}
+
+/** 详情页的静态过期说明；不启动秒级倒计时，避免频繁重绘。 */
+export function formatExpiryDescription(expiresAt: number, now: number = Date.now()): string {
+  if (expiresAt <= 0) {
+    return '';
+  }
+  const remaining: number = expiresAt - now;
+  if (remaining <= 0) {
+    return '已过期';
+  }
+  const hourMs: number = 60 * 60 * 1000;
+  if (remaining < hourMs) {
+    return `约 ${Math.max(1, Math.ceil(remaining / (60 * 1000)))} 分钟后过期`;
+  }
+  if (remaining <= 24 * hourMs) {
+    return `约 ${Math.ceil(remaining / hourMs)} 小时后过期`;
+  }
+  return `${formatNotifyTime(expiresAt)} 过期`;
+}

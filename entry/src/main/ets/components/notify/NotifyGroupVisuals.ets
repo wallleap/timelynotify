@@ -28,6 +28,19 @@ export struct NotifyEncryptionBadge {
   }
 }
 
+/** ttl 剩余不足一小时的行内状态文字，与通知时间并排展示。 */
+@Component
+export struct NotifyExpiryBadge {
+  build() {
+    Text('即将过期')
+      .fontSize(10)
+      .fontWeight(FontWeight.Medium)
+      .fontColor($r('app.color.color_warning'))
+      .maxLines(1)
+      .flexShrink(0);
+  }
+}
+
 /** 折叠分组主卡片背后的层叠壳；高度由 NotifyView 的测量状态提供。 */
 @Component
 export struct NotifyGroupShellLayer {
