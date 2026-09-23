@@ -28,8 +28,8 @@ export struct NotifyGroupExpandedHeader {
       Row({ space: 8 }) {
         if (this.isEditing) {
           Checkbox().select(this.groupSelected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE);
-        } else if (this.section.messages[0].image.length > 0) {
-          Image(this.section.messages[0].image).width(24).height(24).borderRadius(6).objectFit(ImageFit.Cover).alt($r('app.media.app_icon'));
+        } else if (this.section.messages[0].icon.length > 0) {
+          Image(this.section.messages[0].icon).width(24).height(24).borderRadius(6).objectFit(ImageFit.Cover).alt($r('app.media.app_icon'));
         } else {
           Image($r('app.media.app_icon')).width(24).height(24).borderRadius(6).objectFit(ImageFit.Cover).draggable(false);
         }

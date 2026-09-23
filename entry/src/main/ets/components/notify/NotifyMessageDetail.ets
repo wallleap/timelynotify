@@ -205,8 +205,17 @@ export struct NotifyMessageDetail {
             // 外层统一裁剪圆角，正文与贴底 action 形成同一张分区卡片。
             Column() {
               Column() {
-                // 保留原详情布局：标题和头像同行，副标题位于标题下方。
+                // icon 位于标题区左侧，副标题位于标题下方。
               Row({ space: 10 }) {
+                if (this.message.icon.length > 0) {
+                  Image(this.message.icon)
+                    .width(40)
+                    .height(40)
+                    .borderRadius(40)
+                    .objectFit(ImageFit.Cover)
+                    .flexShrink(0)
+                    .alt($r('app.media.app_icon'));
+                }
                 Column() {
                   if (this.message.title.length > 0) {
                     Text(this.message.title).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
@@ -221,16 +230,17 @@ export struct NotifyMessageDetail {
                   }
                 }
                 .layoutWeight(1).alignItems(HorizontalAlign.Start);
-                if (this.message.image.length > 0) {
-                  Image(this.message.image).width(38).height(38).borderRadius(12).objectFit(ImageFit.Cover)
-                    .draggable(false).flexShrink(0).alt($r('app.media.app_icon'));
-                }
               }
               .width('100%').alignItems(VerticalAlign.Top).margin({ bottom: 14 });
               if (this.message.inboxContent.length > 0) {
                 this.inbox(this.message.inboxContent);
               } else if (this.message.body.length > 0) {
                 this.body(this.message.body);
+              }
+              if (this.message.image.length > 0) {
+                Image(this.message.image).width('100%').height(240).borderRadius(14).objectFit(ImageFit.Contain)
+                  .backgroundColor($r('app.color.color_bg_page')).draggable(false)
+                  .alt($r('app.media.app_icon')).margin({ top: 14 });
               }
               // 加密状态与时间共用正文元信息行；识别结果紧随其后，避免打断内容阅读。
               Row() {

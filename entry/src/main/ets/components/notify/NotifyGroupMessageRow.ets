@@ -77,6 +77,15 @@ export struct NotifyGroupMessageRow {
           if (this.isEditing) {
             Checkbox().select(this.selected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE).flexShrink(0);
           }
+          if (this.message.icon.length > 0) {
+            Image(this.message.icon)
+              .width(40)
+              .height(40)
+              .borderRadius(40)
+              .objectFit(ImageFit.Cover)
+              .flexShrink(0)
+              .alt($r('app.media.app_icon'));
+          }
           Column({ space: 6 }) {
             // 首条组内消息与折叠预览的完整内容配对；其余消息使用空 id，不参与共享转场。
             Column({ space: 6 }) {
@@ -90,7 +99,7 @@ export struct NotifyGroupMessageRow {
                 }
                 Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.color_text_hint')).flexShrink(0);
               }.width('100%').alignItems(VerticalAlign.Center);
-              // 正文与图标共用第二行，避免图标挤占标题的可读宽度。
+              // 正文与内容图共用第二行，避免内容图挤占标题的可读宽度。
               Row({ space: 8 }) {
                 Column() {
                   if (this.message.subtitle.length > 0) {

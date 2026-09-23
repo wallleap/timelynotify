@@ -15,7 +15,9 @@ export class NotifyMessage extends Object {
   createdAt: string = '';
   // 解析后的毫秒时间戳，便于排序与展示
   timestamp: number = 0;
-  // 图片 URL（来自 extras.icon），非空时列表右侧显示圆角缩略图
+  // 通知来源图标（来自 extras.icon），列表和详情标题区左侧显示。
+  icon: string = '';
+  // 正文图片（来自 extras.image），列表右侧显示缩略图，详情正文下方显示大图。
   image: string = '';
   // 收件箱式多行摘要（来自 extras.inboxcontent）：非空时正文优先按行展示，每条一行/一段
   inboxContent: string[] = [];
@@ -63,9 +65,11 @@ export class NotifyMessage extends Object {
       const extras = extrasVal as Record<string, Object>;
       const subtitleVal: Object | undefined = extras['subtitle'];
       m.subtitle = typeof subtitleVal === 'string' ? subtitleVal : '';
-      // 图片 URL 从 extras.icon 取
+      // icon 与 image 保持 Bark 原始语义，不能复用同一个本地字段。
       const iconVal: Object | undefined = extras['icon'];
-      m.image = typeof iconVal === 'string' ? iconVal : '';
+      m.icon = typeof iconVal === 'string' ? iconVal.trim() : '';
+      const imageVal: Object | undefined = extras['image'];
+      m.image = typeof imageVal === 'string' ? imageVal.trim() : '';
       // 多行摘要：服务端 extras 键名统一小写为 inboxcontent，兼容驼峰 inboxContent；仅收集字符串项
       const inboxVal: Object | undefined =
         extras['inboxcontent'] !== undefined ? extras['inboxcontent'] : extras['inboxContent'];
@@ -99,6 +103,15 @@ export class NotifyMessage extends Object {
     if (m.url.length === 0) {
       const topUrlVal: Object | undefined = raw['url'];
       m.url = typeof topUrlVal === 'string' ? topUrlVal.trim() : '';
+    }
+    // 兼容部分通道把 icon/image 放在消息顶层的透传格式。
+    if (m.icon.length === 0) {
+      const topIconVal: Object | undefined = raw['icon'];
+      m.icon = typeof topIconVal === 'string' ? topIconVal.trim() : '';
+    }
+    if (m.image.length === 0) {
+      const topImageVal: Object | undefined = raw['image'];
+      m.image = typeof topImageVal === 'string' ? topImageVal.trim() : '';
     }
     // 兼容 ciphertext/iv 位于消息顶层的透传格式。
     if (m.ciphertext.length === 0) {
@@ -135,7 +148,9 @@ export class NotifyMessage extends Object {
     const subtitleVal: Object | undefined = raw['subtitle'];
     this.subtitle = typeof subtitleVal === 'string' ? subtitleVal : '';
     const iconVal: Object | undefined = raw['icon'];
-    this.image = typeof iconVal === 'string' ? iconVal : '';
+    this.icon = typeof iconVal === 'string' ? iconVal.trim() : '';
+    const imageVal: Object | undefined = raw['image'];
+    this.image = typeof imageVal === 'string' ? imageVal.trim() : '';
     const groupVal: Object | undefined = raw['group'];
     this.group = typeof groupVal === 'string' ? groupVal.trim() : '';
     const urlVal: Object | undefined = raw['url'];

@@ -8,6 +8,8 @@ import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../ma
 class RawMessageExtras extends Object {
   ciphertext: string = '';
   iv: string = '';
+  icon: string = '';
+  image: string = '';
   isarchive: Object | undefined = undefined;
   ttl: Object | undefined = undefined;
 }
@@ -196,6 +198,7 @@ export default function localUnitTest() {
         'body': 'B',
         'subtitle': 'S',
         'icon': 'https://example.com/icon.png',
+        'image': 'https://example.com/image.png',
         'group': ' G ',
         'url': ' https://example.com ',
         'inboxContent': ['1', '2'],
@@ -203,6 +206,8 @@ export default function localUnitTest() {
       expect(message.title).assertEqual('T');
       expect(message.body).assertEqual('B');
       expect(message.subtitle).assertEqual('S');
+      expect(message.icon).assertEqual('https://example.com/icon.png');
+      expect(message.image).assertEqual('https://example.com/image.png');
       expect(message.group).assertEqual('G');
       expect(message.url).assertEqual('https://example.com');
       expect(message.inboxContent.length).assertEqual(2);
@@ -210,6 +215,14 @@ export default function localUnitTest() {
       expect(message.iv).assertEqual('original-iv');
       expect(message.encrypted).assertTrue();
       expect(message.migrationReady).assertTrue();
+    });
+    it('keepsRemoteIconAndImageSeparate', 0, () => {
+      const raw: RawNotifyMessage = new RawNotifyMessage();
+      raw.extras.icon = 'https://example.com/icon.png';
+      raw.extras.image = 'https://example.com/image.png';
+      const message: NotifyMessage = NotifyMessage.fromRaw(raw as Object as Record<string, Object>);
+      expect(message.icon).assertEqual('https://example.com/icon.png');
+      expect(message.image).assertEqual('https://example.com/image.png');
     });
     it('decryptsAllSupportedAesVariants', 0, async () => {
       for (let i: number = 0; i < CRYPTO_VECTORS.length; i++) {

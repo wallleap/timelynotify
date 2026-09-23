@@ -22,6 +22,7 @@ const SQL_CREATE_MSG: string =
   'date TEXT NOT NULL DEFAULT \'\', ' +
   'created_at TEXT NOT NULL DEFAULT \'\', ' +
   'timestamp INTEGER NOT NULL DEFAULT 0, ' +
+  'icon TEXT NOT NULL DEFAULT \'\', ' +
   'image TEXT NOT NULL DEFAULT \'\', ' +
   // inboxContent 序列化为 JSON 字符串存储
   'inbox_content TEXT NOT NULL DEFAULT \'\', ' +
@@ -99,6 +100,7 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'date': m.date,
     'created_at': m.createdAt,
     'timestamp': m.timestamp,
+    'icon': m.icon,
     'image': m.image,
     'inbox_content': JSON.stringify(m.inboxContent),
     'group_key': m.group,
@@ -127,6 +129,7 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.date = rs.getString(rs.getColumnIndex('date'));
     m.createdAt = rs.getString(rs.getColumnIndex('created_at'));
     m.timestamp = rs.getLong(rs.getColumnIndex('timestamp'));
+    m.icon = rs.getString(rs.getColumnIndex('icon'));
     m.image = rs.getString(rs.getColumnIndex('image'));
     m.group = rs.getString(rs.getColumnIndex('group_key'));
     m.url = rs.getString(rs.getColumnIndex('url'));
@@ -178,6 +181,7 @@ export class MessageCacheStore {
    * v4 补充加密状态 encrypted 列，供解密后的消息显示状态标签；
    * v5 补充 ciphertext/iv 列，使远程记录迁移删除后仍可在本地重新解密；
    * v6 补充 archive/expires_at，接入 Bark isArchive 与 ttl，旧记录默认永久保留。
+   * v7 拆分 icon/image；旧版 image 实际保存的是远程 icon，迁移到新 icon 列。
    * 检测到缺失列时逐列补齐：
    * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
    * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
@@ -194,6 +198,7 @@ export class MessageCacheStore {
       let hasIv: boolean = false;
       let hasArchive: boolean = false;
       let hasExpiresAt: boolean = false;
+      let hasIcon: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
@@ -212,6 +217,8 @@ export class MessageCacheStore {
             hasArchive = true;
           } else if (col === 'expires_at') {
             hasExpiresAt = true;
+          } else if (col === 'icon') {
+            hasIcon = true;
           }
         } while (rs.goToNextRow());
       }
@@ -256,6 +263,14 @@ export class MessageCacheStore {
         hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 expires_at 列');
         await db.executeSql(
           `ALTER TABLE ${TABLE_MSG} ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0`);
+      }
+      if (!hasIcon) {
+        hilog.info(DOMAIN, TAG, '迁移：拆分 notify_message icon/image 字段');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN icon TEXT NOT NULL DEFAULT ''`);
+        // 旧客户端把 extras.icon 写入 image；迁移后恢复为 icon，避免被误当作正文大图。
+        await db.executeSql(
+          `UPDATE ${TABLE_MSG} SET icon=image, image='' WHERE icon='' AND image<>''`);
       }
 
       // 旧版本的 max_id 只代表“已拉到的最新消息”，不能证明历史已完整。
