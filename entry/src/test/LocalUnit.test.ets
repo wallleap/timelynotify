@@ -5,6 +5,7 @@ import { MessageCryptoService } from '../main/ets/services/MessageCryptoService'
 import { NotifyMessage } from '../main/ets/model/NotifyMessage';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
+import { areGroupMessagesSelected, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
 
 class RawMessageExtras extends Object {
   ciphertext: string = '';
@@ -88,6 +89,41 @@ export default function localUnitTest() {
       // Defines a variety of assertion methods, which are used to declare expected boolean conditions.
       expect(a).assertContain(b);
       expect(a).assertEqual(a);
+    });
+    it('keepsGroupSelectionAndActionCountInSync', 0, () => {
+      const first: NotifyMessage = new NotifyMessage();
+      first.id = 1;
+      const second: NotifyMessage = new NotifyMessage();
+      second.id = 2;
+      const group: NotifyMessage[] = [first, second];
+      let selected: number[] = toggleSelectedMessage([], first.id);
+      expect(selected.length).assertEqual(1);
+      expect(areGroupMessagesSelected(selected, group)).assertFalse();
+      selected = toggleGroupMessages(selected, group);
+      expect(selected.length).assertEqual(2);
+      expect(areGroupMessagesSelected(selected, group)).assertTrue();
+      selected = toggleSelectedMessage(selected, second.id);
+      expect(selected.length).assertEqual(1);
+      expect(areGroupMessagesSelected(selected, group)).assertFalse();
+      selected = toggleGroupMessages(selected, group);
+      expect(selected.length).assertEqual(2);
+      selected = toggleGroupMessages(selected, group);
+      expect(selected.length).assertEqual(0);
+    });
+    it('ignoresRepeatedCheckboxStateUpdates', 0, () => {
+      const first: NotifyMessage = new NotifyMessage();
+      first.id = 1;
+      const second: NotifyMessage = new NotifyMessage();
+      second.id = 2;
+      const group: NotifyMessage[] = [first, second];
+      const selected: number[] = setSelectedMessage([], first.id, true);
+      expect(setSelectedMessage(selected, first.id, true) === selected).assertTrue();
+      const groupSelected: number[] = setGroupMessagesSelection(selected, group, true);
+      expect(groupSelected.length).assertEqual(2);
+      expect(setGroupMessagesSelection(groupSelected, group, true) === groupSelected).assertTrue();
+      const cleared: number[] = setGroupMessagesSelection(groupSelected, group, false);
+      expect(cleared.length).assertEqual(0);
+      expect(setGroupMessagesSelection(cleared, group, false) === cleared).assertTrue();
     });
     it('exportsEveryLocalNotificationWithDecryptedFields', 0, () => {
       const first: NotifyMessage = new NotifyMessage();

@@ -11,6 +11,7 @@ export struct NotifyGroupMessageRow {
   @Prop selected: boolean = false;
   @Prop contentTransitionId: string = '';
   onSelect: (id: number) => void = (_id: number) => {};
+  onSelectionChange: (id: number, selected: boolean) => void = (_id: number, _selected: boolean) => {};
   onOpen: (message: NotifyMessage) => void = (_message: NotifyMessage) => {};
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
@@ -75,7 +76,8 @@ export struct NotifyGroupMessageRow {
       Column() {
         Row({ space: 12 }) {
           if (this.isEditing) {
-            Checkbox().select(this.selected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE).flexShrink(0);
+            Checkbox().select(this.selected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE)
+              .flexShrink(0).onChange((selected: boolean) => this.onSelectionChange(this.message.id, selected));
           }
           if (this.message.icon.length > 0) {
             Image(this.message.icon)

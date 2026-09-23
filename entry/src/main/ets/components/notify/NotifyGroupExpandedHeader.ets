@@ -10,6 +10,7 @@ export struct NotifyGroupExpandedHeader {
   // 当前已选数量只覆盖已加载消息，不能等同于 section.total。
   @Prop selectedCount: number = 0;
   onToggle: () => void = () => {};
+  onSelectionChange: (selected: boolean) => void = (_selected: boolean) => {};
 
   /** 多选时显示局部选择进度，明确未加载历史不会被当前操作影响。 */
   @Builder
@@ -27,7 +28,8 @@ export struct NotifyGroupExpandedHeader {
     Column() {
       Row({ space: 8 }) {
         if (this.isEditing) {
-          Checkbox().select(this.groupSelected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE);
+          Checkbox().select(this.groupSelected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE)
+            .onChange((selected: boolean) => this.onSelectionChange(selected));
         } else if (this.section.messages[0].icon.length > 0) {
           Image(this.section.messages[0].icon).width(24).height(24).borderRadius(6).objectFit(ImageFit.Cover).alt($r('app.media.app_icon'));
         } else {

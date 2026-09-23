@@ -30,6 +30,8 @@ import {
   areGroupMessagesSelected,
   hasSelectedMessage,
   retainExpandableGroups,
+  setGroupMessagesSelection,
+  setSelectedMessage,
   toggleGroupMessages,
   toggleSelectedMessage
 } from '../components/notify/NotifySelectionUtils';
@@ -351,7 +353,9 @@ export struct NotifyView {
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
       onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
       onToggleSelect: (id: number) => this.toggleSelect(id),
+      onSetSelected: (id: number, selected: boolean) => this.setSelected(id, selected),
       onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
+      onSetGroupSelection: (messages: NotifyMessage[], selected: boolean) => this.setGroupSelection(messages, selected),
       onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
       onOpenMessage: (message: NotifyMessage) => this.openMessageDetail(message),
       onOpenGroup: (section: NotifySection) => this.handleGroupHeaderClick(section),
@@ -691,6 +695,14 @@ export struct NotifyView {
     this.selectedIds = toggleSelectedMessage(this.selectedIds, id);
   }
 
+  /** Checkbox 的 onChange 可能由状态回显触发，仅在目标状态不同的时候写入。 */
+  private setSelected(id: number, selected: boolean): void {
+    const next: number[] = setSelectedMessage(this.selectedIds, id, selected);
+    if (next !== this.selectedIds) {
+      this.selectedIds = next;
+    }
+  }
+
   // ====== group 分组展示 ======
 
   private isGroupExpanded(groupKey: string): boolean {
@@ -801,6 +813,13 @@ export struct NotifyView {
 
   private toggleGroupSelection(groupMessages: NotifyMessage[]): void {
     this.selectedIds = toggleGroupMessages(this.selectedIds, groupMessages);
+  }
+
+  private setGroupSelection(groupMessages: NotifyMessage[], selected: boolean): void {
+    const next: number[] = setGroupMessagesSelection(this.selectedIds, groupMessages, selected);
+    if (next !== this.selectedIds) {
+      this.selectedIds = next;
+    }
   }
 
   private removeFromList(ids: number[]): void {

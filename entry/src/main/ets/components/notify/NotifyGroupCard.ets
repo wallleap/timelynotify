@@ -32,6 +32,8 @@ export struct NotifyGroupCard {
   @Prop cardHeight: number = 0;
   onToggleSelection: () => void = () => {
   };
+  onSelectionChange: (selected: boolean) => void = (_selected: boolean) => {
+  };
   onOpen: () => void = () => {
   };
   onHeightChange: (height: number) => void = (_height: number) => {
@@ -62,7 +64,7 @@ export struct NotifyGroupCard {
       Row({ space: 12 }) {
         if (this.isEditing) {
           Checkbox().select(this.groupSelected).selectedColor($r('app.color.color_brand'))
-            .shape(CheckBoxShape.CIRCLE);
+            .shape(CheckBoxShape.CIRCLE).onChange((selected: boolean) => this.onSelectionChange(selected));
         }
         if (this.section.messages[0].icon.length > 0) {
           Image(this.section.messages[0].icon)

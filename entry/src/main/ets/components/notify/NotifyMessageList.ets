@@ -13,7 +13,7 @@ import { SUPPORTS_IMMERSIVE_MATERIAL } from '../../utils/ImmersiveUtil';
 export struct NotifyMessageList {
   @Prop @Watch('reloadDataSource') messages: NotifyMessage[] = [];
   @Prop isEditing: boolean = false;
-  @Prop selectedIds: number[] = [];
+  @Prop @Watch('reloadDataSource') selectedIds: number[] = [];
   @Prop @Watch('reloadDataSource') expandedGroups: string[] = [];
   @Prop groupCardHeights: Map<string, number> = new Map<string, number>();
   @Prop @Watch('reloadDataSource') groupTotals: Map<string, number> = new Map<string, number>();
@@ -26,7 +26,9 @@ export struct NotifyMessageList {
   listScroller: Scroller = new Scroller();
   onLoadMoreInGroup: (groupKey: string) => void = (_groupKey: string) => {};
   onToggleSelect: (id: number) => void = (_id: number) => {};
+  onSetSelected: (id: number, selected: boolean) => void = (_id: number, _selected: boolean) => {};
   onToggleGroupSelection: (messages: NotifyMessage[]) => void = (_messages: NotifyMessage[]) => {};
+  onSetGroupSelection: (messages: NotifyMessage[], selected: boolean) => void = (_messages: NotifyMessage[], _selected: boolean) => {};
   onToggleGroupExpanded: (groupKey: string) => void = (_groupKey: string) => {};
   onOpenMessage: (message: NotifyMessage) => void = (_message: NotifyMessage) => {};
   onOpenGroup: (section: NotifySection) => void = (_section: NotifySection) => {};
@@ -97,7 +99,9 @@ export struct NotifyMessageList {
         if (row.type === NOTIFY_LIST_ROW_MESSAGE && row.message !== null) {
           ListItem() {
             NotifyMessageCard({ message: row.message, isEditing: this.isEditing, selected: this.isSelected(row.message.id),
-              onSelect: (id: number) => this.onToggleSelect(id), onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
+              onSelect: (id: number) => this.onToggleSelect(id),
+              onSelectionChange: (id: number, selected: boolean) => this.onSetSelected(id, selected),
+              onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
               onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code),
               onCopyUrl: (url: string) => this.onCopyUrl(url) });
           }.margin({ bottom: row.spaceAfter }).swipeAction({ end: { builder: () => { this.deleteOne(row.message!); } } });
@@ -105,7 +109,9 @@ export struct NotifyMessageList {
           ListItem() {
             NotifyGroupCard({ section: row.section, isEditing: this.isEditing, groupSelected: this.groupSelected(row.section.messages),
               selectedCount: this.groupSelectedCount(row.section.messages),
-              cardHeight: this.groupCardHeights.get(row.section.groupKey) ?? 0, onToggleSelection: () => this.onToggleGroupSelection(row.section!.messages),
+              cardHeight: this.groupCardHeights.get(row.section.groupKey) ?? 0,
+              onToggleSelection: () => this.onToggleGroupSelection(row.section!.messages),
+              onSelectionChange: (selected: boolean) => this.onSetGroupSelection(row.section!.messages, selected),
               onOpen: () => this.onOpenGroup(row.section!), onHeightChange: (height: number) => this.onHeightChange(row.section!.groupKey, height),
               onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code) });
           }.margin({ bottom: row.spaceAfter }).swipeAction({ end: { builder: () => { this.deleteGroup(row.section!); } } });
@@ -115,7 +121,9 @@ export struct NotifyMessageList {
           ListItem() {
             NotifyGroupMessageRow({ message: row.message, isLast: row.indexInGroup === row.section.messages.length - 1 && !this.groupHasMore(row.section),
               isEditing: this.isEditing, selected: this.isSelected(row.message.id), contentTransitionId: row.indexInGroup === 0 ? `gmc:${row.section.groupKey}` : '',
-              onSelect: (id: number) => this.onToggleSelect(id), onOpen: (item: NotifyMessage) => this.onOpenMessage(item), onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code), onCopyUrl: (url: string) => this.onCopyUrl(url) });
+              onSelect: (id: number) => this.onToggleSelect(id),
+              onSelectionChange: (id: number, selected: boolean) => this.onSetSelected(id, selected),
+              onOpen: (item: NotifyMessage) => this.onOpenMessage(item), onOpenUrl: (url: string) => this.onOpenUrl(url), onCopyCode: (code: string) => this.onCopyCode(code), onCopyUrl: (url: string) => this.onCopyUrl(url) });
           // 外层 ListItem 不绘制卡片背景，避免复用后旧的方角背景遮住新末条的圆角；
           // NotifyGroupMessageRow 自身依据 isLast 负责背景、裁剪和圆角。
           }.margin({ bottom: row.spaceAfter }).transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
@@ -140,6 +148,7 @@ export struct NotifyMessageList {
   private expandedHeader(section: NotifySection) {
     NotifyGroupExpandedHeader({ section: section, isEditing: this.isEditing, groupSelected: this.groupSelected(section.messages),
       selectedCount: this.groupSelectedCount(section.messages),
-      onToggle: () => this.isEditing ? this.onToggleGroupSelection(section.messages) : this.onToggleGroupExpanded(section.groupKey) });
+      onToggle: () => this.isEditing ? this.onToggleGroupSelection(section.messages) : this.onToggleGroupExpanded(section.groupKey),
+      onSelectionChange: (selected: boolean) => this.onSetGroupSelection(section.messages, selected) });
   }
 }

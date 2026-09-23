@@ -16,6 +16,11 @@ export function toggleSelectedMessage(selectedIds: number[], id: number): number
   return next;
 }
 
+/** 按 Checkbox 给出的目标状态设置单条消息；重复回显不产生新状态。 */
+export function setSelectedMessage(selectedIds: number[], id: number, selected: boolean): number[] {
+  return hasSelectedMessage(selectedIds, id) === selected ? selectedIds : toggleSelectedMessage(selectedIds, id);
+}
+
 /** 判断一组消息是否已全部选中。 */
 export function areGroupMessagesSelected(selectedIds: number[], messages: NotifyMessage[]): boolean {
   if (messages.length === 0) {
@@ -45,6 +50,14 @@ export function toggleGroupMessages(selectedIds: number[], messages: NotifyMessa
     }
   }
   return next;
+}
+
+/** 按 Checkbox 的目标状态设置已加载组内消息；重复回显不再反向切换。 */
+export function setGroupMessagesSelection(selectedIds: number[], messages: NotifyMessage[], selected: boolean): number[] {
+  if (messages.length === 0 || areGroupMessagesSelected(selectedIds, messages) === selected) {
+    return selectedIds;
+  }
+  return toggleGroupMessages(selectedIds, messages);
 }
 
 /** 删除消息后，保留仍有消息的分组展开状态（空 group_key 对应“默认”分组，也需纳入统计）。 */
