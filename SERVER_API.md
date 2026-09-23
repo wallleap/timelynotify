@@ -282,8 +282,8 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 | copy           | string     | 待复制的文本                                                 | -                                                            |
 | sound          | string     | 铃声名（自动补 `.caf` 后缀），见 [Bark Sounds](https://github.com/Finb/Bark/tree/master/Sounds) | 铃声名与 Bark 一致，自动补 `.mp3` 后缀（已带 `.mp3`/`.wav`/`.mpeg` 后缀则保持不变，`.caf` 自动转 `.mp3`）；铃声文件需放在应用 `/resources/rawfile` 目录，且需在 AGC 申请「自定义铃声权益」，`category=MARKETING` 时自定义铃声无效 |
 | soundDuration  | integer    | -                                                            | 通知铃声时长（单位秒），仅同时传了 `sound` 才生效，取值范围 `[1, 60]`（超出自动截断为 60），铃声不足该时长会循环播放；不传时铃声超过 30 秒截断 |
-| icon           | string     | 图标 URL（iOS 15+）                                          | 华为会自动校验图片是否合规，必须是 HTTPS URL，支持图片格式为PNG、JPG、JPEG、BMP、WEBP，图片像素的总字节数不超过192KB，若超过则图片不展示 |
-| image          | string     | 图片 URL（iOS 15+）                                          | -                                                            |
+| icon           | string     | 图标 URL（iOS 15+）                                          | 优先映射到华为 `notification.image`；客户端列表和详情标题区作为左侧图标显示 |
+| image          | string     | 图片 URL（iOS 15+）                                          | `icon` 为空时回退映射到华为 `notification.image`；客户端列表作为右侧缩略图、详情作为正文下方大图显示。华为要求 HTTPS，支持 PNG/JPG/JPEG/BMP/WEBP，总字节数不超过 192KB |
 | group          | string     | 通知分组                                                     |                                                              |
 | ciphertext     | string     | 加密推送的 Base64 密文                                       | 系统通知显示安全占位内容；密文保留在历史消息中供客户端打开后解密 |
 | iv             | string     | 发送端为每条消息随机生成的 IV；CBC 16 UTF-8 字节，GCM 12 UTF-8 字节；ECB 省略 | 与密文一起保存在消息历史中，供客户端解密                     |
@@ -303,7 +303,7 @@ V2 请求体 / V1 query+form 共用的推送字段（小写键名）：
 
 #### HarmonyOS 端到端加密载荷约定
 
-加密设置按服务器独立保存在客户端，Key 使用 HarmonyOS Asset Store 安全存储并设置为禁止设备/云同步，不进入普通 Preferences，也不上传服务器。旧版本曾写入 Preferences 的 Key 会在首次读取配置时自动迁移，安全写入成功后才清除旧值。发送端先把完整通知内容编码为 UTF-8 JSON（可包含 `title`、`body`、`subtitle`、`icon`、`group`、`url`、`inboxContent`、`isArchive`、`ttl`），再使用该服务器约定的配置加密。
+加密设置按服务器独立保存在客户端，Key 使用 HarmonyOS Asset Store 安全存储并设置为禁止设备/云同步，不进入普通 Preferences，也不上传服务器。旧版本曾写入 Preferences 的 Key 会在首次读取配置时自动迁移，安全写入成功后才清除旧值。发送端先把完整通知内容编码为 UTF-8 JSON（可包含 `title`、`body`、`subtitle`、`icon`、`image`、`group`、`url`、`inboxContent`、`isArchive`、`ttl`），再使用该服务器约定的配置加密。
 
 - 算法：`AES128`、`AES192`、`AES256`，Key 分别为 16、24、32 个 UTF-8 字节。
 - 模式：`CBC`、`ECB`、`GCM`。

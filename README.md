@@ -1,5 +1,7 @@
 # 及时通知
 
+通知图片保留 Bark 语义：`icon` 在列表和详情标题区左侧显示，`image` 在列表右侧显示缩略图，并在详情正文下方显示大图。从旧版本升级时，已缓存的图标会自动迁移到 `icon` 字段。
+
 TimelyNotify 是使用 arkTS 开发的鸿蒙端消息通知 App。
 
 下载链接：<https://appgallery.huawei.com/link/invite-test-wap?taskId=8121c9f6a1255c454c2016bea2f7cce9>
