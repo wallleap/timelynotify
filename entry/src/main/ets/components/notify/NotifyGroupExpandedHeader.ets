@@ -47,7 +47,9 @@ export struct NotifyGroupExpandedHeader {
     }
     .width('100%').backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius({ topLeft: 12, topRight: 12, bottomLeft: 0, bottomRight: 0 })
-    .hitTestBehavior(HitTestMode.Block).onClick(() => this.onToggle())
+    // Transparent：自己消费触发 onClick，同时事件继续向上传递到 List 让滚动手势识别生效。
+    // Block 会拦截 touchmove，导致 header 上无法上下/左右滑动 List。
+    .hitTestBehavior(HitTestMode.Transparent).onClick(() => this.onToggle())
     .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
   }
 }
