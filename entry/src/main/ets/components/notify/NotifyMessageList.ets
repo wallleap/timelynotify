@@ -17,6 +17,15 @@ import {
 } from './NotifyListDataSource';
 import { SUPPORTS_IMMERSIVE_MATERIAL } from '../../utils/ImmersiveUtil';
 
+// 「跳到底部」长距离穿越时，先无动画定位到距末项多少个 ListItem 的位置，再做这一小段平滑滚动。
+const SCROLL_TO_BOTTOM_SMOOTH_RANGE: number = 5;
+
+// 「跳到底部」自动滚动状态机：idle=无进行中的自动滚动；jumping=已无动画瞬跳到末段附近，
+// 等待 onScrollIndex 确认后再平滑收尾；smoothing=正在执行最终短程平滑滚动，onScrollStop 后结束。
+const AUTO_SCROLL_IDLE: number = 0;
+const AUTO_SCROLL_JUMPING: number = 1;
+const AUTO_SCROLL_SMOOTHING: number = 2;
+
 /** 通知列表渲染层：只接收状态快照并通过回调将用户操作交还页面。 */
 @Component
 export struct NotifyMessageList {
@@ -32,9 +41,19 @@ export struct NotifyMessageList {
   @Prop statusBarHeight: number = 0;
   @Prop navBarHeight: number = 0;
   @Prop immersiveLightEnabled: boolean = true;
+  // 「跳到底部」触发信号：页面每次自增，Watch 到变化后执行两段式定位滚动。
+  @Prop @Watch('onScrollToBottomRequested') scrollToBottomSignal: number = 0;
   listScroller: Scroller = new Scroller();
   // 主 List 唯一的数据源；分组内消息删除时可直接发送 onDataDelete。
   private dataSource: NotifyListDataSource = new NotifyListDataSource();
+  // 当前可视区最后一个 ListItem 的绝对索引（由 onScrollIndex 维护），用于估算距末尾的剩余行数。
+  private visibleEndIndex: number = 0;
+  // 「跳到底部」自动滚动当前阶段；见顶部 AUTO_SCROLL_* 常量的状态机说明。
+  private autoScrollState: number = AUTO_SCROLL_IDLE;
+  // 本次自动滚动请求的目标末项绝对索引，供状态机判断瞬跳是否到位。
+  private autoScrollTargetIndex: number = -1;
+  // 平滑滚动兜底定时器：无位移时 onScrollStop 可能不触发，到期强制收尾，避免标记卡死。
+  private autoScrollTimeoutId: number = -1;
   onLoadMoreInGroup: (groupKey: string) => void = (_groupKey: string) => {
   };
   onToggleSelect: (id: number) => void = (_id: number) => {
@@ -73,9 +92,95 @@ export struct NotifyMessageList {
   // 通过 onReachStart 兜底确保「跳到底部」按钮隐藏。
   onListReachStart: () => void = () => {
   };
+  // 一次自动定位滚动（含两段式的最终平滑段）真正结束时回调，供页面解除 isAutoScrolling 屏蔽。
+  // 普通手指滚动停止同样会触发，页面侧仅幂等清标记，无副作用。
+  onAutoScrollEnd: () => void = () => {
+  };
 
   aboutToAppear(): void {
     this.reloadDataSource();
+  }
+
+  /**
+   * 执行「跳到底部」：按剩余行数进入状态机的 jumping 或 smoothing 阶段。
+   * - 剩余行数 ≤ SCROLL_TO_BOTTOM_SMOOTH_RANGE：直接进入平滑滚动贴底（smoothing）；
+   * - 剩余行数更远：先无动画瞬跳到末段前几行（jumping），由 onScrollIndex 确认到位后再平滑收尾。
+   * 无论距离多近，最终都发起 scrollToIndex(lastIndex, true, END) 由 List 精确对齐到真实末尾；
+   * 不依赖“末项可见”这类部分可见的近似判断，避免占位项只露一角时未真正贴底。
+   * List 内绝对索引：0=顶部占位；1..dataCount=数据行；dataCount+1=“没有更多了”；dataCount+2=底部占位。
+   */
+  private onScrollToBottomRequested(): void {
+    if (this.scrollToBottomSignal <= 0) {
+      return;
+    }
+    const dataCount: number = this.dataSource.totalCount();
+    if (dataCount <= 0) {
+      this.finishAutoScroll();
+      return;
+    }
+    const lastIndex: number = dataCount + 2;
+    this.autoScrollTargetIndex = lastIndex;
+    const remaining: number = lastIndex - this.visibleEndIndex;
+    if (remaining <= SCROLL_TO_BOTTOM_SMOOTH_RANGE) {
+      this.startSmoothing(lastIndex);
+      return;
+    }
+    // 长距离：先无动画瞬跳到末段起点，交给 onScrollIndex 驱动下一阶段。
+    this.autoScrollState = AUTO_SCROLL_JUMPING;
+    this.listScroller.scrollToIndex(lastIndex - SCROLL_TO_BOTTOM_SMOOTH_RANGE, false, ScrollAlign.END);
+  }
+
+  /**
+   * 由 onScrollIndex 驱动：瞬跳（jumping）到位后启动最终平滑段（smoothing）。
+   * 不再以 lastVisibleIndex >= lastIndex 早退——瞬跳后即使已接近底部，仍交 List 平滑对齐到真实末尾。
+   */
+  private advanceAutoScrollAfterJump(lastVisibleIndex: number): void {
+    if (this.autoScrollState !== AUTO_SCROLL_JUMPING) {
+      return;
+    }
+    if (lastVisibleIndex < this.autoScrollTargetIndex - SCROLL_TO_BOTTOM_SMOOTH_RANGE) {
+      return;
+    }
+    this.startSmoothing(this.autoScrollTargetIndex);
+  }
+
+  /** 进入最终平滑滚动段，并启动兜底定时器，确保无位移（onScrollStop 不触发）时也能收尾。 */
+  private startSmoothing(lastIndex: number): void {
+    this.autoScrollState = AUTO_SCROLL_SMOOTHING;
+    this.clearAutoScrollTimeout();
+    this.autoScrollTimeoutId = setTimeout(() => {
+      // 安全网而非主驱动：无位移滚动不触发 onScrollStop 时，超时强制收尾。
+      if (this.autoScrollState === AUTO_SCROLL_SMOOTHING) {
+        this.finishAutoScroll();
+      }
+    }, 1200);
+    this.listScroller.scrollToIndex(lastIndex, true, ScrollAlign.END);
+  }
+
+  /** 结束自动滚动：复位状态机、清除兜底定时器并通知页面解除 isAutoScrolling 屏蔽。 */
+  private finishAutoScroll(): void {
+    this.autoScrollState = AUTO_SCROLL_IDLE;
+    this.autoScrollTargetIndex = -1;
+    this.clearAutoScrollTimeout();
+    this.onAutoScrollEnd();
+  }
+
+  private clearAutoScrollTimeout(): void {
+    if (this.autoScrollTimeoutId >= 0) {
+      clearTimeout(this.autoScrollTimeoutId);
+      this.autoScrollTimeoutId = -1;
+    }
+  }
+
+  /**
+   * 中断进行中的自动滚动：用户物理触摸列表、或数据源结构变化时调用，
+   * 使瞬跳/平滑阶段失效，避免两段之间强制拉底或目标索引失效。
+   * 幂等：idle 状态下不做任何事，不额外回调页面。
+   */
+  private interruptAutoScroll(): void {
+    if (this.autoScrollState !== AUTO_SCROLL_IDLE) {
+      this.finishAutoScroll();
+    }
   }
 
   build() {
@@ -205,6 +310,26 @@ export struct NotifyMessageList {
     })
     .onReachStart(() => {
       this.onListReachStart();
+    })
+    .onTouch((event: TouchEvent) => {
+      // onScrollStart 也会在 Scroller 发起的带动画滚动开始时触发，不能识别用户输入；
+      // 用 onTouch 的 Down 事件：仅真实手指按下时中断自动滚动，避免第二段 scrollToIndex(true)
+      // 启动瞬间被误判为用户手势而提前清状态。
+      if (event.type === TouchType.Down) {
+        this.interruptAutoScroll();
+      }
+    })
+    .onScrollIndex((firstVisibleIndex: number, lastVisibleIndex: number, _centerIndex: number) => {
+      // 记录可视区末尾 ListItem 绝对索引，供「跳到底部」判断剩余行数与驱动瞬跳后的第二段。
+      this.visibleEndIndex = lastVisibleIndex;
+      this.advanceAutoScrollAfterJump(lastVisibleIndex);
+    })
+    .onScrollStop(() => {
+      // 仅平滑滚动态（smoothing）结束后清除；瞬跳态（jumping）的 stop 事件不可靠，
+      // 统一忽略，由 onScrollIndex 驱动下一阶段，避免依赖定时器或吞事件。
+      if (this.autoScrollState === AUTO_SCROLL_SMOOTHING) {
+        this.finishAutoScroll();
+      }
     });
   }
 
@@ -243,6 +368,8 @@ export struct NotifyMessageList {
 
   /** 由输入状态生成主 List 的平铺行；展开/收起或刷新时完整重载。 */
   private reloadDataSource(): void {
+    // 数据结构变化（删除、展开/收起、刷新）会使「跳到底部」的目标索引失效，先中断在途自动滚动。
+    this.interruptAutoScroll();
     this.dataSource.sync(buildNotifyListRows(
       buildNotifySections(this.messages, this.groupTotals, this.groupEnabled), this.expandedGroups));
   }

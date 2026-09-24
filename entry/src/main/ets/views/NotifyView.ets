@@ -94,6 +94,8 @@ export struct NotifyView {
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // 「跳到底部」浮动按钮显隐：上滑离开首屏时显示，下滑或在首屏时隐藏。
   @State showScrollToBottom: boolean = false;
+  // 「跳到底部」触发信号：每次自增传给列表，列表 Watch 后执行两段式定位滚动。
+  @State scrollToBottomSignal: number = 0;
   private dialogController: CustomDialogController = new CustomDialogController({
     builder: ServerSettingsDialog(),
     alignment: DialogAlignment.Center,
@@ -104,6 +106,8 @@ export struct NotifyView {
   private loadSeq: number = 0;
   private loadQueued: boolean = false;
   private scroller: Scroller = new Scroller();
+  // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
+  private isAutoScrolling: boolean = false;
   private pollTimer: number = -1;
   // 当前列表对应的 device_key 快照；key 切换时需清空内存中的旧设备消息，即使处于“全部”模式。
   private visibleDeviceKeys: string = '';
@@ -322,9 +326,10 @@ export struct NotifyView {
    * - scrollOffset < 0：列表向下滚动（手指下滑），隐藏按钮；
    * - 在首屏（yOffset <= 0）：隐藏按钮。
    * 忽略 Idle 状态，避免静止时重复触发。
+   * 「跳到底部」程序滚动期间整体屏蔽，否则动画产生的正向滚动会让按钮中途重现闪烁。
    */
   private handleListScroll(scrollOffset: number, scrollState: ScrollState): void {
-    if (scrollState === ScrollState.Idle) {
+    if (this.isAutoScrolling || scrollState === ScrollState.Idle) {
       return;
     }
     const offset = this.scroller.currentOffset();
@@ -348,16 +353,20 @@ export struct NotifyView {
     }
   }
 
-  /** 点击「跳到底部」按钮：先隐藏按钮，再根据剩余距离动态调整速度物理滚动到底部。 */
+  /**
+   * 点击「跳到底部」按钮：隐藏按钮并置位自动滚动标记，通过信号交给列表执行两段式定位：
+   * 短距离直接 smooth 滚动到末项；长距离先无动画瞬跳到末段附近，再短程 smooth 收尾。
+   * 滚动结束（onScrollStop）后列表回调 onAutoScrollEnd 解除屏蔽。
+   */
   private scrollToBottom(): void {
     this.showScrollToBottom = false;
-    // ScrollEdgeOptions 仅支持 velocity（vp/s），以该初速度做带摩擦减速的 fling 滚动。
-    // 固定初速度会导致短距离一闪而过、长距离等待过久，因此按当前已滚动距离动态映射：
-    // yOffset 越大说明已滚得越深、离底部越近，初速度越小，避免末段短距离突兀；
-    // 从顶部跳底（yOffset≈0，剩余长距离）给较大初速度快速跨越。
-    const currentY: number = this.scroller.currentOffset().yOffset;
-    const velocity: number = Math.max(800, Math.min(1500, 1500 - currentY * 0.7));
-    this.scroller.scrollEdge(Edge.Bottom, { velocity });
+    this.isAutoScrolling = true;
+    this.scrollToBottomSignal++;
+  }
+
+  /** 列表自动定位滚动结束（或用户手指滚动停止）回调：解除自动滚动屏蔽。 */
+  private handleAutoScrollEnd(): void {
+    this.isAutoScrolling = false;
   }
 
   build() {
@@ -469,12 +478,16 @@ export struct NotifyView {
       groupEnabled: this.groupEnabled,
       statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
+      scrollToBottomSignal: this.scrollToBottomSignal,
       onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
         this.handleListScroll(scrollOffset, scrollState),
       onListReachStart: () => {
         if (this.showScrollToBottom) {
           this.showScrollToBottom = false;
         }
+      },
+      onAutoScrollEnd: () => {
+        this.handleAutoScrollEnd();
       },
       onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
       onToggleSelect: (id: number) => this.toggleSelect(id),
