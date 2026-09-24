@@ -66,7 +66,7 @@ export struct NotifyView {
   @State serverErrorBanner: string = '';
   @State refreshing: boolean = false;
   @State hasClientToken: boolean = false;
-  // 点击查看的消息详情（bindContentCover 全屏模态）
+  // 点击查看的消息详情（底部半模态面板）
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
   @StorageLink(KEY_NOTIFY_EDITING) @Watch('onIsEditingChanged') isEditing: boolean = false;
@@ -428,7 +428,11 @@ export struct NotifyView {
       .bindToScrollable([this.scroller])
       .width('100%')
       .height('100%')
-      .bindContentCover(this.showDetail, this.detailBuilder(), {
+      .bindSheet(this.showDetail, this.detailBuilder(), {
+        height: SheetSize.LARGE,
+        preferType: SheetType.BOTTOM,
+        dragBar: true,
+        showClose: false,
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -464,7 +468,11 @@ export struct NotifyView {
       }
       .width('100%')
       .height('100%')
-      .bindContentCover(this.showDetail, this.detailBuilder(), {
+      .bindSheet(this.showDetail, this.detailBuilder(), {
+        height: SheetSize.LARGE,
+        preferType: SheetType.BOTTOM,
+        dragBar: true,
+        showClose: false,
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -579,8 +587,6 @@ export struct NotifyView {
   detailBuilder() {
     NotifyMessageDetail({
       message: this.selectedMessage,
-      statusBarHeight: this.statusBarHeight,
-      navBarHeight: this.navBarHeight,
       onDismiss: () => { this.showDetail = false; },
       onOpenUrl: (url: string) => { this.openUrl(url); },
       onCopyCode: (code: string) => { this.copyCode(code); },

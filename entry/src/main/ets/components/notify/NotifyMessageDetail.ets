@@ -7,19 +7,15 @@ import {
   NotifyTextSegment,
   parseNotifyTextSegments
 } from './NotifyViewTypes';
-import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
 import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
 
 const DETAIL_EDGE_SPACING: number = 16;
+const DETAIL_TITLE_BAR_HEIGHT: number = 64;
 
-/** 通知详情全屏内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
+/** 通知详情半模态内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
 export struct NotifyMessageDetail {
-  @State titleBarBottom: number = -1;
-  @State scrollTop: number = -1;
   @Prop message: NotifyMessage | null = null;
-  @Prop statusBarHeight: number = 0;
-  @Prop navBarHeight: number = 0;
   onDismiss: () => void = () => {};
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
@@ -203,35 +199,25 @@ export struct NotifyMessageDetail {
 
   @Builder
   private titleBar() {
-    Column() {
+    Row() {
+      Text('通知详情').fontSize(18).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.color_text_primary')).layoutWeight(1);
       Row() {
-        Text('通知详情').fontSize(18).fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.color_text_primary')).layoutWeight(1);
-        Row() {
-          Image($r('app.media.close')).width(22).height(22).objectFit(ImageFit.Contain).draggable(false)
-            .fillColor($r('app.color.color_text_tertiary'));
-        }
-        .width(40).height(40).borderRadius(20).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-        .onClick(() => this.onDismiss());
-      }.width('100%').height(64).padding({ left: 20, right: 12 }).alignItems(VerticalAlign.Center);
-    }
-    .width('100%').padding({ top: this.statusBarHeight }).backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.color_bg_glass'))
-    .onAreaChange((_old: Area, area: Area) => {
-      const bottom: number = (area.globalPosition.y as number) + (area.height as number);
-      if (bottom >= 0 && bottom !== this.titleBarBottom) {
-        this.titleBarBottom = bottom;
+        Image($r('app.media.close')).width(22).height(22).objectFit(ImageFit.Contain).draggable(false)
+          .fillColor($r('app.color.color_text_tertiary'));
       }
-    });
+      .width(40).height(40).borderRadius(20).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+      .onClick(() => this.onDismiss());
+    }
+    .width('100%').height(DETAIL_TITLE_BAR_HEIGHT).padding({ left: 20, right: 12 })
+    .alignItems(VerticalAlign.Center).backgroundColor($r('app.color.color_bg_page'));
   }
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
       Scroll() {
         Column() {
-          // 按顶栏与滚动区的实际重叠距离避让，并留出与内容左右边距一致的间距。
-          Row().width('100%').height((this.titleBarBottom >= 0 && this.scrollTop >= 0
-            ? Math.max(0, this.titleBarBottom - this.scrollTop) : 0) + DETAIL_EDGE_SPACING);
+          Row().width('100%').height(DETAIL_TITLE_BAR_HEIGHT + DETAIL_EDGE_SPACING);
           if (this.message) {
             // 外层统一裁剪圆角，正文与贴底 action 形成同一张分区卡片。
             Column() {
@@ -303,17 +289,12 @@ export struct NotifyMessageDetail {
             .width('100%').borderRadius(20).clip(true).backgroundColor($r('app.color.color_bg_surface'))
             .border({ width: 1, color: $r('app.color.color_border_subtle') });
           }
-        }.width('100%').padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
-          bottom: 24 + this.navBarHeight });
+        }.width('100%')
+          .padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
+          bottom: DETAIL_EDGE_SPACING });
       }
-      .align(Alignment.TopStart).width('100%').height('100%').edgeEffect(EdgeEffect.Spring)
-      .scrollBar(BarState.Off)
-      .onAreaChange((_old: Area, area: Area) => {
-        const top: number = area.globalPosition.y as number;
-        if (top !== this.scrollTop) {
-          this.scrollTop = top;
-        }
-      });
+      .align(Alignment.TopStart).width('100%').height('100%')
+      .edgeEffect(EdgeEffect.Spring).scrollBar(BarState.Off);
       this.titleBar();
     }
     .width('100%').height('100%').backgroundColor($r('app.color.color_bg_page'));
