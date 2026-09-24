@@ -33,6 +33,11 @@ struct SharePage {
   @State refreshing: boolean = false;
   // 自定义刷新指示器不会自动隐藏，需按状态控制显隐（Done 不会自动回到 Inactive，需视为隐藏）
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
+  // Web 保持铺满窗口；标题栏底边、刷新区和 Web 起点用于计算实际遮挡距离。
+  @State titleBarBottom: number = -1;
+  @State refreshTop: number = -1;
+  @State webTop: number = -1;
+  private webPageLoaded: boolean = false;
   private controller: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear() {
@@ -100,19 +105,32 @@ struct SharePage {
     })
     // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
     .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.color_bg_glass'));
+    .backgroundColor($r('app.color.color_bg_glass'))
+    .onAreaChange((_old: Area, area: Area) => {
+      this.updateTitleBarBottom((area.globalPosition.y as number) + (area.height as number));
+    });
+  }
+
+  // HDS 内置标题仍保留；透明、不可点击的叠层只用于测量整个标题栏区域。
+  @Builder
+  hdsTitleBarProbe() {
+    Row()
+      .width('100%')
+      .height('100%')
+      .hitTestBehavior(HitTestMode.None)
+      .onAreaChange((_old: Area, area: Area) => {
+        this.updateTitleBarBottom((area.globalPosition.y as number) + (area.height as number));
+      });
   }
 
   // 自定义刷新指示器：仅在下拉/刷新过程中显示（Inactive 隐藏）；
-  // 顶部 spacer 让转圈下移到 titleBar 下方避免被遮挡：
-  // 铺满方案下内容区从窗口顶开始（enableComponentSafeArea: false），Refresh 顶部贴近窗口顶，
-  // HDS 分支 spacer = statusBarHeight + 56 - 4（titleBar 总高微调 -4）；降级分支 = statusBarHeight + 56 + 16
+  // 铺满方案下 Refresh 从顶栏背后开始，按两者的实际位置让转圈避开顶栏。
   @Builder
   refreshHeaderBuilder() {
     Column() {
       Row()
-        .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.statusBarHeight + 56 - 4 :
-          this.statusBarHeight + 56 + 16);
+        .height(this.titleBarBottom >= 0 && this.refreshTop >= 0
+          ? Math.max(0, this.titleBarBottom - this.refreshTop) : 0);
 
       if (this.refreshState !== RefreshStatus.Inactive) {
         LoadingProgress()
@@ -153,6 +171,14 @@ struct SharePage {
           .darkMode(WebDarkMode.Auto)
           // ⚠️ 官方 HDS 动态模糊必配：Web 不裁剪溢出，内容才能向上穿出至 titleBar 背面被材质采样
           .clip(false)
+          .onAreaChange((_old: Area, area: Area) => {
+            const top: number = area.globalPosition.y as number;
+            // 下拉刷新会暂时移动 Web；只记录静止时的布局起点。
+            if (!this.refreshing && this.refreshState === RefreshStatus.Inactive && top !== this.webTop) {
+              this.webTop = top;
+              this.updateWebSafeArea();
+            }
+          })
           // 嵌套滚动：Web 自身先滚动，到边界（触顶）后交给父容器 Refresh 触发下拉刷新
           .nestedScroll({
             scrollForward: NestedScrollMode.SELF_FIRST,
@@ -168,24 +194,19 @@ struct SharePage {
           .onPageEnd(() => {
             // 刷新/加载完成：收起下拉刷新指示器
             this.refreshing = false;
-            // --safe-area-top 让网页 body 顶部留出 titleBar 区域（内容区避让 titleBar 后，
-            // 网页正文已从顶栏下缘开始，注入 padding-top 仅为顶栏高度兜底）
-            const topSafe: number = this.statusBarHeight + 56;
-            this.controller.runJavaScript(
-              `document.documentElement.style.setProperty('--safe-area-top', '${topSafe}px');` +
-                `document.documentElement.style.setProperty('--safe-area-bottom', '${this.navBarHeight}px');` +
-                `let s=document.createElement('style');` +
-                `s.textContent='body{padding-top:var(--safe-area-top) !important;padding-bottom:var(--safe-area-bottom) !important;}';` +
-                `document.head.appendChild(s);`
-            ).catch((err: Error) => {
-              const msg = err instanceof Error ? err.message : String(err);
-              hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
-            });
+            this.webPageLoaded = true;
+            this.updateWebSafeArea();
           });
       }
       .layoutWeight(1)
       // ⚠️ 官方 HDS 动态模糊必配：Refresh 外层也不裁剪溢出，否则穿出 titleBar 背面的 Web 内容会被 Refresh 边界裁掉
       .clip(false)
+      .onAreaChange((_old: Area, area: Area) => {
+        const top: number = area.globalPosition.y as number;
+        if (!this.refreshing && this.refreshState === RefreshStatus.Inactive && top !== this.refreshTop) {
+          this.refreshTop = top;
+        }
+      })
       .onStateChange((state: RefreshStatus) => {
         // 同步刷新状态给自定义指示器，控制其显隐
         // Done（刷新结束）不会自动回到 Inactive，需直接视为隐藏，避免加载完成后指示器常驻
@@ -221,6 +242,9 @@ struct SharePage {
         // 标题栏内容（系统槽位 mainTitle/backIcon/menu）避让状态栏
         avoidLayoutSafeArea: true,
         content: {
+          stackBuilder: (): void => {
+            this.hdsTitleBarProbe();
+          },
           // 系统 MINI 标题槽位：18vp 粗体居中，绑定 @State 动态标题（路由参数传入）；
           // 网页下滑超过阈值后置空隐藏标题，滚回顶部恢复
           title: { mainTitle: this.titleVisible ? this.pageTitle : '' },
@@ -275,6 +299,31 @@ struct SharePage {
       .height('100%')
       .backgroundColor($r('app.color.color_bg_page'));
     }
+  }
+
+  private updateTitleBarBottom(bottom: number): void {
+    if (bottom >= 0 && bottom !== this.titleBarBottom) {
+      this.titleBarBottom = bottom;
+      this.updateWebSafeArea();
+    }
+  }
+
+  private updateWebSafeArea(): void {
+    if (!this.webPageLoaded || this.titleBarBottom < 0 || this.webTop < 0) {
+      return;
+    }
+    const topSafe: number = Math.max(0, this.titleBarBottom - this.webTop);
+    this.controller.runJavaScript(
+      `document.documentElement.style.setProperty('--safe-area-top', '${topSafe}px');` +
+        `document.documentElement.style.setProperty('--safe-area-bottom', '${this.navBarHeight}px');` +
+        `if(!document.getElementById('timelynotify-safe-area-style')){` +
+        `let s=document.createElement('style');s.id='timelynotify-safe-area-style';` +
+        `s.textContent='body{padding-top:var(--safe-area-top) !important;padding-bottom:var(--safe-area-bottom) !important;}';` +
+        `document.head.appendChild(s);}`
+    ).catch((err: Error) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
+    });
   }
 
   // 系统返回手势：WebView 优先后退

@@ -5,11 +5,14 @@ import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } 
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'ServerSettingsPage';
+const CONTENT_EDGE_SPACING: number = 16;
 
 // 服务器设置页（MineView 点击服务器卡片进入）
 @Entry
 @Component
 struct ServerSettingsPage {
+  @State fallbackTitleBarBottom: number = -1;
+  @State scrollTop: number = -1;
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -51,13 +54,13 @@ struct ServerSettingsPage {
           Column() {
             Row()
               .width('100%')
-              .height(8);
-            // 首占位：HDS 保留 4 作为列表顶部余量（enableComponentSafeArea 已让内容起始于 titleBar 下方）
-            // 降级：Stack 叠层内容从窗口顶开始，需手工 statusBarHeight + MINI(56) + 16 余量 占位
+              .height(CONTENT_EDGE_SPACING);
+            // HDS 已避让标题栏，顶部只保留与左右内边距一致的视觉间距。
             ServerSettingsContent();
           }
           .width('100%')
-          .padding({ left: 16, right: 16, bottom: 16 + this.navBarHeight });
+          .padding({ left: CONTENT_EDGE_SPACING, right: CONTENT_EDGE_SPACING,
+            bottom: CONTENT_EDGE_SPACING + this.navBarHeight });
         }
         .width('100%')
         .height('100%')
@@ -99,21 +102,28 @@ struct ServerSettingsPage {
           Column() {
             Row()
               .width('100%')
-              .height(this.statusBarHeight + 72);
+              .height((this.fallbackTitleBarBottom >= 0 && this.scrollTop >= 0
+                ? Math.max(0, this.fallbackTitleBarBottom - this.scrollTop) : 0) + CONTENT_EDGE_SPACING);
 
             ServerSettingsContent();
           }
           .width('100%')
           .padding({
-            left: 16,
-            right: 16,
-            bottom: 16 + this.navBarHeight
+            left: CONTENT_EDGE_SPACING,
+            right: CONTENT_EDGE_SPACING,
+            bottom: CONTENT_EDGE_SPACING + this.navBarHeight
           });
         }
         .width('100%')
         .height('100%')
         .edgeEffect(EdgeEffect.Spring)
-        .align(Alignment.Top);
+        .align(Alignment.Top)
+        .onAreaChange((_old: Area, area: Area) => {
+          const top: number = area.globalPosition.y as number;
+          if (top !== this.scrollTop) {
+            this.scrollTop = top;
+          }
+        });
 
         Row() {
           this.topBarContent();
@@ -126,7 +136,13 @@ struct ServerSettingsPage {
           bottom: 12
         })
         .backgroundBlurStyle(resolveBlurStyle('bar')!, { scale: 1.0 })
-        .backgroundColor($r('app.color.color_bg_glass'));
+        .backgroundColor($r('app.color.color_bg_glass'))
+        .onAreaChange((_old: Area, area: Area) => {
+          const bottom: number = (area.globalPosition.y as number) + (area.height as number);
+          if (bottom >= 0 && bottom !== this.fallbackTitleBarBottom) {
+            this.fallbackTitleBarBottom = bottom;
+          }
+        });
       }
       .width('100%')
       .height('100%')

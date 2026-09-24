@@ -10,9 +10,13 @@ import {
 import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
 import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
 
+const DETAIL_EDGE_SPACING: number = 16;
+
 /** 通知详情全屏内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
 export struct NotifyMessageDetail {
+  @State titleBarBottom: number = -1;
+  @State scrollTop: number = -1;
   @Prop message: NotifyMessage | null = null;
   @Prop statusBarHeight: number = 0;
   @Prop navBarHeight: number = 0;
@@ -212,15 +216,22 @@ export struct NotifyMessageDetail {
       }.width('100%').height(64).padding({ left: 20, right: 12 }).alignItems(VerticalAlign.Center);
     }
     .width('100%').padding({ top: this.statusBarHeight }).backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.color_bg_glass'));
+    .backgroundColor($r('app.color.color_bg_glass'))
+    .onAreaChange((_old: Area, area: Area) => {
+      const bottom: number = (area.globalPosition.y as number) + (area.height as number);
+      if (bottom >= 0 && bottom !== this.titleBarBottom) {
+        this.titleBarBottom = bottom;
+      }
+    });
   }
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
       Scroll() {
         Column() {
-          // 为悬浮顶栏预留高度，额外保留 16vp 使内容卡片与顶栏自然分隔。
-          Row().width('100%').height(this.statusBarHeight + 80);
+          // 按顶栏与滚动区的实际重叠距离避让，并留出与内容左右边距一致的间距。
+          Row().width('100%').height((this.titleBarBottom >= 0 && this.scrollTop >= 0
+            ? Math.max(0, this.titleBarBottom - this.scrollTop) : 0) + DETAIL_EDGE_SPACING);
           if (this.message) {
             // 外层统一裁剪圆角，正文与贴底 action 形成同一张分区卡片。
             Column() {
@@ -292,9 +303,17 @@ export struct NotifyMessageDetail {
             .width('100%').borderRadius(20).clip(true).backgroundColor($r('app.color.color_bg_surface'))
             .border({ width: 1, color: $r('app.color.color_border_subtle') });
           }
-        }.width('100%').padding({ left: 16, right: 16, bottom: 24 + this.navBarHeight });
+        }.width('100%').padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
+          bottom: 24 + this.navBarHeight });
       }
-      .align(Alignment.TopStart).width('100%').height('100%').edgeEffect(EdgeEffect.Spring).scrollBar(BarState.Off);
+      .align(Alignment.TopStart).width('100%').height('100%').edgeEffect(EdgeEffect.Spring)
+      .scrollBar(BarState.Off)
+      .onAreaChange((_old: Area, area: Area) => {
+        const top: number = area.globalPosition.y as number;
+        if (top !== this.scrollTop) {
+          this.scrollTop = top;
+        }
+      });
       this.titleBar();
     }
     .width('100%').height('100%').backgroundColor($r('app.color.color_bg_page'));

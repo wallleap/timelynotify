@@ -15,6 +15,8 @@ import { AboutSection } from '../components/minesections/AboutSection';
 // 我的页 - 展示个人设置入口
 @Component
 export struct MineView {
+  @State fallbackTitleBarBottom: number = -1;
+  @State scrollTop: number = -1;
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -61,7 +63,13 @@ export struct MineView {
     })
     // blurStyle 只做模糊不调色 → 必须叠加半透明底色才看得到毛玻璃
     .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.color_bg_glass'));
+    .backgroundColor($r('app.color.color_bg_glass'))
+    .onAreaChange((_old: Area, area: Area) => {
+      const bottom: number = (area.globalPosition.y as number) + (area.height as number);
+      if (bottom >= 0 && bottom !== this.fallbackTitleBarBottom) {
+        this.fallbackTitleBarBottom = bottom;
+      }
+    });
   }
 
   // 顶栏右侧主题切换器：三段纯图标（跟随系统/浅色/深色），选中项圆形高亮底
@@ -119,10 +127,12 @@ export struct MineView {
   scrollBody() {
     Scroll(this.scroller) {
       Column({ space: 16 }) {
-        // 首项占位：组件级安全区（enableComponentSafeArea）已自动让内容起始于 titleBar 下方 → HDS 无需占位
+        // HDS 自动避让标题栏；自绘叠层按实测重叠距离占位，Column 的 space 提供视觉间距。
         Row()
           .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 0 : this.statusBarHeight + 56 + 10);
+          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 0 :
+            (this.fallbackTitleBarBottom >= 0 && this.scrollTop >= 0
+              ? Math.max(0, this.fallbackTitleBarBottom - this.scrollTop) : 0));
 
         // 通知设置板块（开关 / 通知权限设置 / 测试通知 / 导出通知）
         NotifySettingsSection();
@@ -152,6 +162,12 @@ export struct MineView {
     .scrollBar(BarState.Off)
     .edgeEffect(EdgeEffect.Spring)
     .width('100%')
+    .onAreaChange((_old: Area, area: Area) => {
+      const top: number = area.globalPosition.y as number;
+      if (top !== this.scrollTop) {
+        this.scrollTop = top;
+      }
+    })
     // ⚠️ 官方 HDS 动态模糊必配：Scroll 不裁剪溢出，卡片才能向上穿出至 titleBar 背面被材质采样
     .clip(false);
   }

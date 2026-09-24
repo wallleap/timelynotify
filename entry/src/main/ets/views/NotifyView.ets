@@ -475,7 +475,9 @@ export struct NotifyView {
 
   @Builder
   refreshHeaderBuilder() {
-    NotifyRefreshHeader({ refreshState: this.refreshState, statusBarHeight: this.statusBarHeight,
+    NotifyRefreshHeader({ refreshState: this.refreshState,
+      topInset: this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
+        ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0,
       immersiveEnabled: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled });
   }
 
