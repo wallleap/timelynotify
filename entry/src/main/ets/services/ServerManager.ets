@@ -538,6 +538,8 @@ export class ServerManager {
     await this.persist(ctx);
     hilog.info(DOMAIN, TAG, '新增服务器：id=%{public}s url=%{public}s', entry.id, entry.baseURL);
     this.emitChange();
+    // 新 server 的 deviceKey 为空，异步触发注册（与 switchTo 保持一致）
+    this.syncKeyForServerAsync(ctx, id);
     return entry;
   }
 

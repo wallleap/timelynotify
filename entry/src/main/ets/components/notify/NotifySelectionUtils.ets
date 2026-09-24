@@ -60,12 +60,22 @@ export function setGroupMessagesSelection(selectedIds: number[], messages: Notif
   return toggleGroupMessages(selectedIds, messages);
 }
 
-/** 删除消息后，保留仍有消息的分组展开状态（空 group_key 对应“默认”分组，也需纳入统计）。 */
-export function retainExpandableGroups(messages: NotifyMessage[], expandedGroups: string[]): string[] {
+/**
+ * 删除消息后，仅保留仍是“多条分组”的展开状态（空 group_key 对应“默认”分组，也需纳入统计）：
+ * - 真实总数（含尚未加载到内存的历史）只剩 1 条时自动收起，让该条回到普通卡片；
+ * - 总数仍大于 1（例如大分组只加载了部分消息）时保留展开，避免收起后看不到“加载更多”入口。
+ * totals 缺省或缺少对应分组时，回退为内存中的消息计数。
+ */
+export function retainExpandableGroups(messages: NotifyMessage[], expandedGroups: string[],
+  totals?: Map<string, number>): string[] {
   const counts: Map<string, number> = new Map<string, number>();
   for (let i = 0; i < messages.length; i++) {
     const groupKey: string = messages[i].group;
     counts.set(groupKey, (counts.get(groupKey) ?? 0) + 1);
   }
-  return expandedGroups.filter((groupKey: string) => (counts.get(groupKey) ?? 0) >= 1);
+  return expandedGroups.filter((groupKey: string) => {
+    const memoryCount: number = counts.get(groupKey) ?? 0;
+    const total: number = totals ? (totals.get(groupKey) ?? memoryCount) : memoryCount;
+    return total > 1;
+  });
 }

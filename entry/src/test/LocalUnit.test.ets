@@ -6,7 +6,7 @@ import { NotifyMessage } from '../main/ets/model/NotifyMessage';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { AutoCopyService, AutoCopySelection } from '../main/ets/services/AutoCopyService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
-import { areGroupMessagesSelected, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
+import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
 
 class RawMessageExtras extends Object {
   ciphertext: string = '';
@@ -141,6 +141,37 @@ export default function localUnitTest() {
       const cleared: number[] = setGroupMessagesSelection(groupSelected, group, false);
       expect(cleared.length).assertEqual(0);
       expect(setGroupMessagesSelection(cleared, group, false) === cleared).assertTrue();
+    });
+    it('collapsesGroupWhenOnlyOneMessageRemains', 0, () => {
+      // g1 删除后仅剩 1 条且真实总数为 1；g2 仍有 2 条；空 group_key 代表“默认”分组。
+      const g1Only: NotifyMessage = new NotifyMessage();
+      g1Only.id = 1;
+      g1Only.group = 'g1';
+      const g2First: NotifyMessage = new NotifyMessage();
+      g2First.id = 2;
+      g2First.group = 'g2';
+      const g2Second: NotifyMessage = new NotifyMessage();
+      g2Second.id = 3;
+      g2Second.group = 'g2';
+      const defaultOnly: NotifyMessage = new NotifyMessage();
+      defaultOnly.id = 4;
+      defaultOnly.group = '';
+      const messages: NotifyMessage[] = [g1Only, g2First, g2Second, defaultOnly];
+      const totals: Map<string, number> = new Map<string, number>();
+      totals.set('g1', 1);
+      totals.set('g2', 2);
+      totals.set('', 1);
+      const retained: string[] = retainExpandableGroups(messages, ['g1', 'g2', ''], totals);
+      expect(retained.length).assertEqual(1);
+      expect(retained[0]).assertEqual('g2');
+      // 大分组只加载部分消息：真实总数仍大于 1 时保留展开，避免收起后看不到“加载更多”入口。
+      const partialTotals: Map<string, number> = new Map<string, number>();
+      partialTotals.set('g1', 5);
+      expect(retainExpandableGroups([g1Only], ['g1'], partialTotals).length).assertEqual(1);
+      // totals 缺省时回退内存计数：只剩 1 条同样自动收起。
+      expect(retainExpandableGroups([g1Only], ['g1']).length).assertEqual(0);
+      // 整组删光时移除展开状态。
+      expect(retainExpandableGroups([], ['g1'], totals).length).assertEqual(0);
     });
     it('exportsEveryLocalNotificationWithDecryptedFields', 0, () => {
       const first: NotifyMessage = new NotifyMessage();

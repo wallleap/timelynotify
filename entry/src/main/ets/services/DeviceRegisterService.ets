@@ -57,16 +57,21 @@ export class DeviceRegisterService {
     this.tokenProvider = provider;
   }
 
+  // 检查当前 server 的 per-server deviceKey（权威数据源），有则直接返回；无则触发注册。
+  // 不再读全局 KEY_DEVICE_KEY 缓存——换机备份恢复后全局缓存会残留旧 server 的 key，
+  // 导致新加的 server 跳过注册（device_key 与 server 对不上，推送和消息拉取都失效）。
   // 并发调用会共享同一个 pendingPromise，避免重复触发 PushKit getToken 和注册接口
   async ensureRegistered(context: common.Context | null = null): Promise<string | null> {
     const ctx: common.Context | null = this.resolveContext(context);
     if (!ctx) {
       return null;
     }
-    const cachedKey: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_DEVICE_KEY, '');
-    if (cachedKey && cachedKey.length > 0) {
-      hilog.info(DOMAIN, TAG, '已注册，device_key 命中缓存：%{public}s', cachedKey);
-      return cachedKey;
+    // 优先检查当前 server 的 per-server deviceKey，而非全局缓存
+    await ServerManager.getInstance().ensureLoaded();
+    const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+    if (cur && cur.deviceKey && cur.deviceKey.length > 0) {
+      hilog.info(DOMAIN, TAG, '已注册，per-server device_key 命中缓存：%{public}s', cur.deviceKey);
+      return cur.deviceKey;
     }
     if (this.pendingPromise) {
       hilog.info(DOMAIN, TAG, '注册任务进行中，复用 pending promise');
@@ -80,7 +85,7 @@ export class DeviceRegisterService {
     }
   }
 
-  // 已注册则直接返回缓存的 device_key；否则注册。context 可传 null
+  // 已注册（当前 server 有 per-server deviceKey）则直接返回；否则注册。context 可传 null
 
   // 用于 UI（如 MineView）在首次显示前等待 PushKit token 写盘完成。
   async whenRegistrationSettled(): Promise<void> {

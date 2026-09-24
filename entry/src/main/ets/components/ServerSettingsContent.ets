@@ -102,6 +102,9 @@ export struct ServerSettingsContent {
       onSaved: (): void => {
         // 保存后刷新本地缓存，便于再次打开时回填最新值
         this.refreshClientToken();
+        // 立即触发消息同步，验证新 token 是否生效（不用等下次轮询才消除错误提示）
+        const current: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
+        AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, current + 1);
       },
     }),
     alignment: DialogAlignment.Center,

@@ -62,6 +62,8 @@ export struct NotifyView {
   @State @Watch('restoreVisibleExpandedGroups') messages: NotifyMessage[] = [];
   @State loading: boolean = false;
   @State errorMsg: string = '';
+  // view all 模式下 per-server 同步错误的非阻塞提示（列出失败的 server 及原因）
+  @State serverErrorBanner: string = '';
   @State refreshing: boolean = false;
   @State hasClientToken: boolean = false;
   // 点击查看的消息详情（bindContentCover 全屏模态）
@@ -114,6 +116,9 @@ export struct NotifyView {
   // 当前一轮同步新拉到的消息（跨服务器、跨分页聚合），用于同步完成后交给 AutoCopyService。
   // 仅记录本轮首次拉到、尚未远程删除的批次；上一轮的记录在下一轮开始时清空。
   private newMessagesThisRound: NotifyMessage[] = [];
+  // 本轮 per-server 同步错误（serverId → errorMsg），由 syncSingleServer 写入，
+  // syncAllServers/loadMessages 统一消费：全失败且无消息→阻塞 errorMsg，部分失败→非阻塞 serverErrorBanner
+  private syncErrors: Map<string, string> = new Map<string, string>();
 
   aboutToAppear() {
     this.initAfterServerManagerReady();
@@ -171,32 +176,58 @@ export struct NotifyView {
       onOpenSettings: () => this.handleMoreClicked() });
   }
 
+  // view all 模式下 per-server 错误的非阻塞提示条（点击跳转服务器设置）
+  @Builder
+  serverErrorBannerView() {
+    Row() {
+      Text(this.serverErrorBanner)
+        .fontSize(12)
+        .fontColor('#e65100')
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 6, bottom: 6 })
+    .backgroundColor('#fff3e0')
+    .onClick(() => {
+      this.handleMoreClicked();
+    })
+  }
+
   @Builder
   refreshContentBody() {
-    Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
-      if (this.needGuideToConfig()) {
-        NotifyContentState({ mode: 'guide' });
-      } else if (this.loading && this.messages.length === 0) {
-        NotifyContentState({ mode: 'loading' });
-      } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
-        NotifyContentState({ mode: 'error', errorMsg: this.errorMsg, onRetry: () => this.loadMessages() });
-      } else if (this.messages.length === 0) {
-        NotifyContentState({ mode: 'empty' });
-      } else {
-        this.listView();
+    Column() {
+      if (this.serverErrorBanner.length > 0) {
+        this.serverErrorBannerView();
       }
+      Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
+        if (this.needGuideToConfig()) {
+          NotifyContentState({ mode: 'guide' });
+        } else if (this.loading && this.messages.length === 0) {
+          NotifyContentState({ mode: 'loading' });
+        } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
+          NotifyContentState({ mode: 'error', errorMsg: this.errorMsg, onRetry: () => this.loadMessages() });
+        } else if (this.messages.length === 0) {
+          NotifyContentState({ mode: 'empty' });
+        } else {
+          this.listView();
+        }
+      }
+      .clip(false)
+      .width('100%')
+      .layoutWeight(1)
+      .onStateChange((state: RefreshStatus) => {
+        // 同步刷新状态给自定义指示器，控制其显隐
+        this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
+      })
+      .onRefreshing(() => {
+        this.refreshing = true;
+        this.loadMessages();
+      });
     }
-    .clip(false)
     .width('100%')
     .height('100%')
-    .onStateChange((state: RefreshStatus) => {
-      // 同步刷新状态给自定义指示器，控制其显隐
-      this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
-    })
-    .onRefreshing(() => {
-      this.refreshing = true;
-      this.loadMessages();
-    });
   }
 
   @Builder
@@ -869,7 +900,8 @@ export struct NotifyView {
     // 可观察分组会只删除目标子项；动画上下文同步平滑收起该行占用的布局空间。
     this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
       this.messages = newList;
-      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups);
+      // 按真实总数同步展开态：整组删到只剩 1 条时自动收起为普通卡片。
+      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups, this.groupTotals);
       // 如果删光了，退出编辑模式
       if (this.messages.length === 0) {
         this.exitEditMode();
@@ -882,7 +914,7 @@ export struct NotifyView {
     const remaining: NotifyMessage[] = this.messages.filter((message: NotifyMessage) => message.group !== groupKey);
     this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
       this.messages = remaining;
-      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups);
+      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups, this.groupTotals);
       if (this.messages.length === 0) {
         this.exitEditMode();
       }
@@ -1085,6 +1117,8 @@ export struct NotifyView {
     const seq: number = ++this.loadSeq;
     // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
+    this.serverErrorBanner = '';
+    this.syncErrors = new Map<string, string>();
     try {
       await ServerManager.getInstance().ensureLoaded();
       // 每次进入或刷新列表前清理 ttl 已到期的本地历史；清空内存以强制从缓存回填。
@@ -1101,6 +1135,11 @@ export struct NotifyView {
         const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
         if (cur) {
           const changed: boolean = await this.syncSingleServer(cur, false, seq);
+          // 单 server 模式：本地无消息时透出 per-server 错误（与原有行为一致）
+          const singleErr: string | undefined = this.syncErrors.get(cur.id);
+          if (singleErr && this.messages.length === 0) {
+            this.errorMsg = singleErr;
+          }
           // 同步完成后从缓存回填列表（onChange 已清空 this.messages，必须回填）
           if (changed || this.messages.length === 0) {
             const deviceKey: string = cur.deviceKey;
@@ -1168,10 +1207,8 @@ export struct NotifyView {
       const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, 0, server, true);
       if (!result.ok) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
-        // 本地无消息时透出错误，有消息时静默保留
-        if (this.messages.length === 0 && expectedSeq >= 0) {
-          this.errorMsg = result.errorMsg;
-        }
+        // 记录 per-server 错误，由调用方（syncAllServers/loadMessages）统一处理展示
+        this.syncErrors.set(server.id, result.errorMsg);
         return false;
       }
 
@@ -1235,7 +1272,8 @@ export struct NotifyView {
       return false;
     }
 
-    this.errorMsg = '';
+    // 清除该 server 的 per-server 错误（本轮同步成功）
+    this.syncErrors.delete(server.id);
     return hasNewMessages;
   }
 
@@ -1291,6 +1329,36 @@ export struct NotifyView {
         this.groupTotals = refreshed.totals;
       }
       return;
+    }
+
+    // view all 模式：处理 per-server 错误
+    // 全部失败且无消息 → 阻塞式 errorMsg；部分失败 → 非阻塞 serverErrorBanner
+    {
+      let failedParts: string = '';
+      let totalFailed: number = 0;
+      for (let i = 0; i < servers.length; i++) {
+        const err: string | undefined = this.syncErrors.get(servers[i].id);
+        if (err) {
+          totalFailed++;
+          const name: string = servers[i].name || servers[i].baseURL;
+          if (failedParts.length > 0) {
+            failedParts += '\n';
+          }
+          failedParts += `${name}：${err}`;
+        }
+      }
+      if (totalFailed > 0 && totalFailed === servers.length && this.messages.length === 0) {
+        // 所有 server 都失败且本地无缓存消息 → 阻塞式错误
+        this.errorMsg = failedParts;
+        this.serverErrorBanner = '';
+      } else if (totalFailed > 0) {
+        // 部分 server 失败（或有缓存消息）→ 非阻塞提示
+        this.errorMsg = '';
+        this.serverErrorBanner = failedParts;
+      } else {
+        this.errorMsg = '';
+        this.serverErrorBanner = '';
+      }
     }
 
     let anyChanged: boolean = false;
