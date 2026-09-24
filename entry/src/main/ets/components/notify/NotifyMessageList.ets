@@ -101,88 +101,6 @@ export struct NotifyMessageList {
     this.reloadDataSource();
   }
 
-  /**
-   * 执行「跳到底部」：按剩余行数进入状态机的 jumping 或 smoothing 阶段。
-   * - 剩余行数 ≤ SCROLL_TO_BOTTOM_SMOOTH_RANGE：直接进入平滑滚动贴底（smoothing）；
-   * - 剩余行数更远：先无动画瞬跳到末段前几行（jumping），由 onScrollIndex 确认到位后再平滑收尾。
-   * 无论距离多近，最终都发起 scrollToIndex(lastIndex, true, END) 由 List 精确对齐到真实末尾；
-   * 不依赖“末项可见”这类部分可见的近似判断，避免占位项只露一角时未真正贴底。
-   * List 内绝对索引：0=顶部占位；1..dataCount=数据行；dataCount+1=“没有更多了”；dataCount+2=底部占位。
-   */
-  private onScrollToBottomRequested(): void {
-    if (this.scrollToBottomSignal <= 0) {
-      return;
-    }
-    const dataCount: number = this.dataSource.totalCount();
-    if (dataCount <= 0) {
-      this.finishAutoScroll();
-      return;
-    }
-    const lastIndex: number = dataCount + 2;
-    this.autoScrollTargetIndex = lastIndex;
-    const remaining: number = lastIndex - this.visibleEndIndex;
-    if (remaining <= SCROLL_TO_BOTTOM_SMOOTH_RANGE) {
-      this.startSmoothing(lastIndex);
-      return;
-    }
-    // 长距离：先无动画瞬跳到末段起点，交给 onScrollIndex 驱动下一阶段。
-    this.autoScrollState = AUTO_SCROLL_JUMPING;
-    this.listScroller.scrollToIndex(lastIndex - SCROLL_TO_BOTTOM_SMOOTH_RANGE, false, ScrollAlign.END);
-  }
-
-  /**
-   * 由 onScrollIndex 驱动：瞬跳（jumping）到位后启动最终平滑段（smoothing）。
-   * 不再以 lastVisibleIndex >= lastIndex 早退——瞬跳后即使已接近底部，仍交 List 平滑对齐到真实末尾。
-   */
-  private advanceAutoScrollAfterJump(lastVisibleIndex: number): void {
-    if (this.autoScrollState !== AUTO_SCROLL_JUMPING) {
-      return;
-    }
-    if (lastVisibleIndex < this.autoScrollTargetIndex - SCROLL_TO_BOTTOM_SMOOTH_RANGE) {
-      return;
-    }
-    this.startSmoothing(this.autoScrollTargetIndex);
-  }
-
-  /** 进入最终平滑滚动段，并启动兜底定时器，确保无位移（onScrollStop 不触发）时也能收尾。 */
-  private startSmoothing(lastIndex: number): void {
-    this.autoScrollState = AUTO_SCROLL_SMOOTHING;
-    this.clearAutoScrollTimeout();
-    this.autoScrollTimeoutId = setTimeout(() => {
-      // 安全网而非主驱动：无位移滚动不触发 onScrollStop 时，超时强制收尾。
-      if (this.autoScrollState === AUTO_SCROLL_SMOOTHING) {
-        this.finishAutoScroll();
-      }
-    }, 1200);
-    this.listScroller.scrollToIndex(lastIndex, true, ScrollAlign.END);
-  }
-
-  /** 结束自动滚动：复位状态机、清除兜底定时器并通知页面解除 isAutoScrolling 屏蔽。 */
-  private finishAutoScroll(): void {
-    this.autoScrollState = AUTO_SCROLL_IDLE;
-    this.autoScrollTargetIndex = -1;
-    this.clearAutoScrollTimeout();
-    this.onAutoScrollEnd();
-  }
-
-  private clearAutoScrollTimeout(): void {
-    if (this.autoScrollTimeoutId >= 0) {
-      clearTimeout(this.autoScrollTimeoutId);
-      this.autoScrollTimeoutId = -1;
-    }
-  }
-
-  /**
-   * 中断进行中的自动滚动：用户物理触摸列表、或数据源结构变化时调用，
-   * 使瞬跳/平滑阶段失效，避免两段之间强制拉底或目标索引失效。
-   * 幂等：idle 状态下不做任何事，不额外回调页面。
-   */
-  private interruptAutoScroll(): void {
-    if (this.autoScrollState !== AUTO_SCROLL_IDLE) {
-      this.finishAutoScroll();
-    }
-  }
-
   build() {
     List({ space: 0, scroller: this.listScroller }) {
       // 非 HDS 标题栏高度为状态栏加 70vp，额外保留 16vp 使首张卡片自然分隔。
@@ -190,8 +108,9 @@ export struct NotifyMessageList {
       ListItem() {
         Row()
           .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 18 :
-            this.statusBarHeight + 86);
+          .height(!SUPPORTS_IMMERSIVE_MATERIAL
+            ? this.statusBarHeight + 62
+            : (this.immersiveLightEnabled ? 18 : this.statusBarHeight + 86));
       }
 
       LazyForEach(this.dataSource, (row: NotifyListRow) => {
@@ -331,6 +250,88 @@ export struct NotifyMessageList {
         this.finishAutoScroll();
       }
     });
+  }
+
+  /**
+   * 执行「跳到底部」：按剩余行数进入状态机的 jumping 或 smoothing 阶段。
+   * - 剩余行数 ≤ SCROLL_TO_BOTTOM_SMOOTH_RANGE：直接进入平滑滚动贴底（smoothing）；
+   * - 剩余行数更远：先无动画瞬跳到末段前几行（jumping），由 onScrollIndex 确认到位后再平滑收尾。
+   * 无论距离多近，最终都发起 scrollToIndex(lastIndex, true, END) 由 List 精确对齐到真实末尾；
+   * 不依赖“末项可见”这类部分可见的近似判断，避免占位项只露一角时未真正贴底。
+   * List 内绝对索引：0=顶部占位；1..dataCount=数据行；dataCount+1=“没有更多了”；dataCount+2=底部占位。
+   */
+  private onScrollToBottomRequested(): void {
+    if (this.scrollToBottomSignal <= 0) {
+      return;
+    }
+    const dataCount: number = this.dataSource.totalCount();
+    if (dataCount <= 0) {
+      this.finishAutoScroll();
+      return;
+    }
+    const lastIndex: number = dataCount + 2;
+    this.autoScrollTargetIndex = lastIndex;
+    const remaining: number = lastIndex - this.visibleEndIndex;
+    if (remaining <= SCROLL_TO_BOTTOM_SMOOTH_RANGE) {
+      this.startSmoothing(lastIndex);
+      return;
+    }
+    // 长距离：先无动画瞬跳到末段起点，交给 onScrollIndex 驱动下一阶段。
+    this.autoScrollState = AUTO_SCROLL_JUMPING;
+    this.listScroller.scrollToIndex(lastIndex - SCROLL_TO_BOTTOM_SMOOTH_RANGE, false, ScrollAlign.END);
+  }
+
+  /**
+   * 由 onScrollIndex 驱动：瞬跳（jumping）到位后启动最终平滑段（smoothing）。
+   * 不再以 lastVisibleIndex >= lastIndex 早退——瞬跳后即使已接近底部，仍交 List 平滑对齐到真实末尾。
+   */
+  private advanceAutoScrollAfterJump(lastVisibleIndex: number): void {
+    if (this.autoScrollState !== AUTO_SCROLL_JUMPING) {
+      return;
+    }
+    if (lastVisibleIndex < this.autoScrollTargetIndex - SCROLL_TO_BOTTOM_SMOOTH_RANGE) {
+      return;
+    }
+    this.startSmoothing(this.autoScrollTargetIndex);
+  }
+
+  /** 进入最终平滑滚动段，并启动兜底定时器，确保无位移（onScrollStop 不触发）时也能收尾。 */
+  private startSmoothing(lastIndex: number): void {
+    this.autoScrollState = AUTO_SCROLL_SMOOTHING;
+    this.clearAutoScrollTimeout();
+    this.autoScrollTimeoutId = setTimeout(() => {
+      // 安全网而非主驱动：无位移滚动不触发 onScrollStop 时，超时强制收尾。
+      if (this.autoScrollState === AUTO_SCROLL_SMOOTHING) {
+        this.finishAutoScroll();
+      }
+    }, 1200);
+    this.listScroller.scrollToIndex(lastIndex, true, ScrollAlign.END);
+  }
+
+  /** 结束自动滚动：复位状态机、清除兜底定时器并通知页面解除 isAutoScrolling 屏蔽。 */
+  private finishAutoScroll(): void {
+    this.autoScrollState = AUTO_SCROLL_IDLE;
+    this.autoScrollTargetIndex = -1;
+    this.clearAutoScrollTimeout();
+    this.onAutoScrollEnd();
+  }
+
+  private clearAutoScrollTimeout(): void {
+    if (this.autoScrollTimeoutId >= 0) {
+      clearTimeout(this.autoScrollTimeoutId);
+      this.autoScrollTimeoutId = -1;
+    }
+  }
+
+  /**
+   * 中断进行中的自动滚动：用户物理触摸列表、或数据源结构变化时调用，
+   * 使瞬跳/平滑阶段失效，避免两段之间强制拉底或目标索引失效。
+   * 幂等：idle 状态下不做任何事，不额外回调页面。
+   */
+  private interruptAutoScroll(): void {
+    if (this.autoScrollState !== AUTO_SCROLL_IDLE) {
+      this.finishAutoScroll();
+    }
   }
 
   private isSelected(id: number): boolean {
