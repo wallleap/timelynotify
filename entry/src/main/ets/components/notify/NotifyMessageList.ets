@@ -19,6 +19,8 @@ import { SUPPORTS_IMMERSIVE_MATERIAL } from '../../utils/ImmersiveUtil';
 
 // 「跳到底部」长距离穿越时，先无动画定位到距末项多少个 ListItem 的位置，再做这一小段平滑滚动。
 const SCROLL_TO_BOTTOM_SMOOTH_RANGE: number = 5;
+// 列表左右内边距；两种标题栏布局下方均沿用同一间距，保持卡片四周留白一致。
+const LIST_EDGE_SPACING: number = 16;
 
 // 「跳到底部」自动滚动状态机：idle=无进行中的自动滚动；jumping=已无动画瞬跳到末段附近，
 // 等待 onScrollIndex 确认后再平滑收尾；smoothing=正在执行最终短程平滑滚动，onScrollStop 后结束。
@@ -40,10 +42,12 @@ export struct NotifyMessageList {
   @Prop @Watch('reloadDataSource') groupEnabled: boolean = true;
   @Prop statusBarHeight: number = 0;
   @Prop navBarHeight: number = 0;
+  @Prop topInset: number = 0;
   @Prop immersiveLightEnabled: boolean = true;
   // 「跳到底部」触发信号：页面每次自增，Watch 到变化后执行两段式定位滚动。
   @Prop @Watch('onScrollToBottomRequested') scrollToBottomSignal: number = 0;
   listScroller: Scroller = new Scroller();
+  onListTopChange: (top: number) => void = (_top: number) => {};
   // 主 List 唯一的数据源；分组内消息删除时可直接发送 onDataDelete。
   private dataSource: NotifyListDataSource = new NotifyListDataSource();
   // 当前可视区最后一个 ListItem 的绝对索引（由 onScrollIndex 维护），用于估算距末尾的剩余行数。
@@ -103,14 +107,14 @@ export struct NotifyMessageList {
 
   build() {
     List({ space: 0, scroller: this.listScroller }) {
-      // 非 HDS 标题栏高度为状态栏加 70vp，额外保留 16vp 使首张卡片自然分隔。
-      // 沉浸光感下标题栏透明，18vp 让首张卡片与状态栏图标自然分隔。
+      // 自绘标题栏按实际遮挡距离避让，再留出与列表左右边距相同的间距。
+      // 沉浸光感下 HDS 自行避让标题栏，仅保留与左右边距相同的视觉间距。
       ListItem() {
         Row()
           .width('100%')
-          .height(!SUPPORTS_IMMERSIVE_MATERIAL
-            ? this.statusBarHeight + 62
-            : (this.immersiveLightEnabled ? 18 : this.statusBarHeight + 86));
+          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled
+            ? LIST_EDGE_SPACING
+            : this.topInset + LIST_EDGE_SPACING);
       }
 
       LazyForEach(this.dataSource, (row: NotifyListRow) => {
@@ -221,9 +225,12 @@ export struct NotifyMessageList {
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 16, right: 16 })
+    .padding({ left: LIST_EDGE_SPACING, right: LIST_EDGE_SPACING })
     .align(Alignment.Top)
     .clip(false)
+    .onAreaChange((_old: Area, area: Area) => {
+      this.onListTopChange(area.globalPosition.y as number);
+    })
     .onDidScroll((scrollOffset: number, scrollState: ScrollState) => {
       this.onListScroll(scrollOffset, scrollState);
     })

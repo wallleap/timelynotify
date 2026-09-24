@@ -92,6 +92,9 @@ export struct NotifyView {
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
   @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onPageVisibleChanged') indexPageVisible: boolean = true;
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
+  // 自绘标题栏底边与列表起点均使用窗口坐标；两者之差即实际遮挡距离。
+  @State fallbackTitleBarBottom: number = -1;
+  @State listTop: number = -1;
   // 「跳到底部」浮动按钮显隐：上滑离开首屏时显示，下滑或在首屏时隐藏。
   @State showScrollToBottom: boolean = false;
   // 「跳到底部」触发信号：每次自增传给列表，列表 Watch 后执行两段式定位滚动。
@@ -173,7 +176,13 @@ export struct NotifyView {
   fallbackTitleBar() {
     NotifyTitleBar({ title: this.title, isEditing: this.isEditing, statusBarHeight: this.statusBarHeight,
       onOpenSettings: () => this.handleMoreClicked(), onToggleSelection: () => this.handleMultiSelectClicked(),
-      onDelete: () => this.handleDeletePillClicked() });
+      onDelete: () => this.handleDeletePillClicked() })
+      .onAreaChange((_old: Area, area: Area) => {
+        const bottom: number = (area.globalPosition.y as number) + (area.height as number);
+        if (bottom >= 0 && bottom !== this.fallbackTitleBarBottom) {
+          this.fallbackTitleBarBottom = bottom;
+        }
+      });
   }
 
   @Builder
@@ -477,8 +486,16 @@ export struct NotifyView {
       groupTotals: this.groupTotals, groupLoadingMore: this.groupLoadingMore,
       groupEnabled: this.groupEnabled,
       statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
+      topInset: this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
+        ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0,
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
       scrollToBottomSignal: this.scrollToBottomSignal,
+      onListTopChange: (top: number) => {
+        // 下拉刷新会暂时移动列表；只记录静止时的布局起点，避免占位随手势抖动。
+        if (!this.refreshing && this.refreshState === RefreshStatus.Inactive && top !== this.listTop) {
+          this.listTop = top;
+        }
+      },
       onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
         this.handleListScroll(scrollOffset, scrollState),
       onListReachStart: () => {
