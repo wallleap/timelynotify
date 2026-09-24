@@ -64,6 +64,15 @@ export struct NotifyMessageList {
   };
   onCopyUrl: (url: string) => void = (_url: string) => {
   };
+  // 列表滚动事件回调：把 scrollOffset 与 scrollState 交还页面，由页面决定「跳到底部」按钮显隐。
+  // scrollOffset > 0 表示列表向上滚动（手指上滑），< 0 表示列表向下滚动（手指下滑）。
+  onListScroll: (scrollOffset: number, scrollState: ScrollState) => void =
+    (_scrollOffset: number, _scrollState: ScrollState) => {
+    };
+  // 列表到达起点（顶部）回调：双击状态栏等编程式滚动回到顶部时 onDidScroll 可能不触发，
+  // 通过 onReachStart 兜底确保「跳到底部」按钮隐藏。
+  onListReachStart: () => void = () => {
+  };
 
   aboutToAppear(): void {
     this.reloadDataSource();
@@ -190,7 +199,13 @@ export struct NotifyMessageList {
     .height('100%')
     .padding({ left: 16, right: 16 })
     .align(Alignment.Top)
-    .clip(false);
+    .clip(false)
+    .onDidScroll((scrollOffset: number, scrollState: ScrollState) => {
+      this.onListScroll(scrollOffset, scrollState);
+    })
+    .onReachStart(() => {
+      this.onListReachStart();
+    });
   }
 
   private isSelected(id: number): boolean {

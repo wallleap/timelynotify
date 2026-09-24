@@ -92,6 +92,8 @@ export struct NotifyView {
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
   @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onPageVisibleChanged') indexPageVisible: boolean = true;
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
+  // 「跳到底部」浮动按钮显隐：上滑离开首屏时显示，下滑或在首屏时隐藏。
+  @State showScrollToBottom: boolean = false;
   private dialogController: CustomDialogController = new CustomDialogController({
     builder: ServerSettingsDialog(),
     alignment: DialogAlignment.Center,
@@ -240,6 +242,11 @@ export struct NotifyView {
         .width('100%')
         .layoutWeight(1);
 
+        // 右下角"跳到底部"浮动按钮：上滑离开首屏时出现，位于分组按钮上方
+        if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
+          this.scrollToBottomFab();
+        }
+
         // 右下角"分组/平铺"模式切换浮动按钮
         // 仅在非编辑模式、有消息时显示
         if (!this.isEditing && this.messages.length > 0) {
@@ -280,6 +287,77 @@ export struct NotifyView {
     .onClick(() => {
       this.toggleGroupEnabled();
     });
+  }
+
+  /**
+   * 右下角「跳到底部」浮动按钮：位于分组模式按钮上方，使用 select_more（向下箭头）图标。
+   * 触发条件：上滑离开首屏时出现；下滑或回到首屏时隐藏。
+   * 通过 if 条件渲染 + transition 实现淡入淡出 + 轻微上移的丝滑过渡。
+   */
+  @Builder
+  private scrollToBottomFab() {
+    Row() {
+      Image($r('app.media.select_more'))
+        .width(20).height(20).objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_primary'))
+        .draggable(false);
+    }
+    .width(44).height(44).borderRadius(22)
+    .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+    .backgroundColor($r('app.color.color_bg_glass_control'))
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    // 分组按钮 bottom = navBarHeight + 72；本按钮在其上方，留 12vp 间距 + 44vp 按钮高度。
+    .margin({ right: 16, bottom: this.navBarHeight + 72 + 44 + 12 })
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 16 }))
+      .animation({ duration: 220, curve: Curve.EaseOut }))
+    .onClick(() => {
+      this.scrollToBottom();
+    });
+  }
+
+  /**
+   * 处理列表滚动事件，控制「跳到底部」按钮显隐。
+   * - scrollOffset > 0：列表向上滚动（手指上滑），离开首屏后显示按钮；
+   * - scrollOffset < 0：列表向下滚动（手指下滑），隐藏按钮；
+   * - 在首屏（yOffset <= 0）：隐藏按钮。
+   * 忽略 Idle 状态，避免静止时重复触发。
+   */
+  private handleListScroll(scrollOffset: number, scrollState: ScrollState): void {
+    if (scrollState === ScrollState.Idle) {
+      return;
+    }
+    const offset = this.scroller.currentOffset();
+    const atTop: boolean = offset.yOffset <= 0;
+    if (atTop) {
+      if (this.showScrollToBottom) {
+        this.showScrollToBottom = false;
+      }
+      return;
+    }
+    if (scrollOffset > 0) {
+      // 上滑离开首屏，显示
+      if (!this.showScrollToBottom) {
+        this.showScrollToBottom = true;
+      }
+    } else if (scrollOffset < 0) {
+      // 下滑，隐藏
+      if (this.showScrollToBottom) {
+        this.showScrollToBottom = false;
+      }
+    }
+  }
+
+  /** 点击「跳到底部」按钮：先隐藏按钮，再根据剩余距离动态调整速度物理滚动到底部。 */
+  private scrollToBottom(): void {
+    this.showScrollToBottom = false;
+    // ScrollEdgeOptions 仅支持 velocity（vp/s），以该初速度做带摩擦减速的 fling 滚动。
+    // 固定初速度会导致短距离一闪而过、长距离等待过久，因此按当前已滚动距离动态映射：
+    // yOffset 越大说明已滚得越深、离底部越近，初速度越小，避免末段短距离突兀；
+    // 从顶部跳底（yOffset≈0，剩余长距离）给较大初速度快速跨越。
+    const currentY: number = this.scroller.currentOffset().yOffset;
+    const velocity: number = Math.max(800, Math.min(1500, 1500 - currentY * 0.7));
+    this.scroller.scrollEdge(Edge.Bottom, { velocity });
   }
 
   build() {
@@ -348,6 +426,11 @@ export struct NotifyView {
           .width('100%')
           .height('100%')
 
+          // 非沉浸式分支的右下角「跳到底部」按钮
+          if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
+            this.scrollToBottomFab();
+          }
+
           // 非沉浸式分支的右下角分组模式切换按钮
           if (!this.isEditing && this.messages.length > 0) {
             this.groupModeToggleFab();
@@ -386,6 +469,13 @@ export struct NotifyView {
       groupEnabled: this.groupEnabled,
       statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
+      onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
+        this.handleListScroll(scrollOffset, scrollState),
+      onListReachStart: () => {
+        if (this.showScrollToBottom) {
+          this.showScrollToBottom = false;
+        }
+      },
       onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
       onToggleSelect: (id: number) => this.toggleSelect(id),
       onSetSelected: (id: number, selected: boolean) => this.setSelected(id, selected),
