@@ -34,7 +34,7 @@ entry/src/main/ets/
 │   ├── NotifyView.ets            # 通知列表视图
 │   └── MineView.ets              # 我的（设置）视图
 ├── components/          # 可复用 UI 组件
-│   ├── ServerSettingsDialog.ets  # 服务器设置弹窗
+│   ├── ServerSwitchDialog.ets    # 切换通知服务弹窗（首页标题，notify/ 目录）
 │   ├── ServerSettingsContent.ets # 服务器列表管理组件
 │   ├── ServerActionDialogs.ets   # 操作菜单弹窗集
 │   ├── ClientTokenDialog.ets     # ClientToken 配置弹窗
