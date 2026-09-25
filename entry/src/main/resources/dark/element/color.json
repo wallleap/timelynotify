@@ -45,6 +45,10 @@
       "value": "#1C232D"
     },
     {
+      "name": "color_bg_dialog_glass",
+      "value": "#CC1C232D"
+    },
+    {
       "name": "color_bg_input",
       "value": "#252E39"
     },

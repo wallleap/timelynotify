@@ -12,6 +12,7 @@ import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { EncryptionSettingsDialog } from './EncryptionSettingsDialog';
+import { getDialogBackgroundOptions, getDialogMaterial } from '../utils/ImmersiveUtil';
 
 const TAG: string = 'ServerContent';
 
@@ -47,84 +48,15 @@ export struct ServerSettingsContent {
   @State currentClientToken: string = '';
   @State currentEncryptionConfig: EncryptionConfig = new EncryptionConfig();
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
-  // 操作菜单 controller（目标由 targetId 持有，回调闭包捕获 this 取最新值）
-  private actionMenuController: CustomDialogController = new CustomDialogController({
-    builder: ServerActionMenuDialog({
-      onCopy: () => {
-        this.handleCopy();
-      },
-      onResetKey: () => {
-        this.openKeyDialog();
-      },
-      onClientToken: () => {
-        this.openClientTokenDialog();
-      },
-      onEncryption: () => {
-        this.openEncryptionDialog();
-      },
-      onRename: () => {
-        this.openRenameDialog();
-      },
-      onDelete: () => {
-        this.handleDelete(this.targetId);
-      },
-    }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    offset: { dx: 0, dy: 0 },
-  });
-  private renameController: CustomDialogController = new CustomDialogController({
-    builder: ServerRenameDialog({
-      getInitName: (): string => this.targetName,
-      onConfirm: (newName: string): void => {
-        this.handleRename(newName);
-      },
-    }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    offset: { dx: 0, dy: 0 },
-  });
-  private keyController: CustomDialogController = new CustomDialogController({
-    builder: ServerKeyDialog({
-      getCurrentKey: (): string => this.currentDeviceKey,
-      onConfirm: (inputKey: string): void => {
-        this.handleResetOrRestore(inputKey);
-      },
-    }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    offset: { dx: 0, dy: 0 },
-  });
+  // 弹窗 controller 均延迟到打开时构造：uiMaterial 为异步动态 import，
+  // 字段初始化期 getDialogMaterial() 必返回 undefined，材质会被永久缺省。
+  // 操作菜单（目标由 targetId 持有，回调闭包捕获 this 取最新值）
+  private actionMenuController: CustomDialogController | null = null;
+  private renameController: CustomDialogController | null = null;
+  private keyController: CustomDialogController | null = null;
   // per-server 客户端 Token 弹窗（getInitToken 回填当前 server 已配置 token；保存后写入当前 server）
-  private clientTokenController: CustomDialogController = new CustomDialogController({
-    builder: ClientTokenDialog({
-      getInitToken: (): string => this.currentClientToken,
-      onSaved: (): void => {
-        // 保存后刷新本地缓存，便于再次打开时回填最新值
-        this.refreshClientToken();
-        // 立即触发消息同步，验证新 token 是否生效（不用等下次轮询才消除错误提示）
-        const current: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
-        AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, current + 1);
-      },
-    }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    offset: { dx: 0, dy: 0 },
-  });
-  private encryptionController: CustomDialogController = new CustomDialogController({
-    builder: EncryptionSettingsDialog({
-      getConfig: (): EncryptionConfig => this.currentEncryptionConfig,
-      getServerName: (): string => this.targetName,
-      onSave: (config: EncryptionConfig): void => {
-        this.saveEncryption(config);
-      },
-      onClear: (): void => {
-        this.clearEncryption();
-      },
-    }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-  });
+  private clientTokenController: CustomDialogController | null = null;
+  private encryptionController: CustomDialogController | null = null;
 
   aboutToAppear() {
     this.refresh();
@@ -345,6 +277,36 @@ export struct ServerSettingsContent {
     this.targetId = server.id;
     this.targetName = server.name;
     try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.actionMenuController = new CustomDialogController({
+        builder: ServerActionMenuDialog({
+          onCopy: () => {
+            this.handleCopy();
+          },
+          onResetKey: () => {
+            this.openKeyDialog();
+          },
+          onClientToken: () => {
+            this.openClientTokenDialog();
+          },
+          onEncryption: () => {
+            this.openEncryptionDialog();
+          },
+          onRename: () => {
+            this.openRenameDialog();
+          },
+          onDelete: () => {
+            this.handleDelete(this.targetId);
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
       this.actionMenuController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'action menu open 失败');
@@ -355,6 +317,22 @@ export struct ServerSettingsContent {
   private async openRenameDialog(): Promise<void> {
     // targetName 已在 openActionMenu 时设置；直接打开重命名弹窗
     try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.renameController = new CustomDialogController({
+        builder: ServerRenameDialog({
+          getInitName: (): string => this.targetName,
+          onConfirm: (newName: string): void => {
+            this.handleRename(newName);
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
       this.renameController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'rename dialog open 失败');
@@ -366,6 +344,22 @@ export struct ServerSettingsContent {
     // 刷新当前 device_key 供 Key 弹窗显示参考
     await this.refreshDeviceKey();
     try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.keyController = new CustomDialogController({
+        builder: ServerKeyDialog({
+          getCurrentKey: (): string => this.currentDeviceKey,
+          onConfirm: (inputKey: string): void => {
+            this.handleResetOrRestore(inputKey);
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
       this.keyController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'key dialog open 失败');
@@ -377,6 +371,26 @@ export struct ServerSettingsContent {
   private async openClientTokenDialog(): Promise<void> {
     await this.refreshClientToken();
     try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.clientTokenController = new CustomDialogController({
+        builder: ClientTokenDialog({
+          getInitToken: (): string => this.currentClientToken,
+          onSaved: (): void => {
+            // 保存后刷新本地缓存，便于再次打开时回填最新值
+            this.refreshClientToken();
+            // 立即触发消息同步，验证新 token 是否生效（不用等下次轮询才消除错误提示）
+            const current: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
+            AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, current + 1);
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
       this.clientTokenController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'client token dialog open 失败');
@@ -392,6 +406,25 @@ export struct ServerSettingsContent {
     }
     this.currentEncryptionConfig = await EncryptionConfigService.get(null, server.id);
     try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.encryptionController = new CustomDialogController({
+        builder: EncryptionSettingsDialog({
+          getConfig: (): EncryptionConfig => this.currentEncryptionConfig,
+          getServerName: (): string => this.targetName,
+          onSave: (config: EncryptionConfig): void => {
+            this.saveEncryption(config);
+          },
+          onClear: (): void => {
+            this.clearEncryption();
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
       this.encryptionController.open();
     } catch (_err) {
       hilog.warn(DOMAIN, TAG, 'encryption dialog open 失败');
@@ -538,6 +571,8 @@ export struct ServerSettingsContent {
           { text: '取消', color: $r('app.color.color_text_tertiary') },
           { text: '确定', color: $r('app.color.color_error') },
         ],
+        // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+        systemMaterial: getDialogMaterial(),
       });
       return res.index === 1;
     } catch (err) {

@@ -52,7 +52,7 @@ export struct ServerSettingsDialog {
     .scrollBar(BarState.Auto)
     .edgeEffect(EdgeEffect.Spring)
     .padding(18)
-    .backgroundColor($r('app.color.color_bg_dialog'))
+    .backgroundColor(Color.Transparent)
     .borderRadius(14);
   }
 }

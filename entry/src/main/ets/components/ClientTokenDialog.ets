@@ -22,6 +22,7 @@ export struct ClientTokenDialog {
     offset: { dx: 0, dy: 0 },
   });
   @State inputToken: string = '';
+
   // 拉取当前已保存的 token 预填
   getInitToken: () => string = () => '';
   onSaved: () => void = () => {
@@ -98,7 +99,7 @@ export struct ClientTokenDialog {
     }
     .width('100%')
     .padding(18)
-    .backgroundColor($r('app.color.color_bg_surface'))
+    .backgroundColor(Color.Transparent)
     .borderRadius(14);
   }
 

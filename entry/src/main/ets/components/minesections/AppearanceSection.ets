@@ -2,7 +2,7 @@ import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
-import { resolveBlurStyle, KEY_IMMERSIVE_LIGHT_ENABLED } from '../../utils/ImmersiveUtil';
+import { resolveBlurStyle, KEY_IMMERSIVE_LIGHT_ENABLED, getDialogMaterial } from '../../utils/ImmersiveUtil';
 
 /**
  * 「外观」板块（仅 API 26+ 显示）：沉浸光感入口行。
@@ -77,6 +77,8 @@ export struct AppearanceSection {
       title: title,
       message: message,
       buttons: buttons,
+      // 读取当前生效态（重启前不变）：启用沉浸光感时确认框同样为材质背板
+      systemMaterial: getDialogMaterial(),
     }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
         // 取消/关闭：无操作（入口行状态始终反映权威值，无需还原）

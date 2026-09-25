@@ -142,7 +142,7 @@ export struct ServerActionMenuDialog {
     .scrollBar(BarState.Auto)
     .edgeEffect(EdgeEffect.Spring)
     .padding({ top: 16, bottom: 8, left: 16, right: 16 })
-    .backgroundColor($r('app.color.color_bg_dialog'))
+    .backgroundColor(Color.Transparent)
     .borderRadius(14);
   }
 
@@ -217,7 +217,7 @@ export struct ServerRenameDialog {
       .width('100%');
     }
     .padding(18)
-    .backgroundColor($r('app.color.color_bg_dialog'))
+    .backgroundColor(Color.Transparent)
     .borderRadius(14);
   }
 
@@ -315,7 +315,7 @@ export struct ServerKeyDialog {
       .width('100%');
     }
     .padding(18)
-    .backgroundColor($r('app.color.color_bg_dialog'))
+    .backgroundColor(Color.Transparent)
     .borderRadius(14);
   }
 

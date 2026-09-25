@@ -13,9 +13,11 @@ import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
+  getDialogBackgroundOptions,
+  getDialogMaterial,
   getSystemMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
-  KEY_MATERIAL_READY,
+  KEY_MATERIAL_LOADED,
   SUPPORTS_IMMERSIVE_MATERIAL,
   resolveBlurStyle
 } from '../utils/ImmersiveUtil';
@@ -89,7 +91,7 @@ export struct NotifyView {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
-  @StorageProp(KEY_MATERIAL_READY) immersiveMaterialReady: boolean = false;
+  @StorageProp(KEY_MATERIAL_LOADED) immersiveMaterialLoaded: boolean = false;
   // 切回「通知」Tab（值为 0）时自动刷新列表
   @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
@@ -102,12 +104,8 @@ export struct NotifyView {
   @State showScrollToBottom: boolean = false;
   // 「跳到底部」触发信号：每次自增传给列表，列表 Watch 后执行两段式定位滚动。
   @State scrollToBottomSignal: number = 0;
-  private dialogController: CustomDialogController = new CustomDialogController({
-    builder: ServerSettingsDialog(),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    offset: { dx: 0, dy: 0 },
-  });
+  // 服务器设置弹窗：点击时（材质必已就绪）才构造，以便 systemMaterial 读取到最新就绪态
+  private dialogController: CustomDialogController | null = null;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   private loadSeq: number = 0;
   private loadQueued: boolean = false;
@@ -440,10 +438,10 @@ export struct NotifyView {
         showClose: false,
         enableFloatingDragBar: true,
         // 降级时减轻遮罩，让轻量模糊背板下的列表层次更可辨；正文 List 保持实色。
-        maskColor: this.useDetailSheetMaterial() ? undefined : '#33000000',
-        backgroundColor: this.useDetailSheetMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-        blurStyle: this.useDetailSheetMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-        systemMaterial: this.useDetailSheetMaterial() ? getSystemMaterial('sheet') : undefined,
+        maskColor: this.useSheetSystemMaterial() ? undefined : '#33000000',
+        backgroundColor: this.useSheetSystemMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: this.useSheetSystemMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: this.useSheetSystemMaterial() ? getSystemMaterial('sheet') : undefined,
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -486,10 +484,10 @@ export struct NotifyView {
         showClose: false,
         enableFloatingDragBar: true,
         // 两种导航布局共用同一降级效果。
-        maskColor: this.useDetailSheetMaterial() ? undefined : '#33000000',
-        backgroundColor: this.useDetailSheetMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-        blurStyle: this.useDetailSheetMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-        systemMaterial: this.useDetailSheetMaterial() ? getSystemMaterial('sheet') : undefined,
+        maskColor: this.useSheetSystemMaterial() ? undefined : '#33000000',
+        backgroundColor: this.useSheetSystemMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: this.useSheetSystemMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: this.useSheetSystemMaterial() ? getSystemMaterial('sheet') : undefined,
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -706,9 +704,24 @@ export struct NotifyView {
     }
   }
 
-  /** 详情 Sheet 仅在 API 26+、用户启用且材质缓存就绪后透出系统材质。 */
+  /**
+   * 详情内容走材质样式分支：API 26+、用户启用且 uiMaterial 已加载即可，不要求设备 supported——
+   * supported=false 时 systemMaterial 虽 no-op，但透明 List + glass 卡片 + 按钮底色兜底
+   * 仍能透出 bindSheet 系统面板的半透明材质（否则内容层实色，只有标题栏透）。
+   */
   private useDetailSheetMaterial(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.immersiveMaterialReady;
+    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.immersiveMaterialLoaded;
+  }
+
+  /**
+   * bindSheet 容器背板走「系统材质分支」的条件：API 26+ 且用户开关开即可，
+   * 不要求 isImmersiveMaterialSupported/材质就绪——supported=false 的设备（如 SMOOTH 模拟器）
+   * systemMaterial 虽 no-op，但 bindSheet 系统默认面板本身就是半透明材质，比
+   * blurStyle+灰底的降级分支更透；材质实例在能力闸门前已预创建，getSystemMaterial 可安全读取。
+   * 注意：仅用于 sheet options；详情内部标题栏的材质组件链仍用 useDetailSheetMaterial 闸门。
+   */
+  private useSheetSystemMaterial(): boolean {
+    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled;
   }
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
@@ -1175,6 +1188,8 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '删除', color: $r('app.color.color_error') },
       ],
+      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
         return;
@@ -1207,6 +1222,8 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
+      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
         return;
@@ -1243,6 +1260,8 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
+      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
         return;
@@ -1287,6 +1306,8 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
+      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
         return;
@@ -1691,6 +1712,19 @@ export struct NotifyView {
 
   private handleMoreClicked(): void {
     try {
+      // 打开时构造：背板统一走 getDialogBackgroundOptions（真机 ULTRA_THICK 沉浸材质；
+      // 模拟器/低算力为系统容器 COMPONENT_THICK 模糊），旧系统纯色降级
+      const dialogBg = getDialogBackgroundOptions();
+      this.dialogController = new CustomDialogController({
+        builder: ServerSettingsDialog(),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
       this.dialogController.open();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

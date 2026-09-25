@@ -29,8 +29,22 @@ export const KEY_STATUS_BAR_HEIGHT: string = 'statusBarHeight';
 /** AppStorage 键：底部导航条高度（vp） */
 export const KEY_NAV_BAR_HEIGHT: string = 'navBarHeight';
 
-/** AppStorage 键：uiMaterial 模块就绪信号（API 26+ 动态加载成功后置 true） */
+/** AppStorage 键：uiMaterial 模块就绪信号（API 26+ 动态加载成功且设备支持材质后置 true） */
 export const KEY_MATERIAL_READY: string = 'immersiveMaterialReady';
+
+/**
+ * AppStorage 键：uiMaterial 模块已加载、材质实例已预创建（不要求设备 supported）。
+ * supported=false 的设备 systemMaterial 虽 no-op，但半透明内容/容器仍需走「材质样式分支」
+ * （透明 List + glass 卡片 + 按钮 backgroundColor 兜底），因此与 READY 分开。
+ */
+export const KEY_MATERIAL_LOADED: string = 'immersiveMaterialLoaded';
+
+/**
+ * AppStorage 键：当前设备硬件是否支持沉浸材质（isImmersiveMaterialSupported）。
+ * 低算力设备/部分模拟器为 false：systemMaterial 可设置但不生效，入口行也不展示。
+ * ensureImmersiveMaterial 完成探测后写入；API 26 以下直接为 false。
+ */
+export const KEY_MATERIAL_SUPPORTED: string = 'immersiveMaterialSupported';
 
 /**
  * AppStorage 键：沉浸光感用户开关（API 26+ 生效）。
@@ -60,6 +74,7 @@ const materialCache: Record<string, uiMaterial.Material> = {};
  */
 export function ensureImmersiveMaterial(): Promise<void> {
   if (!SUPPORTS_IMMERSIVE_MATERIAL) {
+    AppStorage.setOrCreate(KEY_MATERIAL_SUPPORTED, false);
     return Promise.resolve();
   }
   return import('@ohos.arkui.uiMaterial').then((ns: ESObject) => {
@@ -88,7 +103,34 @@ export function ensureImmersiveMaterial(): Promise<void> {
         // 详情 Sheet 面积较大且卡片保持实色，薄材质才能让下层页面明显透出。
         materialCache['sheet'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THIN });
         materialCache['toast'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THICK });
-        // 缓存填充完成后才写就绪信号，保证渲染路径读缓存永不抛错
+        // 弹窗（CustomDialog/系统对话框）：官方弹窗类默认样式为 ULTRA_THICK，
+        // 厚材质弱化下层干扰、保证表单与长文本可读性；枚举缺失时回退 THICK。
+        const dialogStyle: number = mod.ImmersiveStyle.ULTRA_THICK ?? mod.ImmersiveStyle.THICK;
+        materialCache['dialog'] = new mod.ImmersiveMaterial({ style: dialogStyle });
+        // 设备能力闸门：部分设备（典型为 SMOOTH 低算力模拟器）isImmersiveMaterialSupported=false，
+        // 官方明确此时 systemMaterial「can be set but has no effect」。不写就绪信号，
+        // 全应用（弹窗/标题栏/按钮/Toast 等）统一走纯色/模糊降级，避免内容透明却露出系统白底。
+        let supported: boolean = true;
+        let level: number = -1;
+        try {
+          if (typeof mod.isImmersiveMaterialSupported === 'function') {
+            supported = mod.isImmersiveMaterialSupported();
+          }
+          if (typeof mod.getGlobalMaterialLevel === 'function') {
+            level = mod.getGlobalMaterialLevel();
+          }
+        } catch (e) {
+          console.warn(`[ImmersiveUtil] 材质能力查询失败，按支持处理: ${JSON.stringify(e)}`);
+        }
+        console.info(`[ImmersiveUtil] materialLevel=${level} supported=${supported} sdk=${CURRENT_SDK_VERSION}`);
+        AppStorage.setOrCreate(KEY_MATERIAL_SUPPORTED, supported);
+        // 实例已全部预创建：即使设备不支持（systemMaterial no-op），内容层也可走材质样式分支
+        // （透明底 + glass 色 + backgroundColor 兜底），故 LOADED 先于 supported 闸门写入。
+        AppStorage.setOrCreate(KEY_MATERIAL_LOADED, true);
+        if (!supported) {
+          return;
+        }
+        // 缓存填充完成且设备支持后才写就绪信号，保证渲染路径读缓存永不抛错
         AppStorage.setOrCreate(KEY_MATERIAL_READY, true);
       } catch (err) {
         console.warn(`[ImmersiveUtil] ImmersiveMaterial 实例创建失败，降级 blur: ${JSON.stringify(err)}`);
@@ -107,8 +149,70 @@ export function ensureImmersiveMaterial(): Promise<void> {
  * 必须在 AppStorage 'immersiveMaterialReady' 为 true（模块已加载并预创建实例）后调用，
  * 内部为纯缓存读取，不会抛错。
  */
-export function getSystemMaterial(surface: 'bar' | 'body' | 'card' | 'action' | 'sheet' | 'toast'): uiMaterial.Material {
+export function getSystemMaterial(surface: 'bar' | 'body' | 'card' | 'action' | 'sheet' | 'toast' | 'dialog'): uiMaterial.Material {
   return materialCache[surface] as uiMaterial.Material;
+}
+
+/**
+ * 沉浸材质当前是否处于生效态：API 26+ 且用户开关未关闭且模块已动态加载就绪。
+ * 供弹窗等场景判断「走材质背板」还是「纯色/模糊降级」。
+ */
+export function isImmersiveMaterialActive(): boolean {
+  return SUPPORTS_IMMERSIVE_MATERIAL
+    && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false
+    && AppStorage.get<boolean>(KEY_MATERIAL_READY) === true;
+}
+
+/**
+ * uiMaterial 模块已加载且用户开关开启（不要求设备 supported）。
+ * 用于「材质样式分支」：systemMaterial 调用本身在不支持设备上安全（no-op），
+ * 配套半透明色/backgroundColor 兜底即可，半模态内容层据此保持通透。
+ */
+export function isImmersiveMaterialLoaded(): boolean {
+  return SUPPORTS_IMMERSIVE_MATERIAL
+    && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false
+    && AppStorage.get<boolean>(KEY_MATERIAL_LOADED) === true;
+}
+
+/**
+ * 弹窗专用：材质生效时返回 dialog 材质（挂到 CustomDialogControllerOptions /
+ * promptAction.showDialog 等 options 的 systemMaterial 字段），否则返回 undefined
+ * （字段缺省即系统纯色弹窗）。可在组件字段初始化期安全调用：未就绪时返回 undefined。
+ */
+export function getDialogMaterial(): uiMaterial.Material | undefined {
+  return isImmersiveMaterialActive() ? materialCache['dialog'] as uiMaterial.Material : undefined;
+}
+
+/**
+ * 自定义弹窗（@CustomDialog）背板配置：取出返回值的三个字段分别赋给
+ * CustomDialogControllerOptions 的同名字段（ArkTS 禁用对象展开，不能 ...spread）。
+ *
+ * 关键：模糊必须挂在 controller options（系统 dialog 容器，与 bindSheet/promptAction 同渲染路径）
+ * 上，低算力设备/模拟器才有真实高斯模糊；挂在 @CustomDialog 内容根节点上无效——
+ * dialog 内容子树采样不到下层页面，只会看到 BlurStyle 自带的不透明 tint 白底。
+ *
+ * - 沉浸材质生效：ULTRA_THICK 材质背板 + 内容透明
+ * - 降级（旧系统/低算力/模拟器/开关关）：系统容器 COMPONENT_THICK 模糊 + 80% 弹窗底色保证可读性
+ */
+export interface DialogBackgroundOptions {
+  systemMaterial: uiMaterial.Material | undefined;
+  backgroundColor: ResourceColor;
+  backgroundBlurStyle: BlurStyle | undefined;
+}
+
+export function getDialogBackgroundOptions(): DialogBackgroundOptions {
+  if (isImmersiveMaterialActive()) {
+    return {
+      systemMaterial: materialCache['dialog'] as uiMaterial.Material,
+      backgroundColor: Color.Transparent,
+      backgroundBlurStyle: undefined,
+    };
+  }
+  return {
+    systemMaterial: undefined,
+    backgroundColor: $r('app.color.color_bg_dialog_glass'),
+    backgroundBlurStyle: BlurStyle.COMPONENT_THICK,
+  };
 }
 
 /** 表面类型 → BlurStyle 映射（用于 backgroundBlurStyle 降级分支） */

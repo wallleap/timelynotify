@@ -45,6 +45,10 @@
       "value": "#FFFFFF"
     },
     {
+      "name": "color_bg_dialog_glass",
+      "value": "#CCFFFFFF"
+    },
+    {
       "name": "color_bg_input",
       "value": "#F1F3F6"
     },

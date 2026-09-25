@@ -8,7 +8,7 @@ import { NotifyMessageService } from '../../services/NotifyMessageService';
 import { NotifyExportService } from '../../services/NotifyExportService';
 import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
-import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
+import { resolveBlurStyle, getDialogMaterial } from '../../utils/ImmersiveUtil';
 import { DOMAIN } from '../../common/Constant';
 
 const TAG: string = 'NotifySettingsSec';
@@ -163,6 +163,8 @@ export struct NotifySettingsSection {
       title: isOn ? '开启订阅' : '关闭订阅',
       message: isOn ? '是否要接收此订阅的通知栏推送？' : '是否要取消此订阅的通知栏推送？',
       buttons: isOn ? onButtons : offButtons,
+      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      systemMaterial: getDialogMaterial(),
     }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err) {
         hilog.warn(DOMAIN, TAG, 'showDialog 失败：%{public}s', err.message); // 弹窗异常关闭，Toggle 需回滚到实际状态

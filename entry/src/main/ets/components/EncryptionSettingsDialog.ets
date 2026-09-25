@@ -3,6 +3,13 @@ import { DOMAIN } from '../common/Constant';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import showToast from './showToast';
+import {
+  getDialogMaterial,
+  getSystemMaterial,
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  KEY_MATERIAL_READY,
+  SUPPORTS_IMMERSIVE_MATERIAL
+} from '../utils/ImmersiveUtil';
 
 const TAG: string = 'EncryptionDlg';
 
@@ -31,6 +38,13 @@ export struct EncryptionSettingsDialog {
   };
   onClear: () => void = () => {
   };
+  // 材质生效时背景由 controller 的 systemMaterial 背板提供，内容根节点须透明
+  @StorageProp(KEY_MATERIAL_READY) materialReady: boolean = false;
+  @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
+
+  get useDialogMaterial(): boolean {
+    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.materialReady;
+  }
 
   aboutToAppear(): void {
     const config: EncryptionConfig = this.getConfig();
@@ -195,40 +209,67 @@ export struct EncryptionSettingsDialog {
     .scrollBar(BarState.Auto)
     .edgeEffect(EdgeEffect.Spring)
     .padding(18)
-    .backgroundColor($r('app.color.color_bg_surface'))
+    .backgroundColor(Color.Transparent)
     .borderRadius(14);
   }
 
   @Builder
+  private algorithmMenuItems() {
+    ForEach(['AES128', 'AES192', 'AES256'], (value: string) => {
+      MenuItem({ content: value })
+        .contentFontColor(value === this.algorithm ? $r('app.color.color_brand') :
+          $r('app.color.color_text_primary'))
+        .backgroundColor(value === this.algorithm ? $r('app.color.color_state_selected') : Color.Transparent)
+        .onClick(() => {
+          this.algorithm = value;
+        });
+    }, (value: string) => value);
+  }
+
+  @Builder
   private algorithmMenu() {
-    Menu() {
-      ForEach(['AES128', 'AES192', 'AES256'], (value: string) => {
-        MenuItem({ content: value })
-          .contentFontColor(value === this.algorithm ? $r('app.color.color_brand') :
-            $r('app.color.color_text_primary'))
-          .backgroundColor(value === this.algorithm ? $r('app.color.color_state_selected') : Color.Transparent)
-          .onClick(() => {
-            this.algorithm = value;
-          });
-      }, (value: string) => value);
+    // 完整组件级分支：.systemMaterial 为 API 26 属性，旧系统不能触达该属性链
+    if (this.useDialogMaterial) {
+      Menu() {
+        this.algorithmMenuItems();
+      }
+      .systemMaterial(getSystemMaterial('dialog'));
+    } else {
+      Menu() {
+        this.algorithmMenuItems();
+      }
+      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+      .backgroundColor($r('app.color.color_bg_dialog_glass'));
     }
-    .backgroundColor($r('app.color.color_bg_surface'));
+  }
+
+  @Builder
+  private modeMenuItems() {
+    ForEach(['CBC', 'ECB', 'GCM'], (value: string) => {
+      MenuItem({ content: value })
+        .contentFontColor(value === this.mode ? $r('app.color.color_brand') :
+          $r('app.color.color_text_primary'))
+        .backgroundColor(value === this.mode ? $r('app.color.color_state_selected') : Color.Transparent)
+        .onClick(() => {
+          this.mode = value;
+        });
+    }, (value: string) => value);
   }
 
   @Builder
   private modeMenu() {
-    Menu() {
-      ForEach(['CBC', 'ECB', 'GCM'], (value: string) => {
-        MenuItem({ content: value })
-          .contentFontColor(value === this.mode ? $r('app.color.color_brand') :
-            $r('app.color.color_text_primary'))
-          .backgroundColor(value === this.mode ? $r('app.color.color_state_selected') : Color.Transparent)
-          .onClick(() => {
-            this.mode = value;
-          });
-      }, (value: string) => value);
+    if (this.useDialogMaterial) {
+      Menu() {
+        this.modeMenuItems();
+      }
+      .systemMaterial(getSystemMaterial('dialog'));
+    } else {
+      Menu() {
+        this.modeMenuItems();
+      }
+      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+      .backgroundColor($r('app.color.color_bg_dialog_glass'));
     }
-    .backgroundColor($r('app.color.color_bg_surface'));
   }
 
   private paddingForMode(): string {
@@ -281,6 +322,7 @@ export struct EncryptionSettingsDialog {
           { text: '取消', color: $r('app.color.color_text_tertiary') },
           { text: '确认更换', color: $r('app.color.color_error') },
         ],
+        systemMaterial: getDialogMaterial(),
       });
       return result.index === 1;
     } catch (err) {
