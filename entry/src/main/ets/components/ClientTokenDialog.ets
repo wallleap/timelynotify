@@ -66,7 +66,7 @@ export struct ClientTokenDialog {
         .type(InputType.Password)
         .width('100%')
         .height(42)
-        .backgroundColor($r('app.color.color_bg_input'))
+        .backgroundColor($r('app.color.color_bg_input_glass'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -78,7 +78,7 @@ export struct ClientTokenDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.color_border_subtle'))
+          .backgroundColor(Color.Transparent)
           .fontColor($r('app.color.color_text_secondary'))
           .borderRadius(8)
           .onClick(() => {

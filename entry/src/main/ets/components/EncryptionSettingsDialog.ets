@@ -104,7 +104,7 @@ export struct EncryptionSettingsDialog {
           .width('100%')
           .height(46)
           .padding({ left: 14, right: 14 })
-          .backgroundColor($r('app.color.color_bg_input'))
+          .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8)
           .bindMenu(this.algorithmMenu(), { placement: Placement.BottomLeft });
         Text('模式').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
@@ -120,7 +120,7 @@ export struct EncryptionSettingsDialog {
           .width('100%')
           .height(46)
           .padding({ left: 14, right: 14 })
-          .backgroundColor($r('app.color.color_bg_input'))
+          .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8)
           .bindMenu(this.modeMenu(), { placement: Placement.BottomLeft });
         Text('Padding（由模式自动决定）')
@@ -135,7 +135,7 @@ export struct EncryptionSettingsDialog {
           .width('100%')
           .height(46)
           .padding({ left: 14, right: 14 })
-          .backgroundColor($r('app.color.color_bg_input'))
+          .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8);
 
         Text('Key').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
@@ -166,7 +166,7 @@ export struct EncryptionSettingsDialog {
         }
           .height(46)
           .width('100%')
-          .backgroundColor($r('app.color.color_bg_input'))
+          .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8);
         Text('IV 不在此保存：CBC 由发送端携带 16 字节 IV，GCM 携带 12 字节 IV；ECB 无 IV。')
           .fontSize(12)
@@ -187,7 +187,7 @@ export struct EncryptionSettingsDialog {
             .layoutWeight(1)
             .height(40)
             .fontSize(14)
-            .backgroundColor($r('app.color.color_border_subtle'))
+            .backgroundColor(Color.Transparent)
             .fontColor($r('app.color.color_text_secondary'))
             .borderRadius(8)
             .onClick(() => {
@@ -219,7 +219,7 @@ export struct EncryptionSettingsDialog {
       MenuItem({ content: value })
         .contentFontColor(value === this.algorithm ? $r('app.color.color_brand') :
           $r('app.color.color_text_primary'))
-        .backgroundColor(value === this.algorithm ? $r('app.color.color_state_selected') : Color.Transparent)
+        .backgroundColor(value === this.algorithm ? $r('app.color.color_bg_selected_glass') : Color.Transparent)
         .onClick(() => {
           this.algorithm = value;
         });
@@ -249,7 +249,7 @@ export struct EncryptionSettingsDialog {
       MenuItem({ content: value })
         .contentFontColor(value === this.mode ? $r('app.color.color_brand') :
           $r('app.color.color_text_primary'))
-        .backgroundColor(value === this.mode ? $r('app.color.color_state_selected') : Color.Transparent)
+        .backgroundColor(value === this.mode ? $r('app.color.color_bg_selected_glass') : Color.Transparent)
         .onClick(() => {
           this.mode = value;
         });

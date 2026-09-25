@@ -148,7 +148,7 @@ export struct ServerSettingsContent {
         TextInput({ placeholder: 'http://host:port 或域名', text: this.inputURL })
           .width('100%')
           .height(48)
-          .backgroundColor($r('app.color.color_bg_input'))
+          .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8)
           .padding({ left: 12, right: 12 })
           .onChange((val: string) => {
@@ -158,7 +158,7 @@ export struct ServerSettingsContent {
         TextInput({ placeholder: '名称（可选）', text: this.inputName })
           .width('100%')
           .height(48)
-          .backgroundColor($r('app.color.color_bg_input'))
+          .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8)
           .padding({ left: 12, right: 12 })
           .onChange((val: string) => {
@@ -199,7 +199,7 @@ export struct ServerSettingsContent {
         }
         .width('100%')
         .padding(12)
-        .backgroundColor($r('app.color.color_bg_surface'))
+        .backgroundColor($r('app.color.color_bg_surface_glass'))
         .borderRadius(10)
         .border({ width: 1, color: $r('app.color.color_border_subtle') });
 
@@ -607,7 +607,8 @@ export struct ServerSettingsContent {
   }
 
   private rowBg(id: string): ResourceColor {
-    return this.isCurrent(id) ? $r('app.color.color_state_selected') : $r('app.color.color_bg_surface');
+    return this.isCurrent(id) ? $r('app.color.color_bg_selected_glass') :
+      $r('app.color.color_bg_surface_glass');
   }
 
   private rowBorder(id: string): ResourceColor {

@@ -53,6 +53,18 @@
       "value": "#F1F3F6"
     },
     {
+      "name": "color_bg_input_glass",
+      "value": "#D9E4E8EE"
+    },
+    {
+      "name": "color_bg_control_glass",
+      "value": "#99F1F3F6"
+    },
+    {
+      "name": "color_bg_selected_glass",
+      "value": "#33E96924"
+    },
+    {
       "name": "color_bg_action",
       "value": "#F4F6F8"
     },

@@ -185,7 +185,7 @@ export struct ServerRenameDialog {
       TextInput({ placeholder: '输入新名称（留空则清除名称）', text: this.inputName })
         .width('100%')
         .height(42)
-        .backgroundColor($r('app.color.color_bg_input'))
+        .backgroundColor($r('app.color.color_bg_input_glass'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -197,7 +197,7 @@ export struct ServerRenameDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.color_border_subtle'))
+          .backgroundColor(Color.Transparent)
           .fontColor($r('app.color.color_text_secondary'))
           .borderRadius(8)
           .onClick(() => {
@@ -283,7 +283,7 @@ export struct ServerKeyDialog {
       TextInput({ placeholder: '可选：输入要还原的 device_key', text: this.inputKey })
         .width('100%')
         .height(42)
-        .backgroundColor($r('app.color.color_bg_input'))
+        .backgroundColor($r('app.color.color_bg_input_glass'))
         .borderRadius(8)
         .padding({ left: 12, right: 12 })
         .onChange((val: string) => {
@@ -295,7 +295,7 @@ export struct ServerKeyDialog {
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
-          .backgroundColor($r('app.color.color_border_subtle'))
+          .backgroundColor(Color.Transparent)
           .fontColor($r('app.color.color_text_secondary'))
           .borderRadius(8)
           .onClick(() => {
