@@ -41,6 +41,10 @@
       "value": "#991C232D"
     },
     {
+      "name": "color_bg_card_glass",
+      "value": "#B3252E39"
+    },
+    {
       "name": "color_bg_dialog",
       "value": "#1C232D"
     },

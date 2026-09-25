@@ -41,6 +41,10 @@
       "value": "#A6FFFFFF"
     },
     {
+      "name": "color_bg_card_glass",
+      "value": "#A6FFFFFF"
+    },
+    {
       "name": "color_bg_dialog",
       "value": "#FFFFFF"
     },

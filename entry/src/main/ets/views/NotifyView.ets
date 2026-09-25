@@ -11,7 +11,7 @@ import { DecryptedNotificationService } from '../services/DecryptedNotificationS
 import { AutoCopyService } from '../services/AutoCopyService';
 import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
-import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
+import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
 import {
   getDialogBackgroundOptions,
   getDialogMaterial,
@@ -104,7 +104,7 @@ export struct NotifyView {
   @State showScrollToBottom: boolean = false;
   // 「跳到底部」触发信号：每次自增传给列表，列表 Watch 后执行两段式定位滚动。
   @State scrollToBottomSignal: number = 0;
-  // 服务器设置弹窗：点击时（材质必已就绪）才构造，以便 systemMaterial 读取到最新就绪态
+  // 「切换通知服务」弹窗：点击时（材质必已就绪）才构造，以便 systemMaterial 读取到最新就绪态
   private dialogController: CustomDialogController | null = null;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   private loadSeq: number = 0;
@@ -209,7 +209,10 @@ export struct NotifyView {
     .padding({ left: 16, right: 16, top: 6, bottom: 6 })
     .backgroundColor('#fff3e0')
     .onClick(() => {
-      this.handleMoreClicked();
+      // 跳转「我的 → 服务器设置」页处理失败服务器（标题弹窗仅切换视图，无管理入口）
+      this.getUIContext().getRouter().pushUrl({ url: 'pages/ServerSettingsPage' }).catch((err: BusinessError) => {
+        hilog.warn(DOMAIN, TAG, 'router push 失败：%{public}s', err.message);
+      });
     })
   }
 
@@ -1712,11 +1715,12 @@ export struct NotifyView {
 
   private handleMoreClicked(): void {
     try {
+      // 「切换通知服务」弹窗：仅单选视图范围（全部通知/某服务器）。
       // 打开时构造：背板统一走 getDialogBackgroundOptions（真机 ULTRA_THICK 沉浸材质；
       // 模拟器/低算力为系统容器 COMPONENT_THICK 模糊），旧系统纯色降级
       const dialogBg = getDialogBackgroundOptions();
       this.dialogController = new CustomDialogController({
-        builder: ServerSettingsDialog(),
+        builder: ServerSwitchDialog(),
         alignment: DialogAlignment.Center,
         autoCancel: true,
         offset: { dx: 0, dy: 0 },

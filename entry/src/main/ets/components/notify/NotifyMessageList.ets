@@ -47,7 +47,6 @@ export struct NotifyMessageList {
   // 「跳到底部」触发信号：页面每次自增，Watch 到变化后执行两段式定位滚动。
   @Prop @Watch('onScrollToBottomRequested') scrollToBottomSignal: number = 0;
   listScroller: Scroller = new Scroller();
-  onListTopChange: (top: number) => void = (_top: number) => {};
   // 主 List 唯一的数据源；分组内消息删除时可直接发送 onDataDelete。
   private dataSource: NotifyListDataSource = new NotifyListDataSource();
   // 当前可视区最后一个 ListItem 的绝对索引（由 onScrollIndex 维护），用于估算距末尾的剩余行数。
@@ -58,6 +57,10 @@ export struct NotifyMessageList {
   private autoScrollTargetIndex: number = -1;
   // 平滑滚动兜底定时器：无位移时 onScrollStop 可能不触发，到期强制收尾，避免标记卡死。
   private autoScrollTimeoutId: number = -1;
+
+  onListTopChange: (top: number) => void = (_top: number) => {
+  };
+
   onLoadMoreInGroup: (groupKey: string) => void = (_groupKey: string) => {
   };
   onToggleSelect: (id: number) => void = (_id: number) => {
