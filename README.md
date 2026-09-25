@@ -120,7 +120,8 @@ TODO:
 
   用户删除：仅删除本地副本，不再请求远程删除
     ├─ 单条/多选/清空均明确提示“删除后无法恢复”；详情 Sheet 底部固定「删除」按钮，API 26+ 使用 Button 系统材质、旧系统使用模糊降级，确认成功后关闭详情
-    │  详情 Sheet 标题栏采用 HdsNavigation 半模态（MODAL）样式：正文上滚穿入标题栏区域时呈现动态模糊（API 26+ 为渐变模糊+沉浸光感材质，旧系统为通用模糊背板），回滚到顶自动消退；关闭按钮由标题栏菜单承载、拖拽条悬浮，正文区域保持实色
+    │  详情 Sheet 标题栏采用 HdsNavigation 半模态（MODAL）样式：正文上滚穿入标题栏区域时呈现动态模糊（API 26+ 为渐变模糊+沉浸光感材质，旧系统为通用模糊背板），回滚到顶自动消退；关闭按钮由标题栏菜单承载、拖拽条悬浮，正文 List 在材质样式分支透明、卡片为 color_bg_surface_glass（亮 65% 白/暗 60% 深色）；Sheet 容器背板与内容样式分支均在 API 26+ 且开关开时走材质路径（容器见 useSheetSystemMaterial 不看加载状态；内容见 useDetailSheetMaterial 只要求 KEY_MATERIAL_LOADED 即模块已加载/实例已预创建），均不看设备 supported——no-op 时系统默认半模态面板本身即半透明材质，比灰底 blur 降级更透；只有 isImmersiveMaterialActive（KEY_MATERIAL_READY，弹窗/Toast 等真 uiMaterial 渲染）才要求 supported=true
+    │  全部弹窗统一沉浸光感：6 个 @CustomDialog（服务器设置/操作菜单/重命名/Key/客户端 Token/加密设置）的背板统一由 ImmersiveUtil.getDialogBackgroundOptions() 生成并挂到 CustomDialogControllerOptions（controller 一律打开时构造）：沉浸材质生效设备走 systemMaterial（ULTRA_THICK）；其它设备（旧系统/低算力/模拟器/开关关）走系统容器 backgroundBlurStyle(COMPONENT_THICK) + color_bg_dialog_glass（80% 弹窗底色）。关键：模糊只能挂 controller options 系统容器（与 bindSheet/promptAction 同渲染路径），挂 @CustomDialog 内容根节点采样不到下层页面只会得到不透明 tint 白底；内容根节点因此恒为 Color.Transparent，背板圆角 14。8 处 promptAction 系统确认框/Toast 默认即 COMPONENT_ULTRA_THICK 容器模糊（挂 systemMaterial 供材质机升级，且 blur 非 NONE 时不设 backgroundColor）；加密选项 Menu 降级分支同为 COMPONENT_THICK+glass。设备不支持（isImmersiveMaterialSupported=false，典型为低算力模拟器）时「我的-外观」入口行隐藏，但容器模糊仍在
     ├─ 删除分组按 group_key 一次删除数据库中的全部通知（含未加载部分）
     └─ 展开的分组删到真实总数只剩 1 条时自动收起回普通卡片
        （仍有未加载历史时保留展开，避免看不到“加载更多”入口）
