@@ -5,10 +5,7 @@ import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import showToast from './showToast';
 import {
   getDialogMaterial,
-  getSystemMaterial,
-  KEY_IMMERSIVE_LIGHT_ENABLED,
-  KEY_MATERIAL_READY,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  getMenuMaterial
 } from '../utils/ImmersiveUtil';
 
 const TAG: string = 'EncryptionDlg';
@@ -38,13 +35,6 @@ export struct EncryptionSettingsDialog {
   };
   onClear: () => void = () => {
   };
-  // 材质生效时背景由 controller 的 systemMaterial 背板提供，内容根节点须透明
-  @StorageProp(KEY_MATERIAL_READY) materialReady: boolean = false;
-  @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
-
-  get useDialogMaterial(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.materialReady;
-  }
 
   aboutToAppear(): void {
     const config: EncryptionConfig = this.getConfig();
@@ -106,7 +96,7 @@ export struct EncryptionSettingsDialog {
           .padding({ left: 14, right: 14 })
           .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8)
-          .bindMenu(this.algorithmMenu(), { placement: Placement.BottomLeft });
+          .bindMenu(this.algorithmMenu(), this.glassMenuOptions());
         Text('模式').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
         Row() {
           Text(this.mode)
@@ -122,7 +112,7 @@ export struct EncryptionSettingsDialog {
           .padding({ left: 14, right: 14 })
           .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8)
-          .bindMenu(this.modeMenu(), { placement: Placement.BottomLeft });
+          .bindMenu(this.modeMenu(), this.glassMenuOptions());
         Text('Padding（由模式自动决定）')
           .fontSize(13)
           .fontColor($r('app.color.color_text_secondary'))
@@ -226,21 +216,27 @@ export struct EncryptionSettingsDialog {
     }, (value: string) => value);
   }
 
+  /**
+   * bindMenu 的 options：沉浸光感走官方入口 ContextMenuOptions.systemMaterial（API 26，
+   * MenuOptions 继承）；Menu 组件自身统一保留 COMPONENT_THICK 模糊 + glass 色——
+   * 材质生效时官方规定材质优先于组件自身背景/模糊，低算力/旧系统则直接显示该降级背板。
+   */
+  private glassMenuOptions(): MenuOptions {
+    const options: MenuOptions = { placement: Placement.BottomLeft };
+    const material = getMenuMaterial();
+    if (material) {
+      options.systemMaterial = material;
+    }
+    return options;
+  }
+
   @Builder
   private algorithmMenu() {
-    // 完整组件级分支：.systemMaterial 为 API 26 属性，旧系统不能触达该属性链
-    if (this.useDialogMaterial) {
-      Menu() {
-        this.algorithmMenuItems();
-      }
-      .systemMaterial(getSystemMaterial('dialog'));
-    } else {
-      Menu() {
-        this.algorithmMenuItems();
-      }
-      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-      .backgroundColor($r('app.color.color_bg_dialog_glass'));
+    Menu() {
+      this.algorithmMenuItems();
     }
+    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+    .backgroundColor($r('app.color.color_bg_dialog_glass'));
   }
 
   @Builder
@@ -258,18 +254,11 @@ export struct EncryptionSettingsDialog {
 
   @Builder
   private modeMenu() {
-    if (this.useDialogMaterial) {
-      Menu() {
-        this.modeMenuItems();
-      }
-      .systemMaterial(getSystemMaterial('dialog'));
-    } else {
-      Menu() {
-        this.modeMenuItems();
-      }
-      .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-      .backgroundColor($r('app.color.color_bg_dialog_glass'));
+    Menu() {
+      this.modeMenuItems();
     }
+    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+    .backgroundColor($r('app.color.color_bg_dialog_glass'));
   }
 
   private paddingForMode(): string {

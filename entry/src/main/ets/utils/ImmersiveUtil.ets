@@ -107,6 +107,9 @@ export function ensureImmersiveMaterial(): Promise<void> {
         // 厚材质弱化下层干扰、保证表单与长文本可读性；枚举缺失时回退 THICK。
         const dialogStyle: number = mod.ImmersiveStyle.ULTRA_THICK ?? mod.ImmersiveStyle.THICK;
         materialCache['dialog'] = new mod.ImmersiveMaterial({ style: dialogStyle });
+        // 菜单（bindMenu/Menu）：官方「菜单」类默认样式为 THICK（比弹窗薄一档），
+        // 挂在 ContextMenuOptions.systemMaterial（MenuOptions 继承），不是 Menu 组件通用属性。
+        materialCache['menu'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THICK });
         // 设备能力闸门：部分设备（典型为 SMOOTH 低算力模拟器）isImmersiveMaterialSupported=false，
         // 官方明确此时 systemMaterial「can be set but has no effect」。不写就绪信号，
         // 全应用（弹窗/标题栏/按钮/Toast 等）统一走纯色/模糊降级，避免内容透明却露出系统白底。
@@ -149,7 +152,7 @@ export function ensureImmersiveMaterial(): Promise<void> {
  * 必须在 AppStorage 'immersiveMaterialReady' 为 true（模块已加载并预创建实例）后调用，
  * 内部为纯缓存读取，不会抛错。
  */
-export function getSystemMaterial(surface: 'bar' | 'body' | 'card' | 'action' | 'sheet' | 'toast' | 'dialog'): uiMaterial.Material {
+export function getSystemMaterial(surface: 'bar' | 'body' | 'card' | 'action' | 'sheet' | 'toast' | 'dialog' | 'menu'): uiMaterial.Material {
   return materialCache[surface] as uiMaterial.Material;
 }
 
@@ -181,6 +184,15 @@ export function isImmersiveMaterialLoaded(): boolean {
  */
 export function getDialogMaterial(): uiMaterial.Material | undefined {
   return isImmersiveMaterialActive() ? materialCache['dialog'] as uiMaterial.Material : undefined;
+}
+
+/**
+ * 菜单专用：材质生效时返回 menu 材质（THICK），挂到 bindMenu 第二参
+ * MenuOptions（继承自 ContextMenuOptions）的 systemMaterial 字段；未生效返回 undefined，
+ * 菜单走 Menu 组件自身的 COMPONENT_THICK 模糊 + glass 色降级。
+ */
+export function getMenuMaterial(): uiMaterial.Material | undefined {
+  return isImmersiveMaterialActive() ? materialCache['menu'] as uiMaterial.Material : undefined;
 }
 
 /**
