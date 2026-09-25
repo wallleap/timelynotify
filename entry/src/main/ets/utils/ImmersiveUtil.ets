@@ -73,6 +73,20 @@ export function ensureImmersiveMaterial(): Promise<void> {
         materialCache['bar'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THIN });
         materialCache['body'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.REGULAR });
         materialCache['card'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THIN });
+        // 浮动操作按钮：官方「纯色 + 质感」组合——
+        // materialColor 用不透明控件纯色（color_bg_action，亮浅灰/暗深灰蓝，随主题切换），
+        // 提供在卡片上清晰可辨的背板；不透明色会遮住材质滤镜（无模糊透出），
+        // 但保留质感部分：交互形变 + 点光源 + 默认阴影。
+        // 不要用 backgroundColor 叠色（材质生效时会被还原为透明，且会覆盖光感）。
+        const actionLightEffect: uiMaterial.LightEffectOptions = {};
+        materialCache['action'] = new mod.ImmersiveMaterial({
+          style: mod.ImmersiveStyle.REGULAR,
+          materialColor: $r('app.color.color_bg_action'),
+          interactive: true,
+          lightEffect: actionLightEffect
+        });
+        // 详情 Sheet 面积较大且卡片保持实色，薄材质才能让下层页面明显透出。
+        materialCache['sheet'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THIN });
         materialCache['toast'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THICK });
         // 缓存填充完成后才写就绪信号，保证渲染路径读缓存永不抛错
         AppStorage.setOrCreate(KEY_MATERIAL_READY, true);
@@ -93,7 +107,7 @@ export function ensureImmersiveMaterial(): Promise<void> {
  * 必须在 AppStorage 'immersiveMaterialReady' 为 true（模块已加载并预创建实例）后调用，
  * 内部为纯缓存读取，不会抛错。
  */
-export function getSystemMaterial(surface: 'bar' | 'body' | 'card' | 'toast'): uiMaterial.Material {
+export function getSystemMaterial(surface: 'bar' | 'body' | 'card' | 'action' | 'sheet' | 'toast'): uiMaterial.Material {
   return materialCache[surface] as uiMaterial.Material;
 }
 

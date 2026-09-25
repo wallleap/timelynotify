@@ -13,11 +13,13 @@ import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSettingsDialog } from '../components/ServerSettingsDialog';
 import {
+  getSystemMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
+  KEY_MATERIAL_READY,
   SUPPORTS_IMMERSIVE_MATERIAL,
   resolveBlurStyle
 } from '../utils/ImmersiveUtil';
-import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, IconStyleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
 import {
   DOMAIN,
   KEY_HOME_TAB_INDEX,
@@ -87,6 +89,7 @@ export struct NotifyView {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
+  @StorageProp(KEY_MATERIAL_READY) immersiveMaterialReady: boolean = false;
   // 切回「通知」Tab（值为 0）时自动刷新列表
   @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
@@ -109,6 +112,8 @@ export struct NotifyView {
   private loadSeq: number = 0;
   private loadQueued: boolean = false;
   private scroller: Scroller = new Scroller();
+  // 详情 Sheet 内部 List 的滚动控制器，与 Sheet 内 HdsNavigation.bindToScrollable 共享以驱动标题栏动态模糊。
+  private detailScroller: Scroller = new Scroller();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
   private isAutoScrolling: boolean = false;
   private pollTimer: number = -1;
@@ -431,8 +436,14 @@ export struct NotifyView {
       .bindSheet(this.showDetail, this.detailBuilder(), {
         height: SheetSize.LARGE,
         preferType: SheetType.BOTTOM,
-        dragBar: true,
+        // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
         showClose: false,
+        enableFloatingDragBar: true,
+        // 降级时减轻遮罩，让轻量模糊背板下的列表层次更可辨；正文 List 保持实色。
+        maskColor: this.useDetailSheetMaterial() ? undefined : '#33000000',
+        backgroundColor: this.useDetailSheetMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: this.useDetailSheetMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: this.useDetailSheetMaterial() ? getSystemMaterial('sheet') : undefined,
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -471,8 +482,14 @@ export struct NotifyView {
       .bindSheet(this.showDetail, this.detailBuilder(), {
         height: SheetSize.LARGE,
         preferType: SheetType.BOTTOM,
-        dragBar: true,
+        // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
         showClose: false,
+        enableFloatingDragBar: true,
+        // 两种导航布局共用同一降级效果。
+        maskColor: this.useDetailSheetMaterial() ? undefined : '#33000000',
+        backgroundColor: this.useDetailSheetMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: this.useDetailSheetMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: this.useDetailSheetMaterial() ? getSystemMaterial('sheet') : undefined,
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -535,6 +552,10 @@ export struct NotifyView {
   private openMessageDetail(message: NotifyMessage): void {
     this.selectedMessage = message;
     this.showDetail = true;
+    // detailScroller 跨次打开复用，待 Sheet 内 List 挂载后瞬时回到顶部，避免沿用上一条详情的滚动位置。
+    setTimeout(() => {
+      this.detailScroller.scrollEdge(Edge.Top);
+    }, 50);
   }
 
   // 多选模式底部操作栏（需要加在 Refresh 外面）
@@ -583,17 +604,111 @@ export struct NotifyView {
     this.confirmDeleteSelected();
   }
 
+  /** 详情正文；沉浸/降级两种 MODAL 标题栏样式共用同一内容。 */
   @Builder
-  detailBuilder() {
+  detailContent() {
     NotifyMessageDetail({
       message: this.selectedMessage,
-      onDismiss: () => { this.showDetail = false; },
+      useImmersiveMaterial: this.useDetailSheetMaterial(),
+      detailScroller: this.detailScroller,
       onOpenUrl: (url: string) => { this.openUrl(url); },
       onCopyCode: (code: string) => { this.copyCode(code); },
       onCopyUrl: (url: string) => { this.copyUrl(url); },
       onCopyText: (text: string) => { this.copyText(text); },
-      onCopyContent: (text: string) => { this.copyContent(text); }
+      onCopyContent: (text: string) => { this.copyContent(text); },
+      onDelete: () => {
+        if (this.selectedMessage) {
+          this.confirmDeleteOne(this.selectedMessage, true);
+        }
+      }
     });
+  }
+
+  /**
+   * 详情 Sheet 内容：HdsNavigation 使用 MODAL（半模态）标题栏承载标题与关闭按钮，
+   * bindToScrollable 绑定内部 List 后，内容上滚穿入标题栏区域即呈现动态模糊。
+   * 沉浸分支：渐变模糊 + 自适应系统材质；降级分支：通用模糊背板。
+   */
+  @Builder
+  detailBuilder() {
+    if (this.useDetailSheetMaterial()) {
+      HdsNavigation() {
+        this.detailContent();
+      }
+        .titleBar({
+          enableComponentSafeArea: true,
+          content: {
+            title: { mainTitle: '通知详情' },
+            menu: {
+              value: [
+                {
+                  content: {
+                    icon: $r('sys.symbol.xmark'),
+                    type: IconStyleMode.SMALL,
+                    action: (): void => {
+                      this.showDetail = false;
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          style: {
+            scrollEffectOpts: {
+              enableScrollEffect: true,
+              scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+            },
+            systemMaterialEffect: {
+              materialType: hdsMaterial.MaterialType.ADAPTIVE,
+              materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+            }
+          }
+        })
+        .hideBackButton(true)
+        .titleMode(HdsNavigationTitleMode.MODAL)
+        .bindToScrollable([this.detailScroller])
+        .width('100%')
+        .height('100%');
+    } else {
+      HdsNavigation() {
+        this.detailContent();
+      }
+        .titleBar({
+          enableComponentSafeArea: true,
+          content: {
+            title: { mainTitle: '通知详情' },
+            menu: {
+              value: [
+                {
+                  content: {
+                    icon: $r('sys.symbol.xmark'),
+                    type: IconStyleMode.SMALL,
+                    action: (): void => {
+                      this.showDetail = false;
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          style: {
+            scrollEffectOpts: {
+              enableScrollEffect: true,
+              scrollEffectType: ScrollEffectType.COMMON_BLUR
+            }
+          }
+        })
+        .hideBackButton(true)
+        .titleMode(HdsNavigationTitleMode.MODAL)
+        .bindToScrollable([this.detailScroller])
+        .width('100%')
+        .height('100%');
+    }
+  }
+
+  /** 详情 Sheet 仅在 API 26+、用户启用且材质缓存就绪后透出系统材质。 */
+  private useDetailSheetMaterial(): boolean {
+    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.immersiveMaterialReady;
   }
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
@@ -1050,7 +1165,7 @@ export struct NotifyView {
   }
 
   // ====== 删除确认与执行 ======
-  private confirmDeleteOne(m: NotifyMessage): void {
+  private confirmDeleteOne(m: NotifyMessage, closeDetailOnSuccess: boolean = false): void {
     const uiCtx: UIContext = this.getUIContext();
     uiCtx.getPromptAction().showDialog({
       title: '从本机删除通知',
@@ -1074,6 +1189,10 @@ export struct NotifyView {
       }
       this.removeFromList([m.id]);
       this.exitEditMode();
+      // 从详情发起删除时，确认成功后再关闭 Sheet；取消时保留当前详情。
+      if (closeDetailOnSuccess) {
+        this.showDetail = false;
+      }
       showToast(uiCtx, '已删除');
     });
   }

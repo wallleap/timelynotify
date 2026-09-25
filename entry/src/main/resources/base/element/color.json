@@ -21,6 +21,10 @@
       "value": "#F7F8FA"
     },
     {
+      "name": "color_bg_sheet_blur",
+      "value": "#66F7F8FA"
+    },
+    {
       "name": "color_bg_navigation",
       "value": "#FBFCFE"
     },

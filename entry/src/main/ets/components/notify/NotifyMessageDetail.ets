@@ -8,15 +8,21 @@ import {
   parseNotifyTextSegments
 } from './NotifyViewTypes';
 import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
+import { getSystemMaterial, resolveBlurStyle } from '../../utils/ImmersiveUtil';
 
 const DETAIL_EDGE_SPACING: number = 16;
-const DETAIL_TITLE_BAR_HEIGHT: number = 64;
+const DETAIL_BOTTOM_SPACING: number = 32;
+const DETAIL_DELETE_BUTTON_HEIGHT: number = 44;
 
 /** 通知详情半模态内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
 export struct NotifyMessageDetail {
+  // 与页面共用实测导航条高度，让滚动末尾的卡片避开底部手势区域。
+  @StorageProp('navBarHeight') navBarHeight: number = 0;
   @Prop message: NotifyMessage | null = null;
-  onDismiss: () => void = () => {};
+  @Prop useImmersiveMaterial: boolean = false;
+  // 滚动控制器由页面持有并传入，供 Sheet 内 HdsNavigation.bindToScrollable 绑定标题栏动态模糊。
+  detailScroller: Scroller = new Scroller();
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
   onCopyUrl: (url: string) => void = (_url: string) => {};
@@ -24,6 +30,8 @@ export struct NotifyMessageDetail {
   onCopyText: (text: string) => void = (_text: string) => {};
   // 待复制文本（extras.copy）的专用复制回调；与验证码逻辑一致，文案由调用方决定。
   onCopyContent: (text: string) => void = (_text: string) => {};
+  // 删除动作交给列表页复用现有确认弹窗和本地删除流程。
+  onDelete: () => void = () => {};
 
   @Builder
   private textSpans(text: string) {
@@ -197,27 +205,43 @@ export struct NotifyMessageDetail {
     }
   }
 
+  /** 固定在 Sheet 底部的纯文字删除按钮；非材质模式沿用现有毛玻璃样式。 */
   @Builder
-  private titleBar() {
-    Row() {
-      Text('通知详情').fontSize(18).fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.color_text_primary')).layoutWeight(1);
+  private floatingDeleteButton() {
+    if (this.useImmersiveMaterial) {
+      Button('删除')
+        .width(120).height(DETAIL_DELETE_BUTTON_HEIGHT)
+        // 本分支仅在 API 26+ 材质就绪时渲染，可直接链式调用 API 26 的 systemMaterial。
+        // 必须显式 NORMAL：Button 默认 EMPHASIZED 会渲染蓝色强调样式。
+        // 官方「纯色 + 质感」：materialColor 给高端材质档赋纯色；
+        // 同时必须保留同名 backgroundColor——中/低算力设备无材质滤镜，
+        // 材质由 backgroundColor/border/shadow 模拟，缺了它按钮完全没有背板。
+        // 高端档下该 backgroundColor 会被系统自动还原为透明，不会覆盖材质。
+        .buttonStyle(ButtonStyleMode.NORMAL)
+        .systemMaterial(getSystemMaterial('action'))
+        .backgroundColor($r('app.color.color_bg_action'))
+        .fontSize(16).fontColor($r('app.color.color_error'))
+        .margin({ bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
+        .onClick(() => this.onDelete());
+    } else {
       Row() {
-        Image($r('app.media.close')).width(22).height(22).objectFit(ImageFit.Contain).draggable(false)
-          .fillColor($r('app.color.color_text_tertiary'));
+        Text('删除').fontSize(16).fontColor($r('app.color.color_error'));
       }
-      .width(40).height(40).borderRadius(20).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-      .onClick(() => this.onDismiss());
+        .width(120).height(DETAIL_DELETE_BUTTON_HEIGHT).borderRadius(22)
+        .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+        // 降级路径不区分深浅色：固定纯白半透 + Thin 模糊 + 玻璃描边。
+        .backgroundColor('#8CFFFFFF')
+        .backgroundBlurStyle(resolveBlurStyle('card')!)
+        .border({ width: 1, color: $r('app.color.color_border_glass') })
+        .margin({ bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
+        .onClick(() => this.onDelete());
     }
-    .width('100%').height(DETAIL_TITLE_BAR_HEIGHT).padding({ left: 20, right: 12 })
-    .alignItems(VerticalAlign.Center).backgroundColor($r('app.color.color_bg_page'));
   }
 
   build() {
-    Stack({ alignContent: Alignment.Top }) {
-      Scroll() {
-        Column() {
-          Row().width('100%').height(DETAIL_TITLE_BAR_HEIGHT + DETAIL_EDGE_SPACING);
+    Stack({ alignContent: Alignment.Bottom }) {
+      List({ scroller: this.detailScroller }) {
+        ListItem() {
           if (this.message) {
             // 外层统一裁剪圆角，正文与贴底 action 形成同一张分区卡片。
             Column() {
@@ -286,17 +310,31 @@ export struct NotifyMessageDetail {
                 this.linkActions(this.message.url, this.message.copy);
               }
             }
-            .width('100%').borderRadius(20).clip(true).backgroundColor($r('app.color.color_bg_surface'))
+            // 仅详情 Sheet 的材质模式透出底层光感；普通模式维持实色卡片。
+            .width('100%').borderRadius(20).clip(true)
+            .backgroundColor(this.useImmersiveMaterial ? $r('app.color.color_bg_surface_glass') :
+              $r('app.color.color_bg_surface'))
             .border({ width: 1, color: $r('app.color.color_border_subtle') });
           }
-        }.width('100%')
-          .padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
-          bottom: DETAIL_EDGE_SPACING });
+        }
+        // 底部额外留白随内容滚动，长通知滚到末尾时也能完整露出卡片边缘。
+        .width('100%').padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
+          top: DETAIL_EDGE_SPACING,
+          bottom: DETAIL_BOTTOM_SPACING + this.navBarHeight + DETAIL_DELETE_BUTTON_HEIGHT + DETAIL_EDGE_SPACING });
       }
-      .align(Alignment.TopStart).width('100%').height('100%')
-      .edgeEffect(EdgeEffect.Spring).scrollBar(BarState.Off);
-      this.titleBar();
+      // Sheet 的系统材质绘制在内容后方；仅材质模式让外层透出。
+      .width('100%').height('100%')
+      // 不裁剪超出 List 边界的内容，使卡片上滚时穿入 MODAL 标题栏下方，供其动态模糊取色。
+      .clip(false)
+      .edgeEffect(EdgeEffect.Spring).scrollBar(BarState.Off)
+      // 内容区域只滚动自身；内容不足一屏时不将滑动手势交给 Sheet。
+      .nestedScroll({ scrollForward: NestedScrollMode.SELF_ONLY, scrollBackward: NestedScrollMode.SELF_ONLY })
+      .backgroundColor(this.useImmersiveMaterial ? Color.Transparent : $r('app.color.color_bg_page'));
+
+      if (this.message) {
+        this.floatingDeleteButton();
+      }
     }
-    .width('100%').height('100%').backgroundColor($r('app.color.color_bg_page'));
+    .width('100%').height('100%');
   }
 }
