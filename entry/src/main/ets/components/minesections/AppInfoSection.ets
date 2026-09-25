@@ -48,7 +48,7 @@ export struct AppInfoSection {
       Column({ space: 10 }) {
         // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
         Row() {
-          Column({ space: 2 }) {
+          Column({ space: 4 }) {
             Text('构建信息')
               .fontSize(16)
               .fontWeight(FontWeight.Medium)
@@ -79,7 +79,7 @@ export struct AppInfoSection {
           Column({ space: 4 }) {
             Row() {
               Text('推送 Token')
-                .fontSize(17)
+                .fontSize(16)
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.color_text_primary'));
               Text(' (自动生成)')
@@ -92,9 +92,8 @@ export struct AppInfoSection {
             }.width('100%');
 
             Text(this.buildDeviceTokenDisplay())
-              .fontSize(14)
-              .fontColor(this.deviceTokenDisplay.length > 0 ? $r('app.color.color_text_tertiary') :
-                $r('app.color.color_text_hint'))
+              .fontSize(12)
+              .fontColor($r('app.color.color_text_hint'))
               .width('100%')
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis });
@@ -143,7 +142,7 @@ export struct AppInfoSection {
     }
     const tail: string = t.substring(t.length - 4);
     const prefixMasked: string = '••••••••';
-    return `${prefixMasked}...${tail} (${t.length} 位)`;
+    return `${prefixMasked}${tail} (${t.length} 位)`;
   }
 
   // 点击卡片：把 Device Token 完整明文复制到剪贴板

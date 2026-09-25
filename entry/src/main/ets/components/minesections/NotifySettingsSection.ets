@@ -44,7 +44,7 @@ export struct NotifySettingsSection {
     Column({ space: 0 }) {
       // 开启应用订阅通知（开关）
       Row() {
-        Column({ space: 2 }) {
+        Column({ space: 4 }) {
           Text('开启应用订阅通知')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
@@ -81,7 +81,7 @@ export struct NotifySettingsSection {
 
       // 测试通知行（点击向当前服务器 POST /push 发送一条测试推送，验证通知链路）
       Row() {
-        Column({ space: 2 }) {
+        Column({ space: 4 }) {
           Text('测试通知')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
@@ -108,7 +108,7 @@ export struct NotifySettingsSection {
 
       // 导出通知行（点击导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
       Row() {
-        Column({ space: 2 }) {
+        Column({ space: 4 }) {
           Text('导出通知')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)

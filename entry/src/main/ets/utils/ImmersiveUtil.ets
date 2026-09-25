@@ -40,13 +40,6 @@ export const KEY_MATERIAL_READY: string = 'immersiveMaterialReady';
 export const KEY_MATERIAL_LOADED: string = 'immersiveMaterialLoaded';
 
 /**
- * AppStorage 键：当前设备硬件是否支持沉浸材质（isImmersiveMaterialSupported）。
- * 低算力设备/部分模拟器为 false：systemMaterial 可设置但不生效，入口行也不展示。
- * ensureImmersiveMaterial 完成探测后写入；API 26 以下直接为 false。
- */
-export const KEY_MATERIAL_SUPPORTED: string = 'immersiveMaterialSupported';
-
-/**
  * AppStorage 键：沉浸光感用户开关（API 26+ 生效）。
  * 默认 true（开启）；用户在 MineView「外观」板块可关闭，关闭后所有页面走 blur 降级分支。
  * EntryAbility.onCreate 读取 Preferences 写入此键；Toggle 切换经弹窗确认重启应用后生效。
@@ -74,7 +67,6 @@ const materialCache: Record<string, uiMaterial.Material> = {};
  */
 export function ensureImmersiveMaterial(): Promise<void> {
   if (!SUPPORTS_IMMERSIVE_MATERIAL) {
-    AppStorage.setOrCreate(KEY_MATERIAL_SUPPORTED, false);
     return Promise.resolve();
   }
   return import('@ohos.arkui.uiMaterial').then((ns: ESObject) => {
@@ -126,7 +118,6 @@ export function ensureImmersiveMaterial(): Promise<void> {
           console.warn(`[ImmersiveUtil] 材质能力查询失败，按支持处理: ${JSON.stringify(e)}`);
         }
         console.info(`[ImmersiveUtil] materialLevel=${level} supported=${supported} sdk=${CURRENT_SDK_VERSION}`);
-        AppStorage.setOrCreate(KEY_MATERIAL_SUPPORTED, supported);
         // 实例已全部预创建：即使设备不支持（systemMaterial no-op），内容层也可走材质样式分支
         // （透明底 + glass 色 + backgroundColor 兜底），故 LOADED 先于 supported 闸门写入。
         AppStorage.setOrCreate(KEY_MATERIAL_LOADED, true);

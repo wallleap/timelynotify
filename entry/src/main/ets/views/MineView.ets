@@ -2,7 +2,6 @@ import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ThemeService } from '../services/ThemeService';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
-  KEY_MATERIAL_SUPPORTED,
   resolveBlurStyle,
   SUPPORTS_IMMERSIVE_MATERIAL
 } from '../utils/ImmersiveUtil';
@@ -24,8 +23,6 @@ export struct MineView {
   // 沉浸光感开关值（API 26+ 生效；EntryAbility 启动时从 Preferences 写入 AppStorage）：
   // 入口行状态文本与各页面渲染分支均读此权威值；切换走 Dialog → 重启确认 → 重启应用生效
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
-  // 运行时硬件支持标志：低算力设备/部分模拟器不支持沉浸材质，入口行不展示
-  @StorageProp(KEY_MATERIAL_SUPPORTED) materialSupported: boolean = false;
   // 主题颜色模式选中索引：0=跟随系统 1=浅色 2=深色（与 COLOR_MODE_KEYS/ICONS 顺序一致）
   @State @Watch('onColorModeIndexChanged') colorModeIndex: number = 0;
   // 冷启动回填是否完成：回填阶段赋值不触发持久化/切换（EntryAbility 启动流程已应用过一次）
@@ -143,8 +140,9 @@ export struct MineView {
         // 配置板块（服务器入口卡片）
         ServerEntrySection();
 
-        // 外观板块（API 26+ 且设备硬件实际支持沉浸材质时显示）：沉浸光感入口行
-        if (SUPPORTS_IMMERSIVE_MATERIAL && this.materialSupported) {
+        // 外观板块（API 26+ 显示）：沉浸光感入口行
+        // 不额外闸 materialSupported：低算力设备上开关为 no-op 走降级，但入口保留可感知
+        if (SUPPORTS_IMMERSIVE_MATERIAL) {
           AppearanceSection();
         }
 

@@ -59,7 +59,7 @@ export struct ServerEntrySection {
             // 标题 flexShrink(0) 固定不压缩，标签 flexShrink(1) 允许压缩，超长时标签内省略号收尾
             Row({ space: 8 }) {
               Text('服务器')
-                .fontSize(17)
+                .fontSize(16)
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.color_text_primary'))
                 .flexShrink(0);

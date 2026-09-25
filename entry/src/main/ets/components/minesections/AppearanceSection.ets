@@ -38,7 +38,7 @@ export struct AppearanceSection {
       // 说明文字放在点击后的 Dialog 标题中，卡片本身仅保留标题与状态
       Row({ space: 14 }) {
         Text('沉浸光感')
-          .fontSize(17)
+          .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_primary'))
           .layoutWeight(1);
