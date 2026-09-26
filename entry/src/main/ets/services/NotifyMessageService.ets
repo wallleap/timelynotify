@@ -76,6 +76,8 @@ export class MessageListResult {
   hasMore: boolean = false;
   // 本次响应的删除事件：被删消息 id 列表
   deletionIds: number[] = [];
+  // 本次响应的 Bark id 墓碑：delete=1 推送删除携带的 extras.id，客户端据此删除本地对应副本
+  deletionExtraIds: number[] = [];
   // 本次响应的清空事件：ceiling 列表（本地删除 id <= ceiling 的所有消息）
   purges: number[] = [];
   // 删除流水当前游标（下次请求作为 deletedSince）
@@ -84,6 +86,8 @@ export class MessageListResult {
   delHasMore: boolean = false;
   // 游标已落在流水保留期缺口内：客户端应清空本地缓存并重新播种
   reset: boolean = false;
+  // 响应是否携带 deletions 信封（用于区分"无信封，保持原游标"与"cursor=0"）
+  hasDeletions: boolean = false;
 }
 
 function resolveContext(ctx: common.Context | null): common.Context | null {
@@ -208,9 +212,10 @@ export class NotifyMessageService {
   // 2) 顶层直接是数组 → 直接解析
 
   // limit 默认 100，控制单次返回条数；客户端据此判断是否到底（返回 < limit 视为到底）
+  // limit=0 为合法值：服务端返回空消息页，配合 deletedSince 用于只拉取删除流水
   // since > 0：向后翻页（返回 id < since），用于触底加载更老消息
   // after > 0：向前增量（返回 id > after，升序），用于拉取本地没有的新消息（与 since 互斥）
-  // deletedSince > 0：返回该游标之后的删除事件（deletions 信封）
+  // deletedSince：删除流水游标，响应顶层附带 deletions 信封；0 为首同步基线（空墓碑 + 当前最大游标）
   async getMessages(context: common.Context | null = null, since: number = 0,
     limit: number = 100, after: number = 0, deletedSince: number = 0,
     server: ServerEntry | null = null, includeAfterCursor: boolean = false): Promise<MessageListResult> {
@@ -255,10 +260,13 @@ export class NotifyMessageService {
     if (after > 0 || includeAfterCursor) {
       params.push(`after=${after}`);
     }
-    if (deletedSince > 0) {
+    // deletedSince=0 也必须能显式传给服务端：它代表删除流水首同步基线
+    // （返回空墓碑 + 当前最大游标），与不传 deletedSince（无 deletions 信封）语义不同。
+    if (deletedSince > 0 || includeAfterCursor) {
       params.push(`deletedSince=${deletedSince}`);
     }
-    if (limit > 0) {
+    // limit=0 是服务端的合法值（空消息页，只取 deletions 信封），必须显式传递。
+    if (limit >= 0) {
       params.push(`limit=${limit}`);
     }
     if (params.length > 0) {
@@ -329,6 +337,7 @@ export class NotifyMessageService {
     // 解析 deletions 信封（仅请求带 deletedSince 时服务端返回）
     const delVal: Object | undefined = raw['deletions'];
     if (delVal && typeof delVal === 'object') {
+      result.hasDeletions = true;
       const del = delVal as Record<string, Object>;
       result.delCursor = NotifyMessageService.asNumber(del['cursor']);
       result.delHasMore = NotifyMessageService.asBoolean(del['hasMore']);
@@ -339,6 +348,15 @@ export class NotifyMessageService {
           const id: number = NotifyMessageService.asNumber(idsVal[i]);
           if (id > 0) {
             result.deletionIds.push(id);
+          }
+        }
+      }
+      const extraIdsVal: Object | undefined = del['extraIds'];
+      if (extraIdsVal instanceof Array) {
+        for (let i = 0; i < extraIdsVal.length; i++) {
+          const eid: number = NotifyMessageService.asNumber(extraIdsVal[i]);
+          if (eid > 0) {
+            result.deletionExtraIds.push(eid);
           }
         }
       }
@@ -355,8 +373,8 @@ export class NotifyMessageService {
 
     result.ok = true;
     hilog.info(DOMAIN, TAG,
-      '拉取成功，消息 %{public}d 条，删除 %{public}d 条，purge %{public}d，reset=%{public}s',
-      result.messages.length, result.deletionIds.length,
+      '拉取成功，消息 %{public}d 条，删除 %{public}d 条，extraIds %{public}d，purge %{public}d，reset=%{public}s',
+      result.messages.length, result.deletionIds.length, result.deletionExtraIds.length,
       result.purges.length, result.reset ? 'true' : 'false');
     return result;
   }

@@ -40,6 +40,9 @@ export class NotifyMessage extends Object {
   encrypted: boolean = false;
   // 仅用于本次远程迁移：普通消息默认可清理；加密消息必须成功解密后才允许删除远程副本。
   migrationReady: boolean = true;
+  // Bark id（来自 extras.id，正整数）：推送方自定义的业务 id；
+  // 服务端 delete=1 删除流水的 extraIds 墓碑按它定位本地副本，0 表示未携带。
+  extraId: number = 0;
   // Bark isArchive 语义：缺省保留历史，显式非 1 时仅展示系统通知、不写本地历史。
   archive: boolean = true;
   // ttl 换算后的绝对过期时间（毫秒）；0 表示永不过期。
@@ -106,6 +109,11 @@ export class NotifyMessage extends Object {
       m.ciphertext = typeof ciphertextVal === 'string' ? ciphertextVal.trim() : '';
       const ivVal: Object | undefined = extras['iv'];
       m.iv = typeof ivVal === 'string' ? ivVal : '';
+      // Bark id：服务端原样透传推送方的 id 参数，可能是数字或数字字符串；非正数按 0（未携带）处理
+      const extraIdVal: Object | undefined = extras['id'];
+      const extraIdNum: number = typeof extraIdVal === 'number' ? extraIdVal :
+        (typeof extraIdVal === 'string' ? Number(extraIdVal) : 0);
+      m.extraId = isFinite(extraIdNum) && extraIdNum > 0 ? Math.floor(extraIdNum) : 0;
     }
     // 兼容部分推送通道把 group 放在消息顶层的情况
     if (m.group.length === 0) {

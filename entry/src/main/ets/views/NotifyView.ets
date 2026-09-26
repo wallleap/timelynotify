@@ -5,7 +5,7 @@ import { common, Want } from '@kit.AbilityKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
-import { NotifyMessageService } from '../services/NotifyMessageService';
+import { NotifyMessageService, MessageListResult } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
 import { DecryptedNotificationService } from '../services/DecryptedNotificationService';
 import { AutoCopyService } from '../services/AutoCopyService';
@@ -1444,7 +1444,8 @@ export struct NotifyView {
 
   /**
    * 同步单个服务器的远程暂存消息。
-   * 每页先解密并完整写入本地，再删除远程副本；删除失败项会在下一轮幂等重试。
+   * 每页先消费删除流水（extraIds 墓碑删本地副本），再解密落库本页消息、删除远程副本；
+   * 删除失败项会在下一轮幂等重试。删除流水游标随每页 saveMeta 持久化，forceFull 时重置为 0。
    */
   private async syncSingleServer(server: ServerEntry, forceFull: boolean,
     expectedSeq: number = -1): Promise<boolean> {
@@ -1462,25 +1463,44 @@ export struct NotifyView {
     // 远程历史是待迁移队列。每轮必须从 0 检查，才能重试上次已落库但远程删除失败的消息。
     let after: number = 0;
     let newMaxId: number = 0;
+    let delCursor: number = 0;
     if (forceFull) {
       await MessageCacheStore.clearDevice(deviceKey);
     } else {
       const meta = await MessageCacheStore.getMeta(deviceKey);
       newMaxId = meta.maxId;
+      delCursor = meta.delCursor;
     }
 
     let hasNewMessages: boolean = false;
+    // 最后一个消息页的删除流水 hasMore：消息翻页结束后据此继续翻删除流水
+    let lastDelHasMore: boolean = false;
 
     while (true) {
       if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
         return false;
       }
-      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, 0, server, true);
+      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, delCursor, server, true);
       if (!result.ok) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
         // 记录 per-server 错误，由调用方（syncAllServers/loadMessages）统一处理展示
         this.syncErrors.set(server.id, result.errorMsg);
         return false;
+      }
+
+      // 先消费本页删除流水，再落库本页消息：只应用 extraIds（Bark delete=1 墓碑）
+      // 删除本地副本；ids/purges 不消费——客户端迁移后删除远程副本会在服务端
+      // 留下同 id 墓碑，消费 ids 会把刚落库的消息误删。
+      // 必须先删后写：同一 extras.id「先 delete=1 后重推」时，本页同时携带墓碑与
+      // 新消息，若先写后删会把刚落库的新消息一并按 extras.id 删掉。
+      // 删除本地副本也视为"有变化"，触发同步完成后的列表重载。
+      if (await this.applyDeletionExtraIds(deviceKey, result)) {
+        hasNewMessages = true;
+      }
+      // 仅当响应携带 deletions 信封时推进游标（区分"无信封"与"cursor=0"）；
+      // 即使 extraIds 为空也必须推进保存，否则删除流水会每轮重放。
+      if (result.hasDeletions) {
+        delCursor = result.delCursor;
       }
 
       let nextAfter: number = after;
@@ -1527,16 +1547,45 @@ export struct NotifyView {
 
       // maxId 仅用于本地统计；远程扫描起点固定为 0，不以它跳过删除失败项。
       const metaSaved: boolean = await MessageCacheStore.saveMeta(
-        deviceKey, newMaxId, 0, 0, true);
+        deviceKey, newMaxId, delCursor, 0, true);
       if (!metaSaved) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 同步进度保存失败：%{public}s', deviceKey);
         return false;
       }
 
       if (!result.hasMore) {
+        lastDelHasMore = result.delHasMore;
         break;
       }
       after = nextAfter;
+    }
+
+    // 消息翻页结束后，删除流水可能仍有下一页（每页固定 500 条）：
+    // 用 limit=0 的空消息页继续消费 deletions，直到 hasMore=false。
+    while (lastDelHasMore) {
+      if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
+        return false;
+      }
+      const drain = await svc.getMessages(null, 0, 0, 0, delCursor, server, false);
+      if (!drain.ok) {
+        hilog.warn(DOMAIN, TAG, 'syncSingleServer 删除流水翻页失败（%{public}s）：%{public}s',
+          deviceKey, drain.errorMsg);
+        this.syncErrors.set(server.id, drain.errorMsg);
+        return false;
+      }
+      if (await this.applyDeletionExtraIds(deviceKey, drain)) {
+        hasNewMessages = true;
+      }
+      if (drain.hasDeletions) {
+        delCursor = drain.delCursor;
+      }
+      const drainSaved: boolean = await MessageCacheStore.saveMeta(
+        deviceKey, newMaxId, delCursor, 0, true);
+      if (!drainSaved) {
+        hilog.warn(DOMAIN, TAG, 'syncSingleServer 删除流水游标保存失败：%{public}s', deviceKey);
+        return false;
+      }
+      lastDelHasMore = drain.delHasMore;
     }
 
     if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
@@ -1546,6 +1595,29 @@ export struct NotifyView {
     // 清除该 server 的 per-server 错误（本轮同步成功）
     this.syncErrors.delete(server.id);
     return hasNewMessages;
+  }
+
+  /**
+   * 应用单页删除流水中的 extraIds（Bark delete=1 推送删除携带的 extras.id 墓碑）：
+   * 从本地库删除 extras.id 命中的副本。ids/purges 字段不消费——客户端迁移后删除
+   * 远程副本会在服务端留下同 id 墓碑，消费 ids 会把刚落库的消息误删。
+   * reset=true 表示游标过旧、删除流水已被压缩：删除事件可能丢失，记 warn 后继续，
+   * 不清空本地库。本方法不推进游标，游标由调用方在整页处理完成后随 saveMeta 持久化。
+   * 返回是否有本地消息被实际删除（用于触发同步完成后的列表重载）。
+   */
+  private async applyDeletionExtraIds(deviceKey: string, result: MessageListResult): Promise<boolean> {
+    if (result.reset) {
+      hilog.warn(DOMAIN, TAG, '删除流水游标过旧被压缩（reset），device=%{public}s，可能丢失部分删除事件', deviceKey);
+    }
+    if (result.deletionExtraIds.length === 0) {
+      return false;
+    }
+    const removedIds: number[] = await MessageCacheStore.deleteByExtraIds(deviceKey, result.deletionExtraIds);
+    if (removedIds.length > 0) {
+      hilog.info(DOMAIN, TAG, '按 extras.id 删除本地副本：%{public}s，共 %{public}d 条',
+        deviceKey, removedIds.length);
+    }
+    return removedIds.length > 0;
   }
 
   /** 本地落库完成后并行清理远程副本；失败记录留在服务器供下一轮同步重试。 */

@@ -38,6 +38,8 @@ const SQL_CREATE_MSG: string =
   'encrypted INTEGER NOT NULL DEFAULT 0, ' +
   'ciphertext TEXT NOT NULL DEFAULT \'\', ' +
   'iv TEXT NOT NULL DEFAULT \'\', ' +
+  // Bark id（extras.id）：服务端 delete=1 删除流水的 extraIds 墓碑按它定位本地副本
+  'extra_id INTEGER NOT NULL DEFAULT 0, ' +
   // Bark 归档策略及 ttl 的绝对过期时间；旧记录默认继续保留且永不过期。
   'archive INTEGER NOT NULL DEFAULT 1, ' +
   'expires_at INTEGER NOT NULL DEFAULT 0, ' +
@@ -46,6 +48,8 @@ const SQL_CREATE_MSG: string =
 
 const SQL_CREATE_MSG_INDEX: string =
   `CREATE INDEX IF NOT EXISTS idx_msg_dev_ts ON ${TABLE_MSG}(device_key, timestamp DESC)`;
+const SQL_CREATE_EXTRA_ID_INDEX: string =
+  `CREATE INDEX IF NOT EXISTS idx_msg_dev_extra ON ${TABLE_MSG}(device_key, extra_id)`;
 
 // 同步元信息：每设备的最大消息 id、删除流水游标与一次性历史播种进度
 const SQL_CREATE_META: string =
@@ -114,6 +118,7 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'encrypted': m.encrypted ? 1 : 0,
     'ciphertext': m.ciphertext,
     'iv': m.iv,
+    'extra_id': m.extraId,
     'archive': m.archive ? 1 : 0,
     'expires_at': m.expiresAt,
   };
@@ -144,6 +149,7 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.encrypted = rs.getLong(rs.getColumnIndex('encrypted')) === 1;
     m.ciphertext = rs.getString(rs.getColumnIndex('ciphertext'));
     m.iv = rs.getString(rs.getColumnIndex('iv'));
+    m.extraId = rs.getLong(rs.getColumnIndex('extra_id'));
     m.archive = rs.getLong(rs.getColumnIndex('archive')) === 1;
     m.expiresAt = rs.getLong(rs.getColumnIndex('expires_at'));
     m.deviceKey = rs.getString(rs.getColumnIndex('device_key'));
@@ -190,6 +196,7 @@ export class MessageCacheStore {
    * v5 补充 ciphertext/iv 列，使远程记录迁移删除后仍可在本地重新解密；
    * v6 补充 archive/expires_at，接入 Bark isArchive 与 ttl，旧记录默认永久保留。
    * v7 拆分 icon/image；旧版 image 实际保存的是远程 icon，迁移到新 icon 列。
+   * v8 补充 extra_id 列（Bark id），供删除流水 extraIds 墓碑按 extras.id 定位本地副本。
    * 检测到缺失列时逐列补齐：
    * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
    * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
@@ -209,6 +216,7 @@ export class MessageCacheStore {
       let hasArchive: boolean = false;
       let hasExpiresAt: boolean = false;
       let hasIcon: boolean = false;
+      let hasExtraId: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
@@ -233,6 +241,8 @@ export class MessageCacheStore {
             hasExpiresAt = true;
           } else if (col === 'icon') {
             hasIcon = true;
+          } else if (col === 'extra_id') {
+            hasExtraId = true;
           }
         } while (rs.goToNextRow());
       }
@@ -296,6 +306,13 @@ export class MessageCacheStore {
         await db.executeSql(
           `UPDATE ${TABLE_MSG} SET icon=image, image='' WHERE icon='' AND image<>''`);
       }
+      // extra_id 缺失：仅补列即可。旧行的 Bark id 无从回填（历史事实），重新同步落库后会自动写入；
+      // 残留影响是补列前已落库的消息无法被后续的 extras.id 墓碑命中删除，可接受，无需清库。
+      if (!hasExtraId) {
+        hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 extra_id 列');
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN extra_id INTEGER NOT NULL DEFAULT 0`);
+      }
 
       // 旧版本的 max_id 只代表“已拉到的最新消息”，不能证明历史已完整。
       // 因此迁移后默认 history_complete=0，保留缓存并从 id=0 补齐一次完整历史。
@@ -349,6 +366,8 @@ export class MessageCacheStore {
       await db.executeSql(SQL_CREATE_MSG_INDEX);
       await db.executeSql(SQL_CREATE_META);
       await MessageCacheStore.migrateSchema(db);
+      // extra_id 索引须在 migrateSchema 之后创建：旧库由迁移补列，提前创建会因列不存在而失败。
+      await db.executeSql(SQL_CREATE_EXTRA_ID_INDEX);
       MessageCacheStore.store = db;
       return db;
     } catch (err) {
@@ -664,6 +683,43 @@ export class MessageCacheStore {
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'deleteByIds 失败：%{public}s', formatError(err));
     }
+  }
+
+  // 按 Bark extras.id 删除本地消息（服务端 delete=1 删除流水的 extraIds 墓碑）。
+  // 先查出命中的本地消息 id 再删，返回实际删除的消息 id 列表，供调用方刷新内存列表与徽标。
+  static async deleteByExtraIds(deviceKey: string, extraIds: number[]): Promise<number[]> {
+    const removed: number[] = [];
+    if (!extraIds || extraIds.length === 0) {
+      return removed;
+    }
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return removed;
+    }
+    try {
+      const placeholders: string[] = [];
+      const args: Array<number | string> = [deviceKey];
+      for (let i = 0; i < extraIds.length; i++) {
+        placeholders.push('?');
+        args.push(extraIds[i]);
+      }
+      const where: string = `device_key=? AND extra_id IN (${placeholders.join(',')})`;
+      const rs: relationalStore.ResultSet =
+        await db.querySql(`SELECT id FROM ${TABLE_MSG} WHERE ${where}`, args);
+      if (rs.goToFirstRow()) {
+        const idIdx: number = rs.getColumnIndex('id');
+        do {
+          removed.push(rs.getLong(idIdx));
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+      if (removed.length > 0) {
+        await db.executeSql(`DELETE FROM ${TABLE_MSG} WHERE ${where}`, args);
+      }
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'deleteByExtraIds 失败：%{public}s', formatError(err));
+    }
+    return removed;
   }
 
   // 清空本地该设备 id <= ceiling 的所有消息（服务端清空全部的 purge 语义）
