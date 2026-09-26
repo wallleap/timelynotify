@@ -241,6 +241,14 @@ NotifyView.getMessages → GET /:device_key/message (Header: X-Gotify-Key)
   - 仅插入 id > 当前列表最大 id 的新消息（不重置分页、不打断滚动位置）
   - 启停条件：通知 Tab 可见 && 主页栈顶（Index onPageShow/onPageHide
     经 AppStorage KEY_INDEX_PAGE_VISIBLE 控制）&& App 前台
+
+删除流水消费（syncSingleServer，deletedSince 随 meta.delCursor 持久化）：
+  - 每页先按 deletions.extraIds（Bark delete=1 墓碑）删除本地 extras.id 命中的
+    副本，再落库本页消息；deletions.ids/purges 绝不消费（客户端迁移后删除远程
+    副本会产生同 id 墓碑，消费会把刚落库的消息误删）
+  - 只要响应携带 deletions 信封就推进保存 delCursor（extraIds 为空也推进）；
+    delHasMore=true 时消息翻页结束后用 limit=0 空消息页继续拉取直到 false
+  - reset=true（游标过旧流水被压缩）：记 warn 继续，不清空本地库
 ```
 
 ### 服务器管理流程

@@ -620,6 +620,7 @@ curl "http://127.0.0.1:18080/my-device/message?limit=-1&token=<clientToken>"
   "deletions": {
     "ids": [12, 18],
     "purges": [250],
+    "extraIds": [4242],
     "cursor": 305,
     "hasMore": false,
     "reset": false
@@ -631,8 +632,9 @@ curl "http://127.0.0.1:18080/my-device/message?limit=-1&token=<clientToken>"
 | --- | --- |
 | ids | 本页「删除单条」事件对应的消息 id（升序）。来源包括：`DELETE /:id`、`ttl` 过期清扫、`--gotify-max-messages` 容量淘汰 |
 | purges | 本页「清空全部」事件的 ceiling（升序），即清空发生时刻该设备的最大消息 id；客户端删除本地所有 id ≤ ceiling 的缓存。多条时取 max 即可 |
+| extraIds | 本页「按 extras.id 显式删除」事件对应的 `extras.id`（升序，int64）。来源仅 `delete=1` 推送删除（无论当时服务端是否还存在该消息都会记录）；已同步该消息的客户端据此删除本地以 `extras.id` 定位的副本 |
 | cursor | 该设备删除流水当前最大 id。客户端持久化，下次作为 deletedSince；hasMore=true 时等于本页最后一条事件 id（用于翻页），终页为当前最大游标 |
-| hasMore | 本页事件超过 500 条时为 true，用返回的 cursor 继续翻页直到 false（每页固定上限 500，与消息的 limit 无关） |
+| hasMore | 本页事件超过 500 条时为 true，用返回的 cursor 继续翻页直到 false（每页固定上限 500，与消息的 limit 无关）；消息翻页结束后可用 `limit=0` 的空消息页继续只拉 deletions |
 | reset | 客户端游标已落入流水保留期缺口（见下）：此时 ids/purges 必为空数组、cursor 为当前最大游标；客户端应**清空本地该设备缓存 → 用不带 after 的首页接口重新播种 → 以该 cursor 为基准增量** |
 
 删除流水只记录最近 **30 天**：后台清理任务每天扫描，删除过期行之前会为每个受影响设备先插入一条 reset 哨兵，因此设备最老一条流水永远是「此前列史已不可考」标记。游标判定：
