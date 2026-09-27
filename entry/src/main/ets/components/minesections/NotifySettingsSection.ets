@@ -110,8 +110,43 @@ export struct NotifySettingsSection {
       .onClick(() => {
         this.exportMessages();
       });
+
+      // 个性化设置入口紧随导出卡片，沉浸光感等视觉偏好集中在独立页面中管理。
+      Row() {
+        Column({ space: 4 }) {
+          Text('个性化设置')
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.color_text_primary'));
+          Text('沉浸光感')
+            .fontSize(12)
+            .fontColor($r('app.color.color_text_hint'));
+        }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+        this.arrowRightIcon();
+      }
+      .width('100%')
+      .padding(16)
+      .backgroundBlurStyle(resolveBlurStyle('bar')!)
+      .backgroundColor($r('app.color.color_bg_surface_glass'))
+      .borderRadius(12)
+      .onClick(() => {
+        this.openPersonalizationSettings();
+      });
     }
     .width('100%');
+  }
+
+  // 进入个性化设置页：沉浸光感等视觉偏好不再散落在“我的”主页面。
+  private async openPersonalizationSettings(): Promise<void> {
+    const uiCtx: UIContext = this.getUIContext();
+    try {
+      await uiCtx.getRouter().pushUrl({ url: 'pages/PersonalizationSettings' });
+    } catch (err) {
+      const message: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '跳转个性化设置失败：%{public}s', message);
+      showToast(uiCtx, '无法打开个性化设置');
+    }
   }
 
   // 读取持久化的订阅通知开关状态（纯本地存储，不调系统 API）

@@ -27,16 +27,8 @@ export struct AppearanceSection {
   }
 
   build() {
-    Column({ space: 8 }) {
-      Text('外观')
-        .fontSize(12)
-        .fontColor($r('app.color.color_text_hint'))
-        .width('100%')
-        .padding({ left: 12 });
-
-      // 沉浸光感入口卡片：与「服务器」等入口行风格一致，右侧展示当前状态 + 箭头；
-      // 说明文字放在点击后的 Dialog 标题中，卡片本身仅保留标题与状态
-      Row({ space: 14 }) {
+    // 由“个性化设置”页面承载；卡片本身仅保留标题与当前状态。
+    Row({ space: 14 }) {
         Text('沉浸光感')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
@@ -50,16 +42,15 @@ export struct AppearanceSection {
               $r('app.color.color_text_hint'));
           this.arrowRightIcon();
         }
-      }
-      .width('100%')
-      .padding(16)
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.color_bg_surface_glass'))
-      .borderRadius(12)
-      .onClick(() => {
-        this.onImmersiveRowClick();
-      });
-    }.width('100%');
+    }
+    .width('100%')
+    .padding(16)
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.color_bg_surface_glass'))
+    .borderRadius(12)
+    .onClick(() => {
+      this.onImmersiveRowClick();
+    });
   }
 
   // 沉浸光感入口行点击：直接弹居中确认对话框（效果说明 + 重启确认合并为一级）。

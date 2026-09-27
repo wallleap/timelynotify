@@ -7,7 +7,6 @@ import {
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { NotifySettingsSection } from '../components/minesections/NotifySettingsSection';
-import { AppearanceSection } from '../components/minesections/AppearanceSection';
 import { AppInfoSection } from '../components/minesections/AppInfoSection';
 import { AboutSection } from '../components/minesections/AboutSection';
 
@@ -135,12 +134,6 @@ export struct MineView {
 
         // 通知设置板块：开关与权限入口共用卡片，导出通知独立卡片
         NotifySettingsSection();
-
-        // 外观板块（API 26+ 显示）：沉浸光感入口行
-        // 不额外闸 materialSupported：低算力设备上开关为 no-op 走降级，但入口保留可感知
-        if (SUPPORTS_IMMERSIVE_MATERIAL) {
-          AppearanceSection();
-        }
 
         // 信息板块（构建信息 + 推送 Token）
         AppInfoSection();
