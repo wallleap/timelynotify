@@ -48,7 +48,7 @@ struct Index {
 
   @Builder
   tabBuilder(item: TabItem, index: number) {
-    Column() {
+    Column({ space: 4 }) {
       Image(this.currentIndex === index ? item.iconActive : item.icon)
         .width(24)
         .height(24)
