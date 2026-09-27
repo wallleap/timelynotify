@@ -59,8 +59,9 @@ interface ServerErrorInfo {
   error: string;
 }
 
-// 补齐"用户停留列表页时新消息不及时出现"的场景
-const POLL_INTERVAL_MS: number = 15000;
+// 前台通知页优先低延迟同步；切到其它 Tab 后降频，兼顾实时性与网络开销。
+const NOTIFY_PAGE_POLL_INTERVAL_MS: number = 3000;
+const BACKGROUND_TAB_POLL_INTERVAL_MS: number = 15000;
 // 服务端单页上限；首次历史播种持续分页，直到服务端明确返回 hasMore=false。
 const SYNC_PAGE_SIZE: number = 100;
 // 远程迁移清理采用小批量并发，避免首次历史较多时同时发出 100 个 DELETE 请求。
@@ -180,7 +181,8 @@ export struct NotifyView {
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
-    if (this.homeTabIndex === 0) {
+    // Index 页面可见时保持轮询：通知 Tab 3 秒，其它前台 Tab 15 秒。
+    if (this.indexPageVisible) {
       this.startPolling();
     }
   }
@@ -1150,24 +1152,24 @@ export struct NotifyView {
     if (this.isEditing) {
       this.exitEditMode();
     }
-    if (this.homeTabIndex === 0) {
-      this.loadMessages();
-      if (this.indexPageVisible) {
-        this.startPolling();
-      }
-    } else {
-      this.stopPolling();
+    if (!this.indexPageVisible) {
+      return;
     }
+    if (this.homeTabIndex === 0) {
+      // 回到通知页立即同步一次，避免用户还要等待下一次 3 秒轮询。
+      this.loadMessages();
+    }
+    // 切换 Tab 后立即按新前台频率重新计时，避免沿用上一种频率的剩余等待时间。
+    this.restartPollingSchedule();
   }
 
   private onPageVisibleChanged(): void {
     if (this.indexPageVisible) {
       if (this.homeTabIndex === 0) {
-        // 切回前台时立即拉一次，避免用户看到旧列表还要等 15s 第一次 poll。
-        // autoCopy 场景下也能让点系统通知跳进 App 后立即触发剪贴板复制 + Toast。
+        // 切回前台时立即拉一次，autoCopy 场景下也能让点系统通知跳进 App 后触发复制。
         this.loadMessages();
-        this.startPolling();
       }
+      this.restartPollingSchedule();
     } else {
       this.stopPolling();
     }
@@ -1195,6 +1197,26 @@ export struct NotifyView {
     }
   }
 
+  /** 当前 Index 页面中的轮询频率：通知页优先 3 秒，其它前台 Tab 降为 15 秒。 */
+  private getPollInterval(): number {
+    return this.homeTabIndex === 0 ? NOTIFY_PAGE_POLL_INTERVAL_MS : BACKGROUND_TAB_POLL_INTERVAL_MS;
+  }
+
+  /** 切换 Tab/回到前台时按最新频率重置未触发的计时器；飞行中的请求结束后自行续排。 */
+  private restartPollingSchedule(): void {
+    if (!this.pollingEnabled) {
+      this.startPolling();
+      return;
+    }
+    if (this.pollTimer >= 0) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = -1;
+    }
+    if (!this.pollInFlight) {
+      this.scheduleNextPoll();
+    }
+  }
+
   private scheduleNextPoll(): void {
     this.pollTimer = setTimeout(() => {
       this.pollTimer = -1;
@@ -1203,7 +1225,7 @@ export struct NotifyView {
           this.scheduleNextPoll();
         }
       });
-    }, POLL_INTERVAL_MS);
+    }, this.getPollInterval());
   }
 
   // 不清空列表/不重置分页；失败静默，等下一轮
