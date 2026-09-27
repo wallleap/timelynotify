@@ -77,7 +77,7 @@ export struct ServerView {
     });
   }
 
-  // 文档入口：复用应用内 SharePage，分别打开使用文档和推送字段
+  // 文档入口：复用应用内 SharePage，分别打开使用指南和推送参数
   @Builder
   doc() {
     Column({ space: 16 }) {
@@ -105,7 +105,7 @@ export struct ServerView {
         .strokeWidth(1)
 
       Row() {
-        Text('使用文档')
+        Text('使用指南')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_primary'))
@@ -122,7 +122,7 @@ export struct ServerView {
       .alignItems(VerticalAlign.Center)
       .justifyContent(FlexAlign.SpaceBetween)
       .onClick(() => {
-        this.openDocument(`${USE_DOCS_URL}/`, '使用文档');
+        this.openDocument(`${USE_DOCS_URL}/`, '使用指南');
       })
 
       Divider()
@@ -130,7 +130,7 @@ export struct ServerView {
         .strokeWidth(1)
 
       Row() {
-        Text('推送字段')
+        Text('推送参数')
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_primary'))
@@ -147,7 +147,7 @@ export struct ServerView {
       .alignItems(VerticalAlign.Center)
       .justifyContent(FlexAlign.SpaceBetween)
       .onClick(() => {
-        this.openDocument(PUSH_FIELDS_URL, '推送字段');
+        this.openDocument(PUSH_FIELDS_URL, '推送参数');
       })
     }
     .padding({

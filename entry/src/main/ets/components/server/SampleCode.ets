@@ -40,6 +40,137 @@ export struct SampleCode {
     }
   }
 
+  build() {
+    Column() {
+      Row({ space: 6 }) {
+        Row({ space: 6 }) {
+          Image($r('app.media.notice_colorful'))
+            .width(32)
+            .height(32)
+            .objectFit(ImageFit.Contain)
+            .draggable(false);
+
+          Text('推送测试')
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.color_text_primary'));
+        }
+
+        Row({ space: 2 }) {
+          Text('切换服务')
+            .fontSize(14)
+            .fontColor($r('app.color.color_text_secondary'));
+          Image($r('app.media.select_more'))
+            .width(18)
+            .height(18)
+            .fillColor($r('app.color.color_text_secondary'))
+            .draggable(false);
+        }
+        .bindMenu(this.serverMenu(), this.menuOptions());
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+      .justifyContent(FlexAlign.SpaceBetween);
+
+      // 切换服务或 GET/POST 时，代码块直接使用最新的完整命令。
+      Stack({ alignContent: Alignment.TopStart }) {
+        CodeBlock({
+          code: this.codeText,
+          paddingTop: 52,
+          paddingBottom: 14
+        })
+          .width('100%');
+
+        Row() {
+          Row({ space: 12 }) {
+            Text('GET')
+              .fontFamily('monospace')
+              .fontWeight(this.requestMethod === 'GET' ? FontWeight.Bold : FontWeight.Regular)
+              .fontColor(this.requestMethod === 'GET' ? $r('app.color.color_text_primary') :
+                $r('app.color.color_text_secondary'))
+              .fontSize(12)
+              .onClick(() => {
+                this.selectMethod('GET');
+              });
+            Text('POST')
+              .fontFamily('monospace')
+              .fontWeight(this.requestMethod === 'POST' ? FontWeight.Bold : FontWeight.Regular)
+              .fontColor(this.requestMethod === 'POST' ? $r('app.color.color_text_primary') :
+                $r('app.color.color_text_secondary'))
+              .fontSize(12)
+              .onClick(() => {
+                this.selectMethod('POST');
+              });
+          }
+
+          Row() {
+            Image($r('app.media.copy'))
+              .width(14)
+              .height(14)
+              .fillColor($r('app.color.color_text_secondary'))
+              .draggable(false);
+          }
+          .width(32)
+          .height(24)
+          .justifyContent(FlexAlign.End)
+          .onClick(() => {
+            this.copyCode();
+          });
+        }
+        .width('100%')
+        .padding(10)
+        .borderRadius({ topLeft: 8, topRight: 8 })
+        .backgroundColor($r('app.color.color_bg_page'))
+        .alignItems(VerticalAlign.Center)
+        .justifyContent(FlexAlign.SpaceBetween);
+      }.margin({ top: 12 });
+
+      // 两个底部操作均使用卡片选中的服务器，不修改通知列表的目标。
+      Row({ space: 8 }) {
+        Button('复制地址和 Key')
+          .layoutWeight(1)
+          .height(44)
+          .fontSize(14)
+          .fontColor($r('app.color.color_text_primary'))
+          .backgroundColor($r('app.color.color_bg_control_glass'))
+          .borderRadius(10)
+          .enabled(this.serverList.length > 0)
+          .onClick(() => {
+            this.copyAddressAndKey();
+          });
+
+        Button() {
+          Row({ space: 6 }) {
+            Image($r('app.media.send'))
+              .width(16)
+              .height(16)
+              .fillColor(Color.White)
+              .objectFit(ImageFit.Contain)
+              .draggable(false);
+            Text(this.testing ? '发送中…' : '发送通知')
+              .fontSize(14)
+              .fontColor(Color.White);
+          }
+          .justifyContent(FlexAlign.Center)
+          .alignItems(VerticalAlign.Center);
+        }
+        .layoutWeight(1)
+        .height(44)
+        .backgroundColor($r('app.color.color_brand'))
+        .borderRadius(10)
+        .enabled(this.serverList.length > 0 && !this.testing)
+        .onClick(() => {
+          this.sendTestNotification();
+        });
+      }
+      .width('100%')
+      .margin({ top: 16 });
+    }
+    .padding(16)
+    .borderRadius(10)
+    .backgroundColor($r('app.color.color_bg_surface'));
+  }
+
   // 服务列表可能晚于 Tab 渲染完成；初始化后回填默认选中项及代码块。
   private async initialize(): Promise<void> {
     await ServerManager.getInstance().ensureLoaded();
@@ -172,137 +303,6 @@ export struct SampleCode {
     }
     .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
     .backgroundColor($r('app.color.color_bg_dialog_glass'));
-  }
-
-  build() {
-    Column() {
-      Row({ space: 6 }) {
-        Row({ space: 6 }) {
-          Image($r('app.media.notice_colorful'))
-            .width(32)
-            .height(32)
-            .objectFit(ImageFit.Contain)
-            .draggable(false);
-
-          Text('推送测试')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.color_text_primary'));
-        }
-
-        Row({ space: 2 }) {
-          Text('切换服务')
-            .fontSize(14)
-            .fontColor($r('app.color.color_text_secondary'));
-          Image($r('app.media.select_more'))
-            .width(18)
-            .height(18)
-            .fillColor($r('app.color.color_text_secondary'))
-            .draggable(false);
-        }
-        .bindMenu(this.serverMenu(), this.menuOptions());
-      }
-      .width('100%')
-      .alignItems(VerticalAlign.Center)
-      .justifyContent(FlexAlign.SpaceBetween);
-
-      // 切换服务或 GET/POST 时，代码块直接使用最新的完整命令。
-      Stack({ alignContent: Alignment.TopStart }) {
-        CodeBlock({
-          code: this.codeText,
-          paddingTop: 52,
-          paddingBottom: 14
-        })
-          .width('100%');
-
-        Row() {
-          Row({ space: 12 }) {
-            Text('GET')
-              .fontFamily('monospace')
-              .fontWeight(this.requestMethod === 'GET' ? FontWeight.Bold : FontWeight.Regular)
-              .fontColor(this.requestMethod === 'GET' ? $r('app.color.color_text_primary') :
-                $r('app.color.color_text_secondary'))
-              .fontSize(12)
-              .onClick(() => {
-                this.selectMethod('GET');
-              });
-            Text('POST')
-              .fontFamily('monospace')
-              .fontWeight(this.requestMethod === 'POST' ? FontWeight.Bold : FontWeight.Regular)
-              .fontColor(this.requestMethod === 'POST' ? $r('app.color.color_text_primary') :
-                $r('app.color.color_text_secondary'))
-              .fontSize(12)
-              .onClick(() => {
-                this.selectMethod('POST');
-              });
-          }
-
-          Row() {
-            Image($r('app.media.copy'))
-              .width(14)
-              .height(14)
-              .fillColor($r('app.color.color_text_secondary'))
-              .draggable(false);
-          }
-          .width(32)
-          .height(24)
-          .justifyContent(FlexAlign.End)
-          .onClick(() => {
-            this.copyCode();
-          });
-        }
-        .width('100%')
-        .padding(10)
-        .borderRadius({ topLeft: 8, topRight: 8 })
-        .backgroundColor($r('app.color.color_bg_page'))
-        .alignItems(VerticalAlign.Center)
-        .justifyContent(FlexAlign.SpaceBetween);
-      }.margin({ top: 12 });
-
-      // 两个底部操作均使用卡片选中的服务器，不修改通知列表的目标。
-      Row({ space: 8 }) {
-        Button('复制地址和 Key')
-          .layoutWeight(1)
-          .height(44)
-          .fontSize(14)
-          .fontColor($r('app.color.color_text_primary'))
-          .backgroundColor($r('app.color.color_bg_control_glass'))
-          .borderRadius(10)
-          .enabled(this.serverList.length > 0)
-          .onClick(() => {
-            this.copyAddressAndKey();
-          });
-
-        Button() {
-          Row({ space: 6 }) {
-            Image($r('app.media.send'))
-              .width(16)
-              .height(16)
-              .fillColor(Color.White)
-              .objectFit(ImageFit.Contain)
-              .draggable(false);
-            Text(this.testing ? '发送中…' : '测试通知')
-              .fontSize(14)
-              .fontColor(Color.White);
-          }
-          .justifyContent(FlexAlign.Center)
-          .alignItems(VerticalAlign.Center);
-        }
-          .layoutWeight(1)
-          .height(44)
-          .backgroundColor($r('app.color.color_brand'))
-          .borderRadius(10)
-          .enabled(this.serverList.length > 0 && !this.testing)
-          .onClick(() => {
-            this.sendTestNotification();
-          });
-      }
-      .width('100%')
-      .margin({ top: 16 });
-    }
-    .padding(16)
-    .borderRadius(10)
-    .backgroundColor($r('app.color.color_bg_surface'));
   }
 
   // 复制当前展示模式的完整、可执行命令。

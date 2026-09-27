@@ -5,7 +5,7 @@ import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'ExternalLinkSvc';
 
-/** 使用文档站点地址（服务页的文档入口复用此地址） */
+/** 使用指南站点地址（服务页的文档入口复用此地址） */
 export const USE_DOCS_URL: string = 'https://docs.timelynotify.oicode.cn';
 
 /** 隐私协议地址（MineView 顶部常量搬入服务层） */

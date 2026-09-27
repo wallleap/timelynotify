@@ -15,7 +15,7 @@ import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'SharePage';
 
-// 内嵌 WebView 页（开源代码 / 使用文档）
+// 内嵌 WebView 页（开源代码）
 @Entry
 @Component
 struct SharePage {
@@ -301,6 +301,19 @@ struct SharePage {
     }
   }
 
+  // 系统返回手势：WebView 优先后退
+  onBackPress(): boolean {
+    try {
+      if (this.controller.accessBackward()) {
+        this.controller.backward();
+        return true;
+      }
+    } catch (error) {
+      // TODO: Implement error handling.
+    }
+    return false;
+  }
+
   private updateTitleBarBottom(bottom: number): void {
     if (bottom >= 0 && bottom !== this.titleBarBottom) {
       this.titleBarBottom = bottom;
@@ -324,19 +337,6 @@ struct SharePage {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '注入安全区 CSS 失败：%{public}s', msg);
     });
-  }
-
-  // 系统返回手势：WebView 优先后退
-  onBackPress(): boolean {
-    try {
-      if (this.controller.accessBackward()) {
-        this.controller.backward();
-        return true;
-      }
-    } catch (error) {
-      // TODO: Implement error handling.
-    }
-    return false;
   }
 
   private handleBack(): void {
