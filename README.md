@@ -173,14 +173,17 @@ TODO:
 
 | 脚本                  | 用法                                                                    | 说明                                                                                                             |
 |---------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|
-| `bin/build`         | `bin/build [[v]x.y.z]`                                                | 本地构建：自动注入版本号 + 构建溯源信息（tag 或手动指定）→ hvigor 构建 → 自动还原 `app.json5` / `BuildInfo.ets`，产出 `entry-default-signed.hap` |
+| `bin/build`         | `bin/build [[v]x.y.z[-beta.n]]`                                      | 本地构建：自动注入版本号 + 构建溯源信息（tag 或手动指定）→ hvigor 构建 → 自动还原 `app.json5` / `BuildInfo.ets`，产出 `entry-default-signed.hap` |
 | `bin/release-check` | `bin/release-check [--with-build] [--with-ci] [--skip-net] [-q] [-y]` | **发版前一键环境预检**：工具链/Git 状态/凭证权限/Secrets 缺失/AGC 连通性，三态输出 ✅/⚠️/❌ + 修复建议，0 FAIL 才建议发版                               |
-| `bin/release`       | `bin/release [-y] [--dry-run] [[v]x.y.z]`                             | 发版：自动切到 main 并同步 → 确定版本号（倒退/冲突校验）→ 交互确认 → 打 annotated tag 并推送，触发 CI 构建 → 签名 → 上传 AGC                           |
+| `bin/release`       | `bin/release [--dry-run] [--bump major\|minor\|patch\|current] [--stage beta\|stable] [-y]` | 发版：从带目标版本号的菜单选择增量和阶段；不接受手填版本号 → 校验后打 annotated tag 并推送，触发 CI 构建与上传 AGC |
 
-- 自动模式：最近 tag 的 minor +1、patch 清零（如 1.2.3 → 1.3.0，minor 满千进位到 major）；无历史 tag 时默认发 1.0.0
-- versionCode = `x*1000000 + y*1000 + z`，必须大于上一个版本（AGC 要求单调递增）
+- 版本增量：major → `x+1.0.0`、minor → `x.y+1.0`、patch → `x.y.z+1`；最近 tag 是 beta 时还有 `current`，可继续发 `-beta.n+1` 或转正式版。minor/patch 满千自动进位。
+- 阶段：beta 自动顺延序号 `1–98`，正式版不带后缀。例如 `1.2.0-beta.1` → `1.2.0-beta.2` → `1.2.0`。
+- versionCode = `(x*1000000 + y*1000 + z)*100 + slot`；beta 的 slot 为 `01–98`，正式版为 `99`，必须严格递增且不超过 31 位非负整数上限。旧版已发布包的编号不变，新版从双位 slot 规则继续。
+- beta tag 在 AGC 使用 HarmonyOS 测试发布类型，在 GitHub 标记为预发布且不设为 latest；正式版使用 AGC 全量发布类型及 GitHub 正式 Release。手动触发 workflow 可覆盖 AGC 发布类型。
 - 发版流程：PR 合并进 main → 任意分支执行 `bin/release`（结束后自动切回原分支）
-- `--dry-run`：预览发版流程（版本号计算与各项校验结果），零副作用（不切分支、不打 tag、不推送），可与 `-y`/版本号任意组合
+- `--dry-run`：预览发版流程（版本号计算与各项校验结果），不切分支、不打 tag、不推送；仍会只读地 fetch 远端 tag。
+- 非交互调用示例：`bin/release --bump minor --stage beta --dry-run -y`。`-y` 必须同时给出增量和阶段。
 - CI 构建环境：托管 runner 使用自建镜像 `ghcr.io/wallleap/harmonyos-ci`（预装 DevEco Command Line Tools for Linux
   26.0.0.821 + JDK17——与项目 `targetSdkVersion 26.0.0` 配套，由 [docker-image.yml](.github/workflows/docker-image.yml)
   从 [docker/ci/Dockerfile](docker/ci/Dockerfile) 构建推送；首次推送后需在 GitHub → Packages 中将包可见性改为

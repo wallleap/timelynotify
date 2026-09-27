@@ -313,9 +313,9 @@ main 为保护分支，编写代码之前，必须保证在 main 分支 pull 同
 
 使用 `bin/release` 脚本发版，会自动切 main 分支，打 tag
 
-- 如果是小补丁，要在当前 tag 的基础（x.y.z）上，让 z +1，运行 `bin/release x.y.z+1`（z 最大只能是三位数）
-- 如果是功能更新，直接运行 `bin/release`，会自动让 y +1，并让 z 置 0
-- 如果是破坏性更新，则需要让 x +1，y、z 置 0，运行 `bin/release x+1.0.0`
+- 运行 `bin/release`，在菜单中选择 major/minor/patch（最近 tag 为 beta 时还可选 current），然后选择 beta 测试版或 stable 正式版；每个选项会显示目标版本号
+- 不再手动传版本号；非交互模式需同时指定 `--bump`、`--stage` 与 `-y`，可先加 `--dry-run` 预览
+- beta 自动顺延 `-beta.n`（最多 98），正式版无后缀；两者共用双位 versionCode slot，正式版为 99
 
 打完 tag 自动 push，GitHub 自动注入版本号，签名构建，传到 AGC、Release
 
