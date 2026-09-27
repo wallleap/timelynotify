@@ -12,7 +12,8 @@
 #
 # 版本号规则:
 #   tag          = v{x.y.z[-beta.n]}（annotated，含作者/时间/说明）
-#   versionName  = x.y.z-beta.n（测试）或 x.y.z（正式）
+#   Git tag 版本 = x.y.z-beta.n（测试）或 x.y.z（正式）
+#   versionName  = x.y.z.n（测试）或 x.y.z（正式；AGC 只接受数字和点）
 #   versionCode  = (x*1000000 + y*1000 + z)*100 + slot（beta=01–98，正式=99）
 set -euo pipefail
 
@@ -204,7 +205,7 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
 fi
 
 echo ""
-echo "待发布: $TAG (versionName=$VERSION, versionCode=$VERSION_CODE)"
+echo "待发布: $TAG (包内 versionName=$VERSION_APP_NAME, versionCode=$VERSION_CODE)"
 echo "基于:   $RELEASE_BRANCH@$HEAD_INFO"
 echo "动作:   git tag -a $TAG && git push origin $TAG"
 

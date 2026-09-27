@@ -316,6 +316,7 @@ main 为保护分支，编写代码之前，必须保证在 main 分支 pull 同
 - 运行 `bin/release`，在菜单中选择 major/minor/patch（最近 tag 为 beta 时还可选 current），然后选择 beta 测试版或 stable 正式版；每个选项会显示目标版本号
 - 不再手动传版本号；非交互模式需同时指定 `--bump`、`--stage` 与 `-y`，可先加 `--dry-run` 预览
 - beta 自动顺延 `-beta.n`（最多 98），正式版无后缀；两者共用双位 versionCode slot，正式版为 99
+- AGC 包内 `versionName` 不使用 `-beta`：测试版 `v1.2.0-beta.1` 映射为 `1.2.0.1`，正式版 `v1.2.0` 仍为 `1.2.0`
 
 打完 tag 自动 push，GitHub 自动注入版本号，签名构建，传到 AGC、Release
 

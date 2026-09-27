@@ -64,6 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.parse.outputs.version }}
+      app_version: ${{ steps.parse.outputs.app_version }}
       version_code: ${{ steps.parse.outputs.version_code }}
       tag: ${{ steps.parse.outputs.tag }}
       release_type: ${{ steps.parse.outputs.release_type }}
@@ -117,6 +118,7 @@ jobs:
 
           # ---- 4. 输出 ----
           echo "version=$VERSION"        >> "$GITHUB_OUTPUT"
+          echo "app_version=$VERSION_APP_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG"                >> "$GITHUB_OUTPUT"
           echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
@@ -126,7 +128,8 @@ jobs:
 
           echo "========================================"
           echo "  Tag:           $TAG"
-          echo "  versionName:   $VERSION"
+          echo "  Tag version:   $VERSION"
+          echo "  versionName:   $VERSION_APP_NAME"
           echo "  versionCode:   $VERSION_CODE"
           echo "  AGC 类型:      $RELEASE_TYPE (1=全量 6=HarmonyOS 测试)"
           echo "  GitHub 预发布: $PRERELEASE"
@@ -162,6 +165,7 @@ jobs:
       build_time: ${{ steps.buildinfo.outputs.build_time }}
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      APP_VERSION: ${{ needs.prepare.outputs.app_version }}
       VERSION_CODE: ${{ needs.prepare.outputs.version_code }}
     steps:
       - name: Checkout
@@ -266,10 +270,10 @@ jobs:
       - name: 注入版本号到 AppScope/app.json5
         run: |
           set -euo pipefail
-          echo "注入 versionName=$VERSION  versionCode=$VERSION_CODE → AppScope/app.json5"
+          echo "注入 versionName=$APP_VERSION  versionCode=$VERSION_CODE → AppScope/app.json5"
           perl -i -pe "
             s/\"versionCode\"\s*:\s*\d+/\"versionCode\": $VERSION_CODE/;
-            s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$VERSION\"/;
+            s/\"versionName\"\s*:\s*\"[^\"]+\"/\"versionName\": \"$APP_VERSION\"/;
           " AppScope/app.json5
           # 剥离工程内调试签名（material 是 Mac 本机加密材料，CI 容器无法解析，hvigor SignHap 会报 00303107；
           # 且 hvigor 直接签名要求 DevEco 加密密码，明文密码报 00303116）
@@ -540,7 +544,7 @@ jobs:
           AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
           AGC_APP_ID:        ${{ secrets.AGC_APP_ID }}
           RELEASE_TYPE:      ${{ needs.prepare.outputs.release_type }}
-          VERSION:           ${{ needs.prepare.outputs.version }}
+          VERSION:           ${{ needs.prepare.outputs.app_version }}
           BUNDLE_NAME:       cn.oicode.timelynotify
         run: |
           set -euo pipefail
@@ -653,7 +657,7 @@ jobs:
             ## TimelyNotify ${{ needs.prepare.outputs.version }}
 
             - **versionCode**: `${{ needs.prepare.outputs.version_code }}`
-            - **versionName**: `${{ needs.prepare.outputs.version }}`
+            - **versionName（包内）**: `${{ needs.prepare.outputs.app_version }}`
             - **包名**: `cn.oicode.timelynotify`
             - **构建**: [Actions Run #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             - **commit**: `${{ needs.build-sign.outputs.commit_sha }}`

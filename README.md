@@ -179,6 +179,7 @@ TODO:
 
 - 版本增量：major → `x+1.0.0`、minor → `x.y+1.0`、patch → `x.y.z+1`；最近 tag 是 beta 时还有 `current`，可继续发 `-beta.n+1` 或转正式版。minor/patch 满千自动进位。
 - 阶段：beta 自动顺延序号 `1–98`，正式版不带后缀。例如 `1.2.0-beta.1` → `1.2.0-beta.2` → `1.2.0`。
+- Git tag/Release 名称保留 `-beta.n`，但 AGC 包内 `versionName` 仅使用数字和点：`v1.2.0-beta.1` 对应 `1.2.0.1`，`v1.2.0-beta.2` 对应 `1.2.0.2`；正式版 `v1.2.0` 对应 `1.2.0`。不要直接把含 `-beta` 的名称写进 `app.json5`。
 - versionCode = `(x*1000000 + y*1000 + z)*100 + slot`；beta 的 slot 为 `01–98`，正式版为 `99`，必须严格递增且不超过 31 位非负整数上限。旧版已发布包的编号不变，新版从双位 slot 规则继续。
 - beta tag 在 AGC 使用 HarmonyOS 测试发布类型，在 GitHub 标记为预发布且不设为 latest；正式版使用 AGC 全量发布类型及 GitHub 正式 Release。手动触发 workflow 可覆盖 AGC 发布类型。
 - 发版流程：PR 合并进 main → 任意分支执行 `bin/release`（结束后自动切回原分支）

@@ -5,11 +5,15 @@ set -euo pipefail
 source "$(dirname "$0")/versioning.sh"
 
 assert_version() {
-  local name="$1" expected_code="$2" expected_stage="$3"
+  local name="$1" expected_code="$2" expected_stage="$3" expected_app_name="$4"
   version_parse "$name"
   if [ "$VERSION_NAME" != "${name#v}" ] || [ "$VERSION_CODE" != "$expected_code" ] ||
-     [ "$VERSION_STAGE" != "$expected_stage" ]; then
-    echo "失败: $name → $VERSION_NAME/$VERSION_CODE/$VERSION_STAGE" >&2
+     [ "$VERSION_STAGE" != "$expected_stage" ] || [ "$VERSION_APP_NAME" != "$expected_app_name" ]; then
+    echo "失败: $name → $VERSION_NAME/$VERSION_CODE/$VERSION_STAGE/$VERSION_APP_NAME" >&2
+    exit 1
+  fi
+  if [[ ! "$VERSION_APP_NAME" =~ ^[0-9]+(\.[0-9]+){2,3}$ ]]; then
+    echo "失败: AGC 包内版本名含非数字或点: $VERSION_APP_NAME" >&2
     exit 1
   fi
 }
@@ -21,11 +25,11 @@ assert_invalid() {
   fi
 }
 
-assert_version v1.1.2 100100299 stable
-assert_version 1.2.0-beta.1 100200001 beta
-assert_version 1.2.0-beta.98 100200098 beta
-assert_version 1.2.0 100200099 stable
-assert_version 21.474.835 2147483599 stable
+assert_version v1.1.2 100100299 stable 1.1.2
+assert_version 1.2.0-beta.1 100200001 beta 1.2.0.1
+assert_version 1.2.0-beta.98 100200098 beta 1.2.0.98
+assert_version 1.2.0 100200099 stable 1.2.0
+assert_version 21.474.835 2147483599 stable 21.474.835
 
 for invalid in 1.2 01.2.3 1.02.3 1.2.03 1.2.0-beta.0 1.2.0-beta.01 \
   1.2.0-beta.99 1.1000.0 1.2.1000 21.474.836 22.0.0 1.2.0-rc.1; do

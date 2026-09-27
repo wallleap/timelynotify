@@ -24,6 +24,8 @@ version_parse() {
 
   VERSION_BASE="$VERSION_MAJOR.$VERSION_MINOR.$VERSION_PATCH"
   VERSION_NAME="$value"
+  # Git tag 可保留语义化 beta 后缀，包内版本名必须是 AGC 接受的纯数字点分形式。
+  VERSION_APP_NAME="$VERSION_BASE"
   VERSION_TAG="v$value"
   VERSION_STAGE="stable"
   VERSION_SLOT=99
@@ -34,6 +36,7 @@ version_parse() {
     fi
     VERSION_STAGE="beta"
     VERSION_SLOT="$VERSION_BETA"
+    VERSION_APP_NAME="$VERSION_BASE.$VERSION_BETA"
   fi
 
   VERSION_CODE=$(( (VERSION_MAJOR * 1000000 + VERSION_MINOR * 1000 + VERSION_PATCH) * 100 + VERSION_SLOT ))
