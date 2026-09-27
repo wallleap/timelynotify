@@ -11,6 +11,7 @@ import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from './EncryptionConfigService';
 import { MessageCryptoService } from './MessageCryptoService';
 import { MessageCacheStore } from './MessageCacheStore';
+import { createTestPushPayload, TestPushPayload } from '../utils/TestPushExample';
 
 const TAG: string = 'NotifyMsgSvc';
 
@@ -33,21 +34,6 @@ function decodeDefaultClientToken(): string {
       err instanceof Error ? err.message : String(err));
     return '';
   }
-}
-
-// POST /push 请求体（V2 单设备推送，见 SERVER_API.md）
-class PushRequest extends Object {
-  device_key: string = '';
-  title: string = '';
-  body: string = '';
-  action?: string;
-  id?: number;
-  icon?: string;
-  badge?: number;
-  sound?: string;
-  soundDuration?: number;
-  foregroundShow?: number;
-  inboxContent?: string[];
 }
 
 // POST /push 响应信封：{ code, message, timestamp }
@@ -546,28 +532,18 @@ export class NotifyMessageService {
     }
   }
 
-  // 发送测试推送（SERVER_API.md：POST /push，V2 单设备推送，默认无认证）
-  // 固定 title「订阅通知」+ 固定文案 body，目标为当前服务器对应的 device_key
-  // 返回 '' 表示成功；非空为错误描述
-  async sendTestPush(context: common.Context | null = null): Promise<string> {
-    const ctx: common.Context | null = resolveContext(context);
-    await ServerManager.getInstance().ensureLoaded();
-    const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(ctx);
+  // 发送通知测试卡片选中服务器的推送；不切换全局当前服务器或通知列表范围。
+  // 请求体与卡片 GET/POST 示例共用参数；返回 '' 表示成功，非空为错误描述。
+  async sendTestPush(server: ServerEntry, deviceKey: string): Promise<string> {
     if (!deviceKey || deviceKey.length === 0) {
       return '设备未注册';
     }
 
-    const req = new PushRequest();
-    req.device_key = deviceKey;
-    req.title = '[订阅通知] 及时通知推送';
-    req.body = '这是一条测试通知，收到即表示订阅推送链路工作正常';
-    req.icon = 'https://static.wallleap.cn/temp/nwvgnm7l2on5u6c531mo.jpg'
-    req.sound = 'multiwayinvitation'
-
-    const fullURL: string = ServerManager.getInstance().resolveURL('/push');
+    const req: TestPushPayload = createTestPushPayload(deviceKey);
+    const fullURL: string = `${server.baseURL.replace(/\/+$/, '')}/push`;
     hilog.info(DOMAIN, TAG, '测试推送：POST %{public}s', fullURL);
     try {
-      const resp: HttpResponse<PushEnvelope> = await HttpUtil.post<PushEnvelope, PushRequest>(fullURL, req);
+      const resp: HttpResponse<PushEnvelope> = await HttpUtil.post<PushEnvelope, TestPushPayload>(fullURL, req);
       if (resp.code < 200 || resp.code >= 300) {
         // code=0 为网络层异常（resp.message 已含原因），否则为 HTTP 状态错误
         return resp.code === 0 ? resp.message : `推送失败（HTTP ${resp.code}）`;
@@ -579,7 +555,7 @@ export class NotifyMessageService {
       if (resp.result.code !== 200 && resp.result.message.length > 0) {
         return resp.result.message;
       }
-      hilog.info(DOMAIN, TAG, '测试推送成功：device_key=%{public}s', deviceKey);
+      hilog.info(DOMAIN, TAG, '测试推送成功：serverId=%{public}s', server.id);
       return '';
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

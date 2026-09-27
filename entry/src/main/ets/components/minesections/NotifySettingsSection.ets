@@ -4,7 +4,6 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { common } from '@kit.AbilityKit';
 import { PreferencesUtil } from '../../utils/PreferencesUtil';
-import { NotifyMessageService } from '../../services/NotifyMessageService';
 import { NotifyExportService } from '../../services/NotifyExportService';
 import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
@@ -14,15 +13,13 @@ import { DOMAIN } from '../../common/Constant';
 const TAG: string = 'NotifySettingsSec';
 
 /**
- * 「通知设置」板块：开启订阅通知开关 + 通知权限设置 + 测试通知 + 导出通知。
- * 全自治：自身管理 notifyEnabled/testingPush/exporting 状态，业务下沉到各 Service。
+ * 「通知设置」板块：开启订阅通知开关 + 通知权限设置 + 导出通知。
+ * 全自治：自身管理 notifyEnabled/exporting 状态，业务下沉到各 Service。
  */
 @Component
 export struct NotifySettingsSection {
   // 通知授权开关状态（系统级，应用无法直接关闭，只能引导用户去系统设置）
   @State notifyEnabled: boolean = false;
-  // 是否正在发送测试通知（请求期间置 true，防止重复触发）
-  @State testingPush: boolean = false;
   // 是否正在执行通知导出（读取本地缓存 + 保存全程置 true，防止重复触发）
   @State exporting: boolean = false;
 
@@ -75,33 +72,6 @@ export struct NotifySettingsSection {
         this.arrowRightIcon();
       }.width('100%').padding(16).onClick(() => {
         this.openNotifySettings();
-      });
-
-      Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-      // 测试通知行（点击向当前服务器 POST /push 发送一条测试推送，验证通知链路）
-      Row() {
-        Column({ space: 4 }) {
-          Text('测试通知')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'));
-          Text(this.testingPush ? '正在发送…' : '发送一条测试推送验证通知链路')
-            .fontSize(12)
-            .fontColor($r('app.color.color_text_hint'));
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-        // 发送中显示加载指示器，否则显示箭头
-        if (this.testingPush) {
-          LoadingProgress()
-            .width(24)
-            .height(24)
-            .color($r('app.color.color_brand'));
-        } else {
-          this.arrowRightIcon();
-        }
-      }.width('100%').padding(16).onClick(() => {
-        this.sendTestNotification();
       });
 
       Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
@@ -196,30 +166,6 @@ export struct NotifySettingsSection {
       const e: BusinessError = err as BusinessError;
       hilog.warn(DOMAIN, TAG, 'openNotificationSettings 失败：code=%{public}d msg=%{public}s', e.code, e.message);
       showToast(this.getUIContext(), '无法打开通知设置');
-    }
-  }
-
-  // 发送测试通知：调 NotifyMessageService.sendTestPush 向当前服务器 POST /push
-  // 成功后提示用户查看通知栏；失败透出服务端/网络错误原因
-  private async sendTestNotification(): Promise<void> {
-    if (this.testingPush) {
-      return; // 防重复触发
-    }
-    const uiCtx: UIContext = this.getUIContext();
-    this.testingPush = true;
-    try {
-      const failMsg: string = await NotifyMessageService.getInstance().sendTestPush(null);
-      if (failMsg.length > 0) {
-        showToast(uiCtx, failMsg, 3000);
-        return;
-      }
-      showToast(uiCtx, '测试通知已发送，请查看通知栏', 2000);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, '发送测试通知失败：%{public}s', msg);
-      showToast(uiCtx, '发送失败，请点击下方[反馈问题]', 5000);
-    } finally {
-      this.testingPush = false;
     }
   }
 

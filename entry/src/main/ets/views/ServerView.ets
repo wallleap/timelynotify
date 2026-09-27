@@ -101,6 +101,8 @@ export struct ServerView {
       .justifyContent(FlexAlign.SpaceBetween)
 
       Divider()
+        .color($r('app.color.color_border_subtle'))
+        .strokeWidth(1)
 
       Row() {
         Text('使用文档')
@@ -124,6 +126,8 @@ export struct ServerView {
       })
 
       Divider()
+        .color($r('app.color.color_border_subtle'))
+        .strokeWidth(1)
 
       Row() {
         Text('推送字段')
