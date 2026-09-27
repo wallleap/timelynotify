@@ -17,8 +17,8 @@ TODO:
 - [x] 客户端端到端解密（AES128/AES192/AES256，CBC/ECB/GCM，按服务器独立配置）
 - [ ] 多语言
 - [ ] 等 PushKit API 完善点，实现更多推送参数
-    - 实测结论：鸿蒙 Push Kit 通知点击仅支持 `actionType` 0（应用首页）/ 1（应用内页 + params 传数据），无通知栏操作按钮（复制等只能在
-      App 内实现）；服务端可扩展 `actionType 1 + abilityAction.params` 传递 messageId/url，客户端按参数分发跳转
+    - 鸿蒙 Push Kit 通知点击使用 `actionType=0` 携带定位数据：`action=alert`（默认）同步后打开对应详情，
+      单服务器视图会切到来源服务；`none` 只回通知首页，`url` 优先。通知栏不提供复制等操作按钮。
 - [ ] 内容处理（例如整体复制、复制链接/验证码）
 
 ## 功能说明
