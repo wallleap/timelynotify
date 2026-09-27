@@ -65,6 +65,8 @@ const POLL_INTERVAL_MS: number = 15000;
 const SYNC_PAGE_SIZE: number = 100;
 // 远程迁移清理采用小批量并发，避免首次历史较多时同时发出 100 个 DELETE 请求。
 const REMOTE_DELETE_CONCURRENCY: number = 6;
+// 收缩错误胶囊与标题栏之间保留的呼吸间距。
+const COMPACT_BANNER_TOP_GAP: number = 8;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -74,8 +76,12 @@ export struct NotifyView {
   @State @Watch('restoreVisibleExpandedGroups') messages: NotifyMessage[] = [];
   @State loading: boolean = false;
   @State errorMsg: string = '';
-  // view all 模式下 per-server 同步错误的非阻塞提示（列出失败的 server 及原因）
-  @State serverErrorBanner: string = '';
+  // 单服务或全部模式下 per-server 同步错误的非阻塞提示（列出失败的 server 及原因）
+  @State @Watch('onServerErrorBannerChanged') serverErrorBanner: string = '';
+  // 列表离开顶部后将完整错误提示收缩为可点击的小胶囊。
+  @State serverErrorBannerCollapsed: boolean = false;
+  // 固定 Banner 的实测高度，用于给下方列表预留等高安全区域。
+  @State serverErrorBannerHeight: number = 0;
   @State refreshing: boolean = false;
   @State hasClientToken: boolean = false;
   // 点击查看的消息详情（底部半模态面板）
@@ -206,23 +212,105 @@ export struct NotifyView {
       onOpenSettings: () => this.handleMoreClicked() });
   }
 
-  // view all 模式下 per-server 错误的非阻塞提示条（点击跳转服务器设置）
+  // 单服务或全部模式下 per-server 错误的非阻塞提示条（点击打开对应修复入口）
   @Builder
   serverErrorBannerView() {
     Row() {
-      Text(this.serverErrorBanner)
+      Text(this.serverErrorBannerCollapsed ? '服务异常 · 点击修复' : this.serverErrorBanner)
         .fontSize(12)
-        .fontColor('#e65100')
-        .maxLines(2)
+        .fontColor($r('app.color.color_warning'))
+        .maxLines(this.serverErrorBannerCollapsed ? 1 : 2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(1)
+        .layoutWeight(this.serverErrorBannerCollapsed ? 0 : 1)
     }
-    .width('100%')
-    .padding({ left: 16, right: 16, top: 6, bottom: 6 })
-    .backgroundColor('#fff3e0')
+    // 收缩态按内容宽度布局，最长不超过父容器，避免长状态文案溢出屏幕。
+    .width(this.serverErrorBannerCollapsed ? 'auto' : '100%')
+    .constraintSize({ maxWidth: '100%' })
+    .padding(this.serverErrorBannerCollapsed
+      ? { left: 12, right: 12, top: 7, bottom: 7 }
+      : { left: 16, right: 16, top: 6, bottom: 6 })
+    .backgroundColor($r('app.color.color_bg_warning'))
+    .borderRadius(this.serverErrorBannerCollapsed ? 20 : 0)
+    // 降级布局的标题栏以 Stack 覆盖正文；Banner 使用标题栏实际底边避让，沉浸布局保持原位。
+    .margin({
+      left: this.serverErrorBannerCollapsed ? 16 : 0,
+      top: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled
+        ? 0 : Math.max(0, this.fallbackTitleBarBottom) +
+          (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0)
+    })
+    .onAreaChange((_old: Area, area: Area) => {
+      const height: number = area.height as number;
+      if (height > 0 && height !== this.serverErrorBannerHeight) {
+        this.serverErrorBannerHeight = height;
+      }
+    })
     .onClick(() => {
       this.openFixDialogForFirstError();
     })
+  }
+
+  /**
+   * 生成可操作的服务器同步失败文案。提示条本身可点击，此处显式说明后续动作，
+   * 避免用户误以为缓存列表仍在展示时错误状态已经恢复。
+   */
+  private buildServerErrorBannerMessage(server: ServerEntry, error: string): string {
+    const name: string = server.name || server.baseURL;
+    return name + '：' + error + '；点击修改服务器配置';
+  }
+
+  /**
+   * 根据单服务器同步结果呈现错误：有缓存时保留可用列表并显示非阻塞提示，
+   * 没有缓存时保留原有的全屏错误页，防止空页面掩盖同步失败原因。
+   */
+  private updateSingleServerErrorPresentation(server: ServerEntry): void {
+    const error: string | undefined = this.syncErrors.get(server.id);
+    if (!error) {
+      this.errorMsg = '';
+      this.serverErrorBanner = '';
+      return;
+    }
+    if (this.messages.length > 0) {
+      this.errorMsg = '';
+      this.serverErrorBanner = this.buildServerErrorBannerMessage(server, error);
+      return;
+    }
+    this.errorMsg = error;
+    this.serverErrorBanner = '';
+  }
+
+  /** 同步 Banner 出现/消失时重置视觉状态，避免下一次错误沿用旧滚动位置。 */
+  private onServerErrorBannerChanged(): void {
+    if (this.serverErrorBanner.length === 0) {
+      this.serverErrorBannerCollapsed = false;
+      this.serverErrorBannerHeight = 0;
+      return;
+    }
+    this.serverErrorBannerCollapsed = this.scroller.currentOffset().yOffset > 0;
+  }
+
+  /**
+   * 固定 Banner 覆盖在降级布局的列表之上时，为首项和下拉刷新指示器预留实际高度。
+   * 沉浸布局仍沿用 HDS 的内容安全区，不额外增加间距。
+   */
+  private getListTopInset(): number {
+    const titleInset: number = this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
+      ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0;
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled || this.serverErrorBanner.length === 0) {
+      return titleInset;
+    }
+    const fallbackBannerHeight: number = this.serverErrorBannerCollapsed ? 32 : 44;
+    return titleInset + Math.max(this.serverErrorBannerHeight, fallbackBannerHeight) +
+      (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0);
+  }
+
+  /** 以轻量动画切换 Banner 的完整提示与收缩胶囊形态。 */
+  private setServerErrorBannerCollapsed(collapsed: boolean): void {
+    if (this.serverErrorBannerCollapsed === collapsed) {
+      return;
+    }
+    this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut }, () => {
+      this.serverErrorBannerCollapsed = collapsed;
+    });
   }
 
   // 找到第一个失败的服务器及其错误信息
@@ -371,37 +459,60 @@ export struct NotifyView {
 
   @Builder
   refreshContentBody() {
-    Column() {
-      if (this.serverErrorBanner.length > 0) {
-        this.serverErrorBannerView();
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+      Column() {
+        if (this.serverErrorBanner.length > 0) {
+          this.serverErrorBannerView();
+        }
+        this.refreshListContent();
       }
-      Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
-        if (this.needGuideToConfig()) {
-          NotifyContentState({ mode: 'guide' });
-        } else if (this.loading && this.messages.length === 0) {
-          NotifyContentState({ mode: 'loading' });
-        } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
-          NotifyContentState({ mode: 'error', errorMsg: this.errorMsg, onRetry: () => this.loadMessages() });
-        } else if (this.messages.length === 0) {
-          NotifyContentState({ mode: 'empty' });
-        } else {
-          this.listView();
+      .width('100%')
+      .height('100%');
+    } else {
+      Stack({ alignContent: Alignment.TopStart }) {
+        Column() {
+          this.refreshListContent();
+        }
+        .width('100%')
+        .height('100%');
+
+        // 降级布局中固定在列表上层，避免 clip(false) 的滚动内容覆盖错误提示。
+        if (this.serverErrorBanner.length > 0) {
+          this.serverErrorBannerView();
         }
       }
-      .clip(false)
       .width('100%')
-      .layoutWeight(1)
-      .onStateChange((state: RefreshStatus) => {
-        // 同步刷新状态给自定义指示器，控制其显隐
-        this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
-      })
-      .onRefreshing(() => {
-        this.refreshing = true;
-        this.loadMessages();
-      });
+      .height('100%');
     }
+  }
+
+  /** 通知列表与下拉刷新的公共内容层；由外层决定 Banner 是流式还是固定展示。 */
+  @Builder
+  private refreshListContent() {
+    Refresh({ refreshing: this.refreshing, builder: this.refreshHeaderBuilder() }) {
+      if (this.needGuideToConfig()) {
+        NotifyContentState({ mode: 'guide' });
+      } else if (this.loading && this.messages.length === 0) {
+        NotifyContentState({ mode: 'loading' });
+      } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
+        NotifyContentState({ mode: 'error', errorMsg: this.errorMsg, onRetry: () => this.loadMessages() });
+      } else if (this.messages.length === 0) {
+        NotifyContentState({ mode: 'empty' });
+      } else {
+        this.listView();
+      }
+    }
+    .clip(false)
     .width('100%')
-    .height('100%')
+    .layoutWeight(1)
+    .onStateChange((state: RefreshStatus) => {
+      // 同步刷新状态给自定义指示器，控制其显隐。
+      this.refreshState = state === RefreshStatus.Done ? RefreshStatus.Inactive : state;
+    })
+    .onRefreshing(() => {
+      this.refreshing = true;
+      this.loadMessages();
+    });
   }
 
   @Builder
@@ -506,9 +617,11 @@ export struct NotifyView {
       if (this.showScrollToBottom) {
         this.showScrollToBottom = false;
       }
+      this.setServerErrorBannerCollapsed(false);
       return;
     }
     if (scrollOffset > 0) {
+      this.setServerErrorBannerCollapsed(true);
       // 上滑离开首屏，显示
       if (!this.showScrollToBottom) {
         this.showScrollToBottom = true;
@@ -655,8 +768,7 @@ export struct NotifyView {
   @Builder
   refreshHeaderBuilder() {
     NotifyRefreshHeader({ refreshState: this.refreshState,
-      topInset: this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
-        ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0,
+      topInset: this.getListTopInset(),
       immersiveEnabled: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled });
   }
 
@@ -667,8 +779,7 @@ export struct NotifyView {
       groupTotals: this.groupTotals, groupLoadingMore: this.groupLoadingMore,
       groupEnabled: this.groupEnabled,
       statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
-      topInset: this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
-        ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0,
+      topInset: this.getListTopInset(),
       immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
       scrollToBottomSignal: this.scrollToBottomSignal,
       onListTopChange: (top: number) => {
@@ -683,6 +794,7 @@ export struct NotifyView {
         if (this.showScrollToBottom) {
           this.showScrollToBottom = false;
         }
+        this.setServerErrorBannerCollapsed(false);
       },
       onAutoScrollEnd: () => {
         this.handleAutoScrollEnd();
@@ -920,6 +1032,7 @@ export struct NotifyView {
               this.groupTotals = refreshed.totals;
             }
           }
+          this.updateSingleServerErrorPresentation(cur);
         }
       }
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
@@ -1117,6 +1230,7 @@ export struct NotifyView {
               this.groupTotals = refreshed.totals;
             }
           }
+          this.updateSingleServerErrorPresentation(cur);
         }
       }
     } catch (err) {
@@ -1555,11 +1669,6 @@ export struct NotifyView {
         const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
         if (cur) {
           const changed: boolean = await this.syncSingleServer(cur, false, seq);
-          // 单 server 模式：本地无消息时透出 per-server 错误（与原有行为一致）
-          const singleErr: string | undefined = this.syncErrors.get(cur.id);
-          if (singleErr && this.messages.length === 0) {
-            this.errorMsg = singleErr;
-          }
           // 同步完成后从缓存回填列表（onChange 已清空 this.messages，必须回填）
           if (changed || this.messages.length === 0) {
             const deviceKey: string = cur.deviceKey;
@@ -1569,6 +1678,7 @@ export struct NotifyView {
               this.groupTotals = refreshed.totals;
             }
           }
+          this.updateSingleServerErrorPresentation(cur);
         }
       }
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
@@ -1823,30 +1933,33 @@ export struct NotifyView {
       return;
     }
 
-    // view all 模式：处理 per-server 错误
+    // 全部模式：处理 per-server 错误
     // 全部失败且无消息 → 阻塞式 errorMsg；部分失败 → 非阻塞 serverErrorBanner
     {
-      let failedParts: string = '';
+      let failedErrorParts: string = '';
+      let failedBannerParts: string = '';
       let totalFailed: number = 0;
       for (let i = 0; i < servers.length; i++) {
         const err: string | undefined = this.syncErrors.get(servers[i].id);
         if (err) {
           totalFailed++;
           const name: string = servers[i].name || servers[i].baseURL;
-          if (failedParts.length > 0) {
-            failedParts += '\n';
+          if (failedErrorParts.length > 0) {
+            failedErrorParts += '\n';
+            failedBannerParts += '\n';
           }
-          failedParts += `${name}：${err}`;
+          failedErrorParts += name + '：' + err;
+          failedBannerParts += this.buildServerErrorBannerMessage(servers[i], err);
         }
       }
       if (totalFailed > 0 && totalFailed === servers.length && this.messages.length === 0) {
         // 所有 server 都失败且本地无缓存消息 → 阻塞式错误
-        this.errorMsg = failedParts;
+        this.errorMsg = failedErrorParts;
         this.serverErrorBanner = '';
       } else if (totalFailed > 0) {
         // 部分 server 失败（或有缓存消息）→ 非阻塞提示
         this.errorMsg = '';
-        this.serverErrorBanner = failedParts;
+        this.serverErrorBanner = failedBannerParts;
       } else {
         this.errorMsg = '';
         this.serverErrorBanner = '';

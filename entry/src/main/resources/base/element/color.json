@@ -153,6 +153,10 @@
       "value": "#D97706"
     },
     {
+      "name": "color_bg_warning",
+      "value": "#FFF6E8"
+    },
+    {
       "name": "color_error",
       "value": "#D84A4A"
     },
