@@ -157,6 +157,10 @@
       "value": "#FF8585"
     },
     {
+      "name": "color_error_bg",
+      "value": "#33FF8585"
+    },
+    {
       "name": "color_info",
       "value": "#85B7FF"
     }

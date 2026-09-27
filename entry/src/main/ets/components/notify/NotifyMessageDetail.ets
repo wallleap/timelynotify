@@ -8,7 +8,6 @@ import {
   parseNotifyTextSegments
 } from './NotifyViewTypes';
 import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
-import { getSystemMaterial, resolveBlurStyle } from '../../utils/ImmersiveUtil';
 
 const DETAIL_EDGE_SPACING: number = 16;
 const DETAIL_BOTTOM_SPACING: number = 32;
@@ -205,37 +204,17 @@ export struct NotifyMessageDetail {
     }
   }
 
-  /** 固定在 Sheet 底部的纯文字删除按钮；非材质模式沿用现有毛玻璃样式。 */
+  /** 固定在 Sheet 底部的纯文字删除按钮（实色背板；Sheet 容器自身已挂材质，按钮不再挂链式材质）。 */
   @Builder
   private floatingDeleteButton() {
-    if (this.useImmersiveMaterial) {
-      Button('删除')
-        .width(120).height(DETAIL_DELETE_BUTTON_HEIGHT)
-        // 本分支仅在 API 26+ 材质就绪时渲染，可直接链式调用 API 26 的 systemMaterial。
-        // 必须显式 NORMAL：Button 默认 EMPHASIZED 会渲染蓝色强调样式。
-        // 官方「纯色 + 质感」：materialColor 给高端材质档赋纯色；
-        // 同时必须保留同名 backgroundColor——中/低算力设备无材质滤镜，
-        // 材质由 backgroundColor/border/shadow 模拟，缺了它按钮完全没有背板。
-        // 高端档下该 backgroundColor 会被系统自动还原为透明，不会覆盖材质。
-        .buttonStyle(ButtonStyleMode.NORMAL)
-        .systemMaterial(getSystemMaterial('action'))
-        .backgroundColor($r('app.color.color_bg_action'))
-        .fontSize(16).fontColor($r('app.color.color_error'))
-        .margin({ bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
-        .onClick(() => this.onDelete());
-    } else {
-      Row() {
-        Text('删除').fontSize(16).fontColor($r('app.color.color_error'));
-      }
-        .width(120).height(DETAIL_DELETE_BUTTON_HEIGHT).borderRadius(22)
-        .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-        // 降级路径不区分深浅色：固定纯白半透 + Thin 模糊 + 玻璃描边。
-        .backgroundColor('#8CFFFFFF')
-        .backgroundBlurStyle(resolveBlurStyle('card')!)
-        .border({ width: 1, color: $r('app.color.color_border_glass') })
-        .margin({ bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
-        .onClick(() => this.onDelete());
-    }
+    Button('删除')
+      .width(120).height(DETAIL_DELETE_BUTTON_HEIGHT)
+      // 必须显式 NORMAL：Button 默认 EMPHASIZED 会渲染蓝色强调样式。
+      .buttonStyle(ButtonStyleMode.NORMAL)
+      .backgroundColor($r('app.color.color_bg_action'))
+      .fontSize(16).fontColor($r('app.color.color_error'))
+      .margin({ bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
+      .onClick(() => this.onDelete());
   }
 
   build() {

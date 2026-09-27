@@ -7,7 +7,6 @@ import {
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { NotifySettingsSection } from '../components/minesections/NotifySettingsSection';
-import { ServerEntrySection } from '../components/minesections/ServerEntrySection';
 import { AppearanceSection } from '../components/minesections/AppearanceSection';
 import { AppInfoSection } from '../components/minesections/AppInfoSection';
 import { AboutSection } from '../components/minesections/AboutSection';
@@ -137,9 +136,6 @@ export struct MineView {
         // 通知设置板块（开关 / 通知权限设置 / 测试通知 / 导出通知）
         NotifySettingsSection();
 
-        // 配置板块（服务器入口卡片）
-        ServerEntrySection();
-
         // 外观板块（API 26+ 显示）：沉浸光感入口行
         // 不额外闸 materialSupported：低算力设备上开关为 no-op 走降级，但入口保留可感知
         if (SUPPORTS_IMMERSIVE_MATERIAL) {
@@ -149,7 +145,7 @@ export struct MineView {
         // 信息板块（构建信息 + 推送 Token）
         AppInfoSection();
 
-        // 关于板块（当前版本 / 开源代码 / 使用文档 / 隐私协议 / 反馈问题）
+        // 关于板块（当前版本 / 开源代码 / 隐私协议 / 反馈问题）
         AboutSection();
 
         // 底部占位：随内容一起滚动，末尾卡片才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）

@@ -25,6 +25,10 @@
       "value": "通知"
     },
     {
+      "name": "index_tab_server",
+      "value": "服务"
+    },
+    {
       "name": "index_tab_mine",
       "value": "我的"
     }

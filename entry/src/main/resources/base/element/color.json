@@ -157,6 +157,10 @@
       "value": "#D84A4A"
     },
     {
+      "name": "color_error_bg",
+      "value": "#33D84A4A"
+    },
+    {
       "name": "color_info",
       "value": "#2F77D5"
     }

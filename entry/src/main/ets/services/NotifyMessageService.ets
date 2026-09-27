@@ -66,6 +66,26 @@ class GotifyMessageResponse extends Object {
   deletions: Object | null = null;
 }
 
+/** 把 getMessages 失败的 errorMsg 映射为列表上展示的简短错误文案 */
+export function toShortSyncError(error: string, client_token: string = ''): string {
+  if (error.includes('Token')) {
+    if (error.includes('无效') || error.includes('过期') || error.includes('401')) {
+      if (client_token === decodeDefaultClientToken()) {
+        return '客户端 Token 待配置';
+      }
+      return '客户端 Token 错误';
+    }
+    return '客户端 Token 待配置';
+  }
+  if (error.includes('未注册')) {
+    return '设备 Key 未注册';
+  }
+  if (error.includes('不存在')) {
+    return '设备 Key 不存在';
+  }
+  return '连接失败';
+}
+
 // 调用结果
 export class MessageListResult {
   ok: boolean = false;
@@ -148,6 +168,24 @@ export class NotifyMessageService {
   }
 
   // 获取指定 server 用户手动配置的 client token（不含内置默认；返回空 = 用户没填）。
+
+  // 安全把任意值转成 number（非数字返回 0）
+  private static asNumber(v: Object | undefined): number {
+    if (typeof v === 'number') {
+      return v;
+    }
+    if (typeof v === 'string') {
+      const n: number = Number(v);
+      return isNaN(n) ? 0 : n;
+    }
+    return 0;
+  }
+
+  // 安全把任意值转成 boolean
+  private static asBoolean(v: Object | undefined): boolean {
+    return typeof v === 'boolean' ? v : false;
+  }
+
   // server 为空时取当前 server。
   async getClientToken(context: common.Context | null = null, server: ServerEntry | null = null): Promise<string> {
     await ServerManager.getInstance().ensureLoaded();
@@ -175,11 +213,24 @@ export class NotifyMessageService {
     return fallback;
   }
 
+  // 拉取消息列表。device_key 来自 DeviceRegisterService，client token 来自持久化
+  // 返回 MessageListResult：ok=false 时 errorMsg 含原因（未注册/未配置 token/网络失败/认证失败）
+  // since > 0 时拼接 ?since=N，用于触底分页加载更老的消息（gotify 协议：返回 ID <= since 的消息）
+
   /** 当前 server 是否使用内置默认 token（per-server 配置为空或只含空白 = 默认） */
   async isClientTokenDefault(context: common.Context | null = null): Promise<boolean> {
     const saved: string = await this.getClientToken(context);
     return !(saved && saved.trim().length > 0);
   }
+
+  // 从响应体解析消息列表，容错多种结构：
+  // 1) 顶层是 {messages: [...]} → 解析 messages（gotify/timelynotify 标准格式）
+  // 2) 顶层直接是数组 → 直接解析
+
+  // limit 默认 100，控制单次返回条数；客户端据此判断是否到底（返回 < limit 视为到底）
+  // limit=0 为合法值：服务端返回空消息页，配合 deletedSince 用于只拉取删除流水
+  // since > 0：向后翻页（返回 id < since），用于触底加载更老消息
+  // after > 0：向前增量（返回 id > after，升序），用于拉取本地没有的新消息（与 since 互斥）
 
   /**
    * 是否已经有可用的 client token（自定义 or 内置默认）。
@@ -190,10 +241,6 @@ export class NotifyMessageService {
     // 显式返回布尔，避免 ArkTS 推断出 string | boolean 类型
     return eff.length > 0;
   }
-
-  // 拉取消息列表。device_key 来自 DeviceRegisterService，client token 来自持久化
-  // 返回 MessageListResult：ok=false 时 errorMsg 含原因（未注册/未配置 token/网络失败/认证失败）
-  // since > 0 时拼接 ?since=N，用于触底分页加载更老的消息（gotify 协议：返回 ID <= since 的消息）
 
   // 设置当前 server 的 client token（per-server）。空串/纯空白 = 清除自定义，恢复到内置默认
   async setClientToken(context: common.Context | null, token: string): Promise<boolean> {
@@ -207,14 +254,6 @@ export class NotifyMessageService {
     return true;
   }
 
-  // 从响应体解析消息列表，容错多种结构：
-  // 1) 顶层是 {messages: [...]} → 解析 messages（gotify/timelynotify 标准格式）
-  // 2) 顶层直接是数组 → 直接解析
-
-  // limit 默认 100，控制单次返回条数；客户端据此判断是否到底（返回 < limit 视为到底）
-  // limit=0 为合法值：服务端返回空消息页，配合 deletedSince 用于只拉取删除流水
-  // since > 0：向后翻页（返回 id < since），用于触底加载更老消息
-  // after > 0：向前增量（返回 id > after，升序），用于拉取本地没有的新消息（与 since 互斥）
   // deletedSince：删除流水游标，响应顶层附带 deletions 信封；0 为首同步基线（空墓碑 + 当前最大游标）
   async getMessages(context: common.Context | null = null, since: number = 0,
     limit: number = 100, after: number = 0, deletedSince: number = 0,
@@ -377,23 +416,6 @@ export class NotifyMessageService {
       result.messages.length, result.deletionIds.length, result.deletionExtraIds.length,
       result.purges.length, result.reset ? 'true' : 'false');
     return result;
-  }
-
-  // 安全把任意值转成 number（非数字返回 0）
-  private static asNumber(v: Object | undefined): number {
-    if (typeof v === 'number') {
-      return v;
-    }
-    if (typeof v === 'string') {
-      const n: number = Number(v);
-      return isNaN(n) ? 0 : n;
-    }
-    return 0;
-  }
-
-  // 安全把任意值转成 boolean
-  private static asBoolean(v: Object | undefined): boolean {
-    return typeof v === 'boolean' ? v : false;
   }
 
   // 删除单条消息（服务端 API）：DELETE /{device_key}/message/{id}

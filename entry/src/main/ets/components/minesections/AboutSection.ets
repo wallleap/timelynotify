@@ -2,7 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { UIContext } from '@kit.ArkUI';
 import { AppInfoService, SOURCE_CODE_URL } from '../../services/AppInfoService';
-import { ExternalLinkService, USE_DOCS_URL, PRIVACY_URL } from '../../services/ExternalLinkService';
+import { ExternalLinkService, PRIVACY_URL } from '../../services/ExternalLinkService';
 import { FeedbackService } from '../../services/FeedbackService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { ThemeService } from '../../services/ThemeService';
@@ -10,7 +10,7 @@ import showToast from '../showToast';
 import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
 
 /**
- * 「关于」板块：当前版本（点击复制）+ 开源代码 + 使用文档 + 隐私协议 + 反馈问题。
+ * 「关于」板块：当前版本（点击复制）+ 开源代码 + 隐私协议 + 反馈问题。
  * 全自治：自身管理 versionName/versionCode/certFingerprintTail，业务下沉到各 Service。
  *
  * 注意：为保持与原 MineView 行为一致，本板块会自己 refresh 版本号 + 签名指纹
@@ -78,20 +78,6 @@ export struct AboutSection {
 
         Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
 
-        // 使用文档行（进入内嵌 WebView）
-        Row() {
-          Text('使用文档')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'))
-            .layoutWeight(1);
-          this.arrowRightIcon();
-        }.width('100%').padding(16).onClick(() => {
-          this.openDocs();
-        });
-
-        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
-
         // 隐私协议行
         Row() {
           Text('隐私协议')
@@ -155,11 +141,6 @@ export struct AboutSection {
   // 点击开源代码行：进入内嵌 WebView 页面
   private async openSourceLink(): Promise<void> {
     await ExternalLinkService.openSharePage(this.getUIContext(), SOURCE_CODE_URL, '开源代码');
-  }
-
-  // 点击使用文档行：进入内嵌 WebView 页面
-  private async openDocs(): Promise<void> {
-    await ExternalLinkService.openSharePage(this.getUIContext(), USE_DOCS_URL, '使用文档');
   }
 
   // 点击隐私协议行：进入内嵌 WebView 页面

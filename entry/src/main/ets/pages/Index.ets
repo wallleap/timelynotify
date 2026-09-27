@@ -1,5 +1,6 @@
 import { NotifyView } from '../views/NotifyView';
 import { MineView } from '../views/MineView';
+import { ServerView } from '../views/ServerView';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
@@ -32,6 +33,11 @@ struct Index {
       title: $r('app.string.index_tab_notify'),
       icon: $r('app.media.notify'),
       iconActive: $r('app.media.notify_active')
+    },
+    {
+      title: $r('app.string.index_tab_server'),
+      icon: $r('app.media.server'),
+      iconActive: $r('app.media.server_active')
     },
     {
       title: $r('app.string.index_tab_mine'),
@@ -67,9 +73,14 @@ struct Index {
     .tabBar(this.tabBuilder(this.tabs[0], 0));
 
     TabContent() {
+      ServerView()
+    }
+    .tabBar(this.tabBuilder(this.tabs[1], 1));
+
+    TabContent() {
       MineView()
     }
-    .tabBar(this.tabBuilder(this.tabs[1], 1))
+    .tabBar(this.tabBuilder(this.tabs[2], 2))
   }
 
   // 页面显隐：router 跳转其它页面（如服务器设置页）/应用退后台时触发 onPageHide，

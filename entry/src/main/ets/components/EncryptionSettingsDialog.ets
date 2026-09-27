@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { DOMAIN } from '../common/Constant';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
@@ -223,9 +224,11 @@ export struct EncryptionSettingsDialog {
    */
   private glassMenuOptions(): MenuOptions {
     const options: MenuOptions = { placement: Placement.BottomLeft };
-    const material = getMenuMaterial();
-    if (material) {
-      options.systemMaterial = material;
+    if (deviceInfo.apiAvailable('26.0.0')) {
+      const material = getMenuMaterial();
+      if (material) {
+        options.systemMaterial = material;
+      }
     }
     return options;
   }

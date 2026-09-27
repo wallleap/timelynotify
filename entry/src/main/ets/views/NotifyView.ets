@@ -12,6 +12,9 @@ import { AutoCopyService } from '../services/AutoCopyService';
 import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
+import { ServerKeyDialog, ServerActionMenuDialog } from '../components/ServerActionDialogs';
+import { ClientTokenDialog } from '../components/ClientTokenDialog';
+import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import {
   getDialogBackgroundOptions,
   getDialogMaterial,
@@ -50,6 +53,12 @@ import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 import { NotifyExportService } from '../services/NotifyExportService';
 
 const TAG: string = 'NotifyView';
+
+// 失败服务器及其错误信息（用于点击 banner 精准弹修复弹窗）
+interface ServerErrorInfo {
+  server: ServerEntry;
+  error: string;
+}
 
 // 补齐"用户停留列表页时新消息不及时出现"的场景
 const POLL_INTERVAL_MS: number = 15000;
@@ -131,6 +140,10 @@ export struct NotifyView {
   // 本轮 per-server 同步错误（serverId → errorMsg），由 syncSingleServer 写入，
   // syncAllServers/loadMessages 统一消费：全失败且无消息→阻塞 errorMsg，部分失败→非阻塞 serverErrorBanner
   private syncErrors: Map<string, string> = new Map<string, string>();
+  // 失败服务器修复弹窗 controller（必须由成员持有，局部变量会被回收导致 close 失效）
+  private fixClientTokenController: CustomDialogController | null = null;
+  private fixKeyController: CustomDialogController | null = null;
+  private fixActionMenuController: CustomDialogController | null = null;
 
   aboutToAppear() {
     this.initAfterServerManagerReady();
@@ -209,11 +222,152 @@ export struct NotifyView {
     .padding({ left: 16, right: 16, top: 6, bottom: 6 })
     .backgroundColor('#fff3e0')
     .onClick(() => {
-      // 跳转「我的 → 服务器设置」页处理失败服务器（标题弹窗仅切换视图，无管理入口）
-      this.getUIContext().getRouter().pushUrl({ url: 'pages/ServerSettingsPage' }).catch((err: BusinessError) => {
-        hilog.warn(DOMAIN, TAG, 'router push 失败：%{public}s', err.message);
-      });
+      this.openFixDialogForFirstError();
     })
+  }
+
+  // 找到第一个失败的服务器及其错误信息
+  private findFirstErrorServer(): ServerErrorInfo | null {
+    const list: ServerEntry[] = ServerManager.getInstance().getList();
+    for (let i = 0; i < list.length; i++) {
+      const err: string | undefined = this.syncErrors.get(list[i].id);
+      if (err) {
+        const info: ServerErrorInfo = { server: list[i], error: err };
+        return info;
+      }
+    }
+    return null;
+  }
+
+  // 根据错误类型直接弹对应修复弹窗
+  private openFixDialogForFirstError(): void {
+    const found: ServerErrorInfo | null = this.findFirstErrorServer();
+    if (!found) {
+      return;
+    }
+    const server: ServerEntry = found.server;
+    const error: string = found.error;
+
+    if (error.includes('Token')) {
+      this.openClientTokenDialogFor(server);
+    } else if (error.includes('设备')) {
+      this.openKeyDialogFor(server);
+    } else {
+      this.openActionMenuFor(server);
+    }
+  }
+
+  // ====== 各弹窗打开方法（复用组件，指定目标服务器） ======
+
+  private openClientTokenDialogFor(server: ServerEntry): void {
+    try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.fixClientTokenController = new CustomDialogController({
+        builder: ClientTokenDialog({
+          getInitToken: (): string => server.clientToken,
+          saveToken: async (token: string): Promise<boolean> => {
+            await ServerManager.getInstance().updateServerClientToken(null, server.id, token);
+            return true;
+          },
+          onSaved: (): void => {
+            this.loadMessages();
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
+      this.fixClientTokenController.open();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'client token dialog open 失败');
+    }
+  }
+
+  private openKeyDialogFor(server: ServerEntry): void {
+    try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.fixKeyController = new CustomDialogController({
+        builder: ServerKeyDialog({
+          getCurrentKey: (): string => server.deviceKey,
+          onConfirm: (inputKey: string): void => {
+            this.handleResetKeyFor(server, inputKey);
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
+      this.fixKeyController.open();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'key dialog open 失败');
+    }
+  }
+
+  private async handleResetKeyFor(server: ServerEntry, inputKey: string): Promise<void> {
+    const key: string | null = await DeviceRegisterService.getInstance()
+      .syncKeyForServer(null, server.id, server.baseURL, inputKey.length > 0 ? inputKey : '');
+    if (key && key.length > 0) {
+      showToast(this.getUIContext(), inputKey.length > 0 ? '已还原 Key' : '已重置 Key');
+      this.loadMessages();
+    } else {
+      showToast(this.getUIContext(), '操作失败');
+    }
+  }
+
+  private openActionMenuFor(server: ServerEntry): void {
+    try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.fixActionMenuController = new CustomDialogController({
+        builder: ServerActionMenuDialog({
+          onCopy: () => { this.handleCopyServer(server); },
+          onResetKey: () => { this.openKeyDialogFor(server); },
+          onClientToken: () => { this.openClientTokenDialogFor(server); },
+          onEncryption: () => { AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 1); },
+          onRename: () => { AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 1); },
+          onDelete: () => { AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 1); },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
+      this.fixActionMenuController.open();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'action menu open 失败');
+    }
+  }
+
+  private async handleCopyServer(server: ServerEntry): Promise<void> {
+    let key: string = server.deviceKey;
+    if (!key || key.length === 0) {
+      const fresh: string | null = await DeviceRegisterService.getInstance()
+        .syncKeyForServer(null, server.id, server.baseURL, '');
+      key = fresh && fresh.length > 0 ? fresh : '';
+    }
+    if (!key || key.length === 0) {
+      showToast(this.getUIContext(), '未获取到 Key');
+      return;
+    }
+    const text: string = `${server.baseURL}/${key}`;
+    try {
+      const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
+      const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
+      await sys.setData(data);
+      showToast(this.getUIContext(), '已复制地址和 Key', 1200);
+    } catch (err) {
+      showToast(this.getUIContext(), '复制失败');
+    }
   }
 
   @Builder

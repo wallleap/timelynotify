@@ -25,6 +25,8 @@ export struct ClientTokenDialog {
 
   // 拉取当前已保存的 token 预填
   getInitToken: () => string = () => '';
+  // 自定义保存逻辑（可选）；不传则默认保存到「当前服务器」
+  saveToken?: ((token: string) => Promise<boolean>) | null = null;
   onSaved: () => void = () => {
   };
 
@@ -127,7 +129,9 @@ export struct ClientTokenDialog {
 
   private async save(): Promise<void> {
     const token: string = this.inputToken.trim();
-    const ok: boolean = await NotifyMessageService.getInstance().setClientToken(null, token);
+    const ok: boolean = this.saveToken
+      ? await this.saveToken(token)
+      : await NotifyMessageService.getInstance().setClientToken(null, token);
     this.close();
     if (ok) {
       showToast(this.getUIContext(), '已保存', 1200);
