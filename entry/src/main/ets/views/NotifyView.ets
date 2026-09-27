@@ -30,6 +30,7 @@ import {
   KEY_HOME_TAB_INDEX,
   KEY_INDEX_PAGE_VISIBLE,
   KEY_NOTIFY_EDITING,
+  KEY_NOTIFY_OPEN_REQUEST,
   KEY_NOTIFY_REFRESH_SIGNAL
 } from '../common/Constant';
 import showToast from '../components/showToast';
@@ -50,7 +51,7 @@ import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 import { NotifyExportService } from '../services/NotifyExportService';
-import { compareNotifyOrder, notifyIdentity, notifySourceKey } from '../utils/NotifyIdentity';
+import { belongsToPushInstance, compareNotifyOrder, notifyIdentity, notifySourceKey } from '../utils/NotifyIdentity';
 
 const TAG: string = 'NotifyView';
 
@@ -111,6 +112,7 @@ export struct NotifyView {
   // 切回「通知」Tab（值为 0）时自动刷新列表
   @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
+  @StorageProp(KEY_NOTIFY_OPEN_REQUEST) @Watch('onOpenRequestChanged') openRequest: string = '';
   @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onPageVisibleChanged') indexPageVisible: boolean = true;
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // 自绘标题栏底边与列表起点均使用窗口坐标；两者之差即实际遮挡距离。
@@ -125,6 +127,8 @@ export struct NotifyView {
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   private loadSeq: number = 0;
   private loadQueued: boolean = false;
+  // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
+  private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
   // 详情 Sheet 内部 List 的滚动控制器，与 Sheet 内 HdsNavigation.bindToScrollable 共享以驱动标题栏动态模糊。
   private detailScroller: Scroller = new Scroller();
@@ -1046,6 +1050,7 @@ export struct NotifyView {
       // 首次历史同步：AutoCopyService 内部会把首批消息标记为已处理，不触发自动复制。
       await AutoCopyService.handleSyncRound(this.newMessagesThisRound, this.getUIContext());
       this.newMessagesThisRound = [];
+      this.processPendingPushNotice();
     }
   }
 
@@ -1178,6 +1183,21 @@ export struct NotifyView {
 
   private onRefreshSignalChanged(): void {
     this.loadMessages();
+  }
+
+  /** 温启动点击通知可能发生在任意 Tab；加载完成后统一消费最新目标。 */
+  private onOpenRequestChanged(): void {
+    if (this.openRequest.length > 0) {
+      try {
+        const values: Object = JSON.parse(this.openRequest);
+        if (values instanceof Array && values.length > 3 && values[3] === 'none') {
+          this.processPendingPushNotice();
+          return;
+        }
+      } catch (_ignore) {
+      }
+      this.loadMessages();
+    }
   }
 
 
@@ -1729,8 +1749,116 @@ export struct NotifyView {
       if (this.loadQueued) {
         this.loadQueued = false;
         this.loadMessages(); // 补拉：消费排队期间产生的最新拉取需求
+      } else {
+        this.processPendingPushNotice();
       }
     }
+  }
+
+  /** 点击目标未必属于当前单服务器；按实例身份先查本地，再同步候选服务器。 */
+  private async processPendingPushNotice(): Promise<void> {
+    if (this.openingPushNotice || !this.openRequest || this.loading || this.loadQueued) {
+      return;
+    }
+    this.openingPushNotice = true;
+    const request: string = this.openRequest;
+    try {
+      const values: Object = JSON.parse(request);
+      if (values instanceof Array && values.length > 3 && values[3] === 'none') {
+        this.showDetail = false;
+        return;
+      }
+      if (!(values instanceof Array) || values.length < 2 ||
+        typeof values[0] !== 'string' || typeof values[1] !== 'string') {
+        showToast(this.getUIContext(), '无法定位这条通知');
+        return;
+      }
+      const instanceId: string = values[0] as string;
+      const idText: string = values[1] as string;
+      const id: number = Number(idText);
+      if (!instanceId || !/^\d+$/.test(idText) || !Number.isSafeInteger(id) || id <= 0) {
+        showToast(this.getUIContext(), '通知未归档或已过期，无法打开详情');
+        return;
+      }
+      const manager: ServerManager = ServerManager.getInstance();
+      await manager.ensureLoaded();
+      const servers: ServerEntry[] = this.getAllRegisteredServers();
+      let found: NotifyMessage | null = await this.findPushNotice(servers, instanceId, id);
+      if (!found) {
+        // 只同步当前实例匹配的服务；旧版尚未记录实例时也尝试同步确认身份。
+        for (let i: number = 0; i < servers.length && !found; i++) {
+          const server: ServerEntry = servers[i];
+          if (server.instanceId && server.instanceId !== instanceId) {
+            continue;
+          }
+          await this.syncSingleServer(server, false);
+          found = await this.findPushNotice([server], instanceId, id);
+        }
+      }
+      if (!found) {
+        showToast(this.getUIContext(), '通知已过期、未归档或来源服务不可用');
+        return;
+      }
+      if (AppStorage.get<string>(KEY_NOTIFY_OPEN_REQUEST) !== request) {
+        return;
+      }
+      // 加密载荷里的 url 不会明传给 Push Kit；解密落库后仍要保持 url 高于 action 的语义。
+      if (found.url) {
+        this.openUrl(found.url);
+        return;
+      }
+      // 单服务器视图中，先切到消息的真实来源，避免详情关闭后落在错误的服务列表。
+      if (!manager.getViewAllMode()) {
+        const source: ServerEntry | null = this.findPushNoticeServer(servers, found.deviceKey, instanceId);
+        if (!source || !(await manager.switchTo(null, source.id))) {
+          showToast(this.getUIContext(), '无法切换到通知来源服务');
+          return;
+        }
+      }
+      this.openMessageDetail(found);
+    } catch (err) {
+      const msg: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '打开推送详情失败：%{public}s', msg);
+      showToast(this.getUIContext(), '无法打开这条通知');
+    } finally {
+      if (AppStorage.get<string>(KEY_NOTIFY_OPEN_REQUEST) === request) {
+        AppStorage.setOrCreate(KEY_NOTIFY_OPEN_REQUEST, '');
+      }
+      this.openingPushNotice = false;
+      if (this.openRequest && this.openRequest !== request) {
+        this.processPendingPushNotice();
+      }
+    }
+  }
+
+  /** 从所有已归属的历史键精确查找，绝不只按数字 ID 匹配。 */
+  private async findPushNotice(servers: ServerEntry[], instanceId: string, id: number): Promise<NotifyMessage | null> {
+    for (let i: number = 0; i < servers.length; i++) {
+      const keys: string[] = ServerManager.getInstance().getHistoryKeysForServer(servers[i]);
+      for (let j: number = 0; j < keys.length; j++) {
+        if (!belongsToPushInstance(keys[j], instanceId)) {
+          continue;
+        }
+        const message: NotifyMessage | null = await MessageCacheStore.loadByDeviceAndId(keys[j], id);
+        if (message) {
+          return message;
+        }
+      }
+    }
+    return null;
+  }
+
+  /** 找到本地来源键所属的配置服务；来源不明历史不得猜测归属。 */
+  private findPushNoticeServer(servers: ServerEntry[], sourceKey: string, instanceId: string): ServerEntry | null {
+    if (!belongsToPushInstance(sourceKey, instanceId)) {
+      return null;
+    }
+    for (let i: number = 0; i < servers.length; i++) {
+      if (ServerManager.getInstance().getHistoryKeysForServer(servers[i]).indexOf(sourceKey) >= 0) {
+        return servers[i];
+      }
+    }
+    return null;
   }
 
   /**

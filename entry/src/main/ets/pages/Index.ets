@@ -23,10 +23,11 @@ struct Index {
   // 沉浸光感用户开关（API 26+ 生效；MineView Toggle 切换后经 AppStorage 同步，此处自动重渲染切换分支）
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   // 当前选中 Tab：经 @StorageLink 双向同步到 AppStorage，NotifyView 通过 @Watch 监听以在切走时退出多选模式
-  @StorageLink(KEY_HOME_TAB_INDEX) currentIndex: number = 0;
+  @StorageLink(KEY_HOME_TAB_INDEX) @Watch('onTabRequested') currentIndex: number = 0;
   // 通知页多选编辑态（NotifyView 经 @StorageLink 写入）：onBackPress 据此拦截系统返回
   @StorageLink(KEY_NOTIFY_EDITING) notifyIsEditing: boolean = false;
   private hdsController: HdsTabsController = new HdsTabsController();
+  private hdsSelectedIndex: number = 0;
   // Tab 数据
   private tabs: TabItem[] = [
     {
@@ -94,6 +95,14 @@ struct Index {
     AppStorage.setOrCreate(KEY_INDEX_PAGE_VISIBLE, false);
   }
 
+  /** AppStorage 外部切换 Tab 时同步 HdsTabs 的控制器，降级 Tabs 则由 index 属性响应。 */
+  private onTabRequested(): void {
+    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.hdsSelectedIndex !== this.currentIndex) {
+      this.hdsSelectedIndex = this.currentIndex;
+      this.hdsController.changeIndex(this.currentIndex);
+    }
+  }
+
   // 系统返回拦截：通知页多选编辑态时，返回键/侧滑先退出多选而不是离开页面；
   // 返回 true 表示事件已消费，false 走默认返回行为（退出应用）
   onBackPress(): boolean {
@@ -123,6 +132,7 @@ struct Index {
           }
         })
         .onChange((index: number) => {
+          this.hdsSelectedIndex = index;
           this.currentIndex = index;
         })
       }

@@ -9,5 +9,8 @@ export const KEY_NOTIFY_EDITING: string = 'notifyIsEditing';
 /** AppStorage 键：通知列表刷新信号（EntryAbility 回前台/点击通知拉起时自增，NotifyView 监听变化后刷新列表） */
 export const KEY_NOTIFY_REFRESH_SIGNAL: string = 'notifyRefreshSignal';
 
+/** 系统通知点击请求：[实例 ID, 消息 ID 字符串, 唯一序号]，none 另带第四项。 */
+export const KEY_NOTIFY_OPEN_REQUEST: string = 'notifyOpenRequest';
+
 /** AppStorage 键：主页页面可见状态（Index onPageShow/onPageHide 写入，NotifyView 监听以启停前台轮询） */
 export const KEY_INDEX_PAGE_VISIBLE: string = 'indexPageVisible';

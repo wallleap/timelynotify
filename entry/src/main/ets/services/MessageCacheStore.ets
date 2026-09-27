@@ -400,6 +400,27 @@ export class MessageCacheStore {
     return list;
   }
 
+  /** 按完整本地来源键及数字 ID 查找未过期的通知，不受列表分页限制。 */
+  static async loadByDeviceAndId(deviceKey: string, id: number): Promise<NotifyMessage | null> {
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return null;
+    }
+    try {
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key=? AND id=? ` +
+        `AND (expires_at=0 OR expires_at>?) LIMIT 1`, [deviceKey, id, Date.now()]);
+      try {
+        return rs.goToFirstRow() ? rowToMessage(rs) : null;
+      } finally {
+        rs.close();
+      }
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadByDeviceAndId 失败：%{public}s', formatError(err));
+      return null;
+    }
+  }
+
   /** 导出当前服务器全部未过期的本地通知，不受列表分页和分组加载数量限制。 */
   static async loadAllForExport(deviceKey: string): Promise<NotifyMessage[] | null> {
     const db = await MessageCacheStore.getStore();

@@ -7,7 +7,7 @@ import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { AutoCopyService, AutoCopySelection } from '../main/ets/services/AutoCopyService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
-import { notifyIdentity, notifySourceKey, originalDeviceKey } from '../main/ets/utils/NotifyIdentity';
+import { belongsToPushInstance, notifyIdentity, notifySourceKey, originalDeviceKey } from '../main/ets/utils/NotifyIdentity';
 import { buildNotifyListRows } from '../main/ets/components/notify/NotifyListDataSource';
 import { buildNotifySections } from '../main/ets/components/notify/NotifyViewTypes';
 
@@ -159,6 +159,13 @@ export default function localUnitTest() {
       expect(rows[0].key === rows[1].key).assertFalse();
       expect(originalDeviceKey(first.deviceKey)).assertEqual('same-key');
       expect(originalDeviceKey('legacy-key')).assertEqual('legacy-key');
+    });
+    it('matchesPushClickOnlyToExactDatabaseInstance', 0, () => {
+      const source: string = notifySourceKey('instance-one', 'server-a', 'same-key');
+      expect(belongsToPushInstance(source, 'instance-one')).assertTrue();
+      expect(belongsToPushInstance(source, 'instance-two')).assertFalse();
+      expect(belongsToPushInstance('same-key', 'instance-one')).assertFalse();
+      expect(belongsToPushInstance(source, 'instance-one","other')).assertFalse();
     });
     it('collapsesGroupWhenOnlyOneMessageRemains', 0, () => {
       // g1 删除后仅剩 1 条且真实总数为 1；g2 仍有 2 条；空 group_key 代表“默认”分组。

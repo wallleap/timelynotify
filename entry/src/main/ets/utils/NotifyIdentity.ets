@@ -11,6 +11,20 @@ export function notifyIdentity(message: NotifyMessage): string {
   return JSON.stringify([message.deviceKey, message.id]);
 }
 
+/** 判断本地历史键是否属于点击通知给出的数据库实例，不猜测旧版裸 device_key 的来源。 */
+export function belongsToPushInstance(sourceKey: string, instanceId: string): boolean {
+  if (!instanceId) {
+    return false;
+  }
+  try {
+    const parsed: Object = JSON.parse(sourceKey);
+    return parsed instanceof Array && parsed.length === 2 && parsed[0] === `db:${instanceId}` &&
+      typeof parsed[1] === 'string';
+  } catch (_ignore) {
+    return false;
+  }
+}
+
 /** 导出时还原用户可用的原始设备 Key，避免将内部历史命名空间写进 extras。 */
 export function originalDeviceKey(sourceKey: string): string {
   if (!sourceKey.startsWith('["db:') && !sourceKey.startsWith('["server:')) {

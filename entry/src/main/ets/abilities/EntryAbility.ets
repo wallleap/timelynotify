@@ -14,7 +14,7 @@ import {
   KEY_STATUS_BAR_HEIGHT
 } from '../utils/ImmersiveUtil';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
-import { DOMAIN, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
+import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_OPEN_REQUEST, KEY_NOTIFY_REFRESH_SIGNAL } from '../common/Constant';
 
 const TAG: string = 'EntryAbility';
 
@@ -47,7 +47,7 @@ export default class EntryAbility extends UIAbility {
     // 然后调用 pushService.getToken() 拿 token 并写入服务端
     this.silentRegister();
     // 点击系统通知冷启动：服务端推送 clickAction.data 携带的跳转 url 在 want.parameters 里，直接打开
-    this.openPushUrl(want);
+    this.handlePushClick(want);
   }
 
   onDestroy(): void {
@@ -103,34 +103,54 @@ export default class EntryAbility extends UIAbility {
     // 应用已在前台时点击通知只走这里，同样清除桌面图标角标
     this.clearBadgeNumber();
     // 点击系统通知温启动：同样解析并打开 clickAction.data 携带的跳转 url
-    this.openPushUrl(want);
+    this.handlePushClick(want);
   }
 
   /**
-   * 打开系统通知点击透传的跳转 url。
-   * 服务端推送时把消息 extras.url 写入华为 clickAction.data（键 url），
-   * 点击通知拉起应用时随 want.parameters 透传；无该参数（普通启动）则不处理。
+   * 处理系统通知点击透传的跳转数据：url 优先，其次按 action 路由。
+   * Huawei clickAction.data 随 want.parameters 透传，详情查找交由通知页完成。
    */
-  private openPushUrl(want: Want): void {
+  private handlePushClick(want: Want): void {
     try {
       const params: Record<string, Object> | undefined = want.parameters;
       if (!params) {
         return;
       }
       const urlVal: Object | undefined = params['url'];
-      if (typeof urlVal !== 'string' || (urlVal as string).length === 0) {
+      if (typeof urlVal === 'string' && (urlVal as string).length > 0) {
+        const openWant: Want = {
+          action: 'ohos.want.action.viewData',
+          uri: urlVal as string,
+        };
+        this.context.startAbility(openWant).catch((err: BusinessError) => {
+          hilog.warn(DOMAIN, TAG, '打开推送链接失败：code=%{public}d msg=%{public}s', err.code, err.message);
+        });
         return;
       }
-      const openWant: Want = {
-        action: 'ohos.want.action.viewData',
-        uri: urlVal as string,
-      };
-      this.context.startAbility(openWant).catch((err: BusinessError) => {
-        hilog.warn(DOMAIN, TAG, '打开推送链接失败：code=%{public}d msg=%{public}s', err.code, err.message);
-      });
+      const action: Object | undefined = params['tn_action'];
+      if (action !== 'alert' && action !== 'none') {
+        return;
+      }
+      // none 只回通知首页；alert 的精确定位交给 NotifyView 在服务器初始化和同步后处理。
+      AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 0);
+      if (action === 'none') {
+        AppStorage.setOrCreate(KEY_NOTIFY_OPEN_REQUEST,
+          JSON.stringify(['', '', `${Date.now()}-${Math.random()}`, 'none']));
+        return;
+      }
+      const instanceId: Object | undefined = params['tn_instance_id'];
+      const messageId: Object | undefined = params['tn_message_id'];
+      if (typeof instanceId === 'string' && typeof messageId === 'string') {
+        AppStorage.setOrCreate(KEY_NOTIFY_OPEN_REQUEST,
+          JSON.stringify([instanceId, messageId, `${Date.now()}-${Math.random()}`]));
+      } else {
+        // 无归档历史 ID 的 alert 仍须进入首页，由通知页给出无法打开详情的提示。
+        AppStorage.setOrCreate(KEY_NOTIFY_OPEN_REQUEST,
+          JSON.stringify(['', '', `${Date.now()}-${Math.random()}`]));
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, 'openPushUrl 异常：%{public}s', msg);
+      hilog.warn(DOMAIN, TAG, 'handlePushClick 异常：%{public}s', msg);
     }
   }
 
