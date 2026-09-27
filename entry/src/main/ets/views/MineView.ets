@@ -133,7 +133,7 @@ export struct MineView {
             (this.fallbackTitleBarBottom >= 0 && this.scrollTop >= 0
               ? Math.max(0, this.fallbackTitleBarBottom - this.scrollTop) : 0));
 
-        // 通知设置板块（开关 / 通知权限设置 / 导出通知）
+        // 通知设置板块：开关与权限入口共用卡片，导出通知独立卡片
         NotifySettingsSection();
 
         // 外观板块（API 26+ 显示）：沉浸光感入口行

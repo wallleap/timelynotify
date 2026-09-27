@@ -13,7 +13,7 @@ import { DOMAIN } from '../../common/Constant';
 const TAG: string = 'NotifySettingsSec';
 
 /**
- * 「通知设置」板块：开启订阅通知开关 + 通知权限设置 + 导出通知。
+ * 「通知设置」板块：开启订阅通知开关和通知权限设置共用卡片，导出通知独立成卡片。
  * 全自治：自身管理 notifyEnabled/exporting 状态，业务下沉到各 Service。
  */
 @Component
@@ -38,45 +38,49 @@ export struct NotifySettingsSection {
   }
 
   build() {
-    Column({ space: 0 }) {
-      // 开启应用订阅通知（开关）
-      Row() {
-        Column({ space: 4 }) {
-          Text('开启应用订阅通知')
+    Column({ space: 16 }) {
+      Column({ space: 0 }) {
+        // 开启应用订阅通知（开关）
+        Row() {
+          Column({ space: 4 }) {
+            Text('开启应用订阅通知')
+              .fontSize(16)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.color_text_primary'));
+            Text(this.notifyEnabled ? '已开启' : '已关闭')
+              .fontSize(12)
+              .fontColor(
+                this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
+          }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+
+          Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
+            .selectedColor($r('app.color.color_brand'))
+            .onChange((isOn: boolean) => {
+              this.onNotifyToggle(isOn);
+            });
+        }.width('100%').padding(16);
+
+        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
+
+        // 通知权限设置（点击拉起系统通知管理）
+        Row() {
+          Text('通知权限设置')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'));
-          Text(this.notifyEnabled ? '已开启' : '已关闭')
-            .fontSize(12)
-            .fontColor(
-              this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1);
+            .fontColor($r('app.color.color_text_primary'))
+            .layoutWeight(1);
 
-        Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
-          .selectedColor($r('app.color.color_brand'))
-          .onChange((isOn: boolean) => {
-            this.onNotifyToggle(isOn);
-          });
-      }.width('100%').padding(16);
+          this.arrowRightIcon();
+        }.width('100%').padding(16).onClick(() => {
+          this.openNotifySettings();
+        });
+      }
+      .width('100%')
+      .backgroundBlurStyle(resolveBlurStyle('bar')!)
+      .backgroundColor($r('app.color.color_bg_surface_glass'))
+      .borderRadius(12);
 
-      Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-      // 通知权限设置（点击拉起系统通知管理）
-      Row() {
-        Text('通知权限设置')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.color_text_primary'))
-          .layoutWeight(1);
-
-        this.arrowRightIcon();
-      }.width('100%').padding(16).onClick(() => {
-        this.openNotifySettings();
-      });
-
-      Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
-
-      // 导出通知行（点击导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
+      // 独立的导出通知卡片（导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
       Row() {
         Column({ space: 4 }) {
           Text('导出通知')
@@ -97,14 +101,17 @@ export struct NotifySettingsSection {
         } else {
           this.arrowRightIcon();
         }
-      }.width('100%').padding(16).onClick(() => {
+      }
+      .width('100%')
+      .padding(16)
+      .backgroundBlurStyle(resolveBlurStyle('bar')!)
+      .backgroundColor($r('app.color.color_bg_surface_glass'))
+      .borderRadius(12)
+      .onClick(() => {
         this.exportMessages();
       });
     }
-    .width('100%')
-    .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.color_bg_surface_glass'))
-    .borderRadius(12);
+    .width('100%');
   }
 
   // 读取持久化的订阅通知开关状态（纯本地存储，不调系统 API）
