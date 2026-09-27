@@ -1,4 +1,5 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
+import { notifyIdentity } from '../../utils/NotifyIdentity';
 import { NotifySection } from './NotifyViewTypes';
 
 /** 主通知列表的渲染行类型：所有行都直接作为 List 的子项。 */
@@ -27,7 +28,7 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
     const expanded: boolean = expandedGroups.indexOf(section.groupKey) >= 0;
     if (!section.grouped && !expanded) {
       const row: NotifyListRow = new NotifyListRow();
-      row.key = `message:${section.messages[0].id}`;
+      row.key = `message:${notifyIdentity(section.messages[0])}`;
       row.type = NOTIFY_LIST_ROW_MESSAGE;
       row.message = section.messages[0];
       row.section = section;
@@ -56,7 +57,7 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
       const isGroupTail: boolean = j === section.messages.length - 1 && section.total <= section.messages.length;
       // 末项状态影响圆角和裁剪。仅在某条消息变为末项时变更其 key，强制重建该行；
       // 其余消息继续使用稳定 key，删除时不会引入整组重建或滚动位置跳动。
-      row.key = `group-message:${section.groupKey}:${section.messages[j].id}:${isGroupTail ? 'tail' : 'body'}`;
+      row.key = `group-message:${section.groupKey}:${notifyIdentity(section.messages[j])}:${isGroupTail ? 'tail' : 'body'}`;
       row.type = NOTIFY_LIST_ROW_GROUP_MESSAGE;
       row.message = section.messages[j];
       row.section = section;
@@ -141,10 +142,10 @@ export class NotifyListDataSource implements IDataSource {
   }
 
   /** 删除指定消息对应的当前行，并精确通知 LazyForEach。 */
-  removeMessage(id: number): boolean {
+  removeMessage(id: string): boolean {
     for (let i = 0; i < this.rows.length; i++) {
       const message: NotifyMessage | null = this.rows[i].message;
-      if (message && message.id === id) {
+      if (message && notifyIdentity(message) === id) {
         this.rows.splice(i, 1);
         this.listeners.forEach((listener: DataChangeListener) => listener.onDataDelete(i));
         return true;

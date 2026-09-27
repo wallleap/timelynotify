@@ -3,7 +3,6 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ApiConfig } from '../config/ApiConfig';
 import { ServerManager } from './ServerManager';
 import { ServerEntry } from '../model/ServerEntry';
-import { MessageCacheStore } from './MessageCacheStore';
 import { HttpResponse, HttpUtil } from '../utils/HttpUtil';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { AppContextStore } from '../common/AppContextStore';
@@ -328,11 +327,8 @@ export class DeviceRegisterService {
           await mgr.ensureLoaded();
           const cur = mgr.getCurrentServer();
           if (cur) {
-            // 重置或还原到另一把 key 时，不能复用目标 key 旧的同步游标；否则可能只保留历史中的一页。
-            if (cur.deviceKey !== newDeviceKey) {
-              await MessageCacheStore.clearDevice(newDeviceKey);
-              hilog.info(DOMAIN, TAG, 'doRegister：key 已切换，已清除目标 key 的本地同步进度');
-            }
+            // 本地历史按数据库实例与 device_key 隔离。切换 Key 时保留原 Key 的本地通知，
+            // 新命名空间会独立建立同步进度，不再清除可能属于旧历史的原始 Key 缓存。
             await mgr.updateServerDeviceKey(ctx, cur.id, newDeviceKey);
             hilog.info(DOMAIN, TAG, 'doRegister：已同步 per-server deviceKey');
           }

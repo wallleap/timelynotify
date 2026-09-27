@@ -1,4 +1,5 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
+import { notifyIdentity } from '../../utils/NotifyIdentity';
 
 /** 正文富文本片段类型：普通文本、URL 与验证码。 */
 export interface NotifyTextSegment {
@@ -158,7 +159,7 @@ export function buildNotifySections(messages: NotifyMessage[],
     const flat: NotifySection[] = [];
     for (let i = 0; i < messages.length; i++) {
       flat.push({
-        key: `flat:${messages[i].id}`,
+        key: `flat:${notifyIdentity(messages[i])}`,
         groupKey: '',
         messages: [messages[i]],
         grouped: false,

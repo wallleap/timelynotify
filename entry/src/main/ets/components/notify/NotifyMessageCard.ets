@@ -1,4 +1,5 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
+import { notifyIdentity } from '../../utils/NotifyIdentity';
 import {
   formatNotifyTime,
   isExpiringSoon,
@@ -15,9 +16,9 @@ export struct NotifyMessageCard {
   @Prop message: NotifyMessage = new NotifyMessage();
   @Prop isEditing: boolean = false;
   @Prop selected: boolean = false;
-  onSelect: (id: number) => void = (_id: number) => {
+  onSelect: (id: string) => void = (_id: string) => {
   };
-  onSelectionChange: (id: number, selected: boolean) => void = (_id: number, _selected: boolean) => {
+  onSelectionChange: (id: string, selected: boolean) => void = (_id: string, _selected: boolean) => {
   };
   onOpen: (message: NotifyMessage) => void = (_message: NotifyMessage) => {
   };
@@ -33,7 +34,7 @@ export struct NotifyMessageCard {
       Row({ space: 12 }) {
         if (this.isEditing) {
           Checkbox().select(this.selected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE)
-            .onChange((selected: boolean) => this.onSelectionChange(this.message.id, selected));
+            .onChange((selected: boolean) => this.onSelectionChange(notifyIdentity(this.message), selected));
         }
         if (this.message.icon.length > 0) {
           Image(this.message.icon)
@@ -114,7 +115,7 @@ export struct NotifyMessageCard {
     .backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius(12)
     .clip(true)
-    .onClick(() => this.isEditing ? this.onSelect(this.message.id) : this.onOpen(this.message));
+    .onClick(() => this.isEditing ? this.onSelect(notifyIdentity(this.message)) : this.onOpen(this.message));
   }
 
   @Builder

@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 import { NotifyMessage } from '../model/NotifyMessage';
+import { compareNotifyOrder } from '../utils/NotifyIdentity';
 
 const TAG: string = 'MsgCache';
 const DB_NAME: string = 'timelynotify_msg.db';
@@ -485,12 +486,7 @@ export class MessageCacheStore {
       }
 
       // 3) 合并后按 timestamp DESC（新→旧）整体排序
-      all.sort((a: NotifyMessage, b: NotifyMessage) => {
-        if (b.timestamp !== a.timestamp) {
-          return b.timestamp - a.timestamp;
-        }
-        return b.id - a.id;
-      });
+      all.sort(compareNotifyOrder);
       const result: GroupedLoadResult = { messages: all, totals };
       return result;
     } catch (err) {
@@ -865,7 +861,7 @@ export class MessageCacheStore {
         msgArgs.push(perGroupLimit);
         const rs: relationalStore.ResultSet = await db.querySql(
           `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND group_key=? ` +
-          `ORDER BY timestamp DESC, id DESC LIMIT ?`,
+          `ORDER BY timestamp DESC, id DESC, device_key DESC LIMIT ?`,
           msgArgs);
         if (rs.goToFirstRow()) {
           do {
@@ -928,13 +924,13 @@ export class MessageCacheStore {
   }
 
   /**
-   * 跨多个 device_key 加载某 group_key 下比 beforeId 更老的 N 条（"全部"视图模式组内加载更多）。
-   * 不同服务器 id 空间独立，beforeId 取内存中该组最小 id，查询所有 device_key 中 id < beforeId 的消息。
+   * 跨多个历史命名空间按 (timestamp,id,device_key) 全序加载更旧的组内通知。
+   * 单独用 id 作游标会漏掉其它服务器上数字 id 相同或更大的旧通知。
    */
   static async loadAllGroupOlder(deviceKeys: string[], groupKey: string,
-    beforeId: number, limit: number): Promise<NotifyMessage[]> {
+    before: NotifyMessage, limit: number): Promise<NotifyMessage[]> {
     const db = await MessageCacheStore.getStore();
-    if (!db || deviceKeys.length === 0 || beforeId <= 0) {
+    if (!db || deviceKeys.length === 0 || before.id <= 0) {
       return [];
     }
     const list: NotifyMessage[] = [];
@@ -942,11 +938,18 @@ export class MessageCacheStore {
       const placeholders: string = deviceKeys.map(() => '?').join(',');
       const args: Array<string | number> = deviceKeys.slice();
       args.push(groupKey);
-      args.push(beforeId);
+      args.push(before.timestamp);
+      args.push(before.timestamp);
+      args.push(before.id);
+      args.push(before.timestamp);
+      args.push(before.id);
+      args.push(before.deviceKey);
       args.push(limit);
       const sql: string =
-        `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND group_key=? AND id < ? ` +
-        `ORDER BY id DESC LIMIT ?`;
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND group_key=? AND ` +
+        `(timestamp < ? OR (timestamp = ? AND id < ?) OR ` +
+        `(timestamp = ? AND id = ? AND device_key < ?)) ` +
+        `ORDER BY timestamp DESC, id DESC, device_key DESC LIMIT ?`;
       const rs: relationalStore.ResultSet = await db.querySql(sql, args);
       if (rs.goToFirstRow()) {
         do {

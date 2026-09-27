@@ -1,4 +1,5 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
+import { notifyIdentity } from '../../utils/NotifyIdentity';
 import { buildNotifySections, NotifySection } from './NotifyViewTypes';
 import { NotifyMessageCard } from './NotifyMessageCard';
 import { NotifyGroupCard } from './NotifyGroupCard';
@@ -33,7 +34,7 @@ const AUTO_SCROLL_SMOOTHING: number = 2;
 export struct NotifyMessageList {
   @Prop @Watch('reloadDataSource') messages: NotifyMessage[] = [];
   @Prop isEditing: boolean = false;
-  @Prop @Watch('reloadDataSource') selectedIds: number[] = [];
+  @Prop @Watch('reloadDataSource') selectedIds: string[] = [];
   @Prop @Watch('reloadDataSource') expandedGroups: string[] = [];
   @Prop groupCardHeights: Map<string, number> = new Map<string, number>();
   @Prop @Watch('reloadDataSource') groupTotals: Map<string, number> = new Map<string, number>();
@@ -63,9 +64,9 @@ export struct NotifyMessageList {
 
   onLoadMoreInGroup: (groupKey: string) => void = (_groupKey: string) => {
   };
-  onToggleSelect: (id: number) => void = (_id: number) => {
+  onToggleSelect: (id: string) => void = (_id: string) => {
   };
-  onSetSelected: (id: number, selected: boolean) => void = (_id: number, _selected: boolean) => {
+  onSetSelected: (id: string, selected: boolean) => void = (_id: string, _selected: boolean) => {
   };
   onToggleGroupSelection: (messages: NotifyMessage[]) => void = (_messages: NotifyMessage[]) => {
   };
@@ -126,9 +127,9 @@ export struct NotifyMessageList {
             NotifyMessageCard({
               message: row.message,
               isEditing: this.isEditing,
-              selected: this.isSelected(row.message.id),
-              onSelect: (id: number) => this.onToggleSelect(id),
-              onSelectionChange: (id: number, selected: boolean) => this.onSetSelected(id, selected),
+              selected: this.isSelected(notifyIdentity(row.message)),
+              onSelect: (id: string) => this.onToggleSelect(id),
+              onSelectionChange: (id: string, selected: boolean) => this.onSetSelected(id, selected),
               onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
               onOpenUrl: (url: string) => this.onOpenUrl(url),
               onCopyCode: (code: string) => this.onCopyCode(code),
@@ -173,10 +174,10 @@ export struct NotifyMessageList {
               message: row.message,
               isLast: row.indexInGroup === row.section.messages.length - 1 && !this.groupHasMore(row.section),
               isEditing: this.isEditing,
-              selected: this.isSelected(row.message.id),
+              selected: this.isSelected(notifyIdentity(row.message)),
               contentTransitionId: row.indexInGroup === 0 ? `gmc:${row.section.groupKey}` : '',
-              onSelect: (id: number) => this.onToggleSelect(id),
-              onSelectionChange: (id: number, selected: boolean) => this.onSetSelected(id, selected),
+              onSelect: (id: string) => this.onToggleSelect(id),
+              onSelectionChange: (id: string, selected: boolean) => this.onSetSelected(id, selected),
               onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
               onOpenUrl: (url: string) => this.onOpenUrl(url),
               onCopyCode: (code: string) => this.onCopyCode(code),
@@ -344,7 +345,7 @@ export struct NotifyMessageList {
     }
   }
 
-  private isSelected(id: number): boolean {
+  private isSelected(id: string): boolean {
     return this.selectedIds.indexOf(id) >= 0;
   }
 
@@ -353,14 +354,14 @@ export struct NotifyMessageList {
   }
 
   private groupSelected(messages: NotifyMessage[]): boolean {
-    return messages.length > 0 && messages.every((message: NotifyMessage) => this.isSelected(message.id));
+    return messages.length > 0 && messages.every((message: NotifyMessage) => this.isSelected(notifyIdentity(message)));
   }
 
   /** 返回当前已加载的分组消息中已选数量；真实总数由 section.total 单独展示。 */
   private groupSelectedCount(messages: NotifyMessage[]): number {
     let count: number = 0;
     for (let i = 0; i < messages.length; i++) {
-      if (this.isSelected(messages[i].id)) {
+      if (this.isSelected(notifyIdentity(messages[i]))) {
         count++;
       }
     }

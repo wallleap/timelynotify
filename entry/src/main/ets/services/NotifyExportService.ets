@@ -2,6 +2,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { NotifyMessage } from '../model/NotifyMessage';
+import { compareNotifyOrder, notifyIdentity, originalDeviceKey } from '../utils/NotifyIdentity';
 import { MessageCacheStore } from './MessageCacheStore';
 import { ServerManager } from './ServerManager';
 import { DOMAIN } from '../common/Constant';
@@ -53,14 +54,14 @@ export class ExportAllResult {
 
 /** 选中通知的系统文件导出服务，保持页面只负责触发与提示。 */
 export class NotifyExportService {
-  static async exportSelected(context: common.UIAbilityContext, messages: NotifyMessage[], selectedIds: number[]): Promise<number> {
+  static async exportSelected(context: common.UIAbilityContext, messages: NotifyMessage[], selectedIds: string[]): Promise<number> {
     await ServerManager.getInstance().ensureLoaded();
     const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
     if (!deviceKey || deviceKey.length === 0) {
       return -1;
     }
-    const ids: Set<number> = new Set<number>(selectedIds);
-    const selected: NotifyMessage[] = messages.filter((message: NotifyMessage) => ids.has(message.id));
+    const ids: Set<string> = new Set<string>(selectedIds);
+    const selected: NotifyMessage[] = messages.filter((message: NotifyMessage) => ids.has(notifyIdentity(message)));
     if (selected.length === 0) {
       return 0;
     }
@@ -116,11 +117,18 @@ export class NotifyExportService {
         result.errorMsg = '设备未注册，无法导出';
         return result;
       }
-      const messages: NotifyMessage[] | null = await MessageCacheStore.loadAllForExport(deviceKey);
-      if (messages === null) {
-        result.errorMsg = '读取本地通知失败';
-        return result;
+      const server = ServerManager.getInstance().getCurrentServer();
+      const keys: string[] = server ? ServerManager.getInstance().getHistoryKeysForServer(server) : [];
+      const messages: NotifyMessage[] = [];
+      for (let i = 0; i < keys.length; i++) {
+        const portion: NotifyMessage[] | null = await MessageCacheStore.loadAllForExport(keys[i]);
+        if (portion === null) {
+          result.errorMsg = '读取本地通知失败';
+          return result;
+        }
+        messages.push(...portion);
       }
+      messages.sort(compareNotifyOrder);
       if (messages.length === 0) {
         result.errorMsg = '暂无可导出的通知';
         return result;
@@ -183,7 +191,7 @@ export class NotifyExportService {
     raw.message = message.body;
     raw.priority = message.priority;
     raw.date = message.date.length > 0 ? message.date : message.createdAt;
-    raw.extras.device_key = message.deviceKey.length > 0 ? message.deviceKey : deviceKey;
+    raw.extras.device_key = message.deviceKey.length > 0 ? originalDeviceKey(message.deviceKey) : deviceKey;
     raw.extras.icon = message.icon;
     raw.extras.image = message.image;
     raw.extras.group = message.group;

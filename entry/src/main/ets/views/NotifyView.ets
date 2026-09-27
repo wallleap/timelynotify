@@ -50,6 +50,7 @@ import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 import { NotifyExportService } from '../services/NotifyExportService';
+import { compareNotifyOrder, notifyIdentity, notifySourceKey } from '../utils/NotifyIdentity';
 
 const TAG: string = 'NotifyView';
 
@@ -89,7 +90,7 @@ export struct NotifyView {
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
   @StorageLink(KEY_NOTIFY_EDITING) @Watch('onIsEditingChanged') isEditing: boolean = false;
-  @State selectedIds: number[] = [];
+  @State selectedIds: string[] = [];
   // 导出选中消息：防重复触发
   @State exportingSelected: boolean = false;
   @State expandedGroups: string[] = [];
@@ -802,8 +803,8 @@ export struct NotifyView {
         this.handleAutoScrollEnd();
       },
       onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
-      onToggleSelect: (id: number) => this.toggleSelect(id),
-      onSetSelected: (id: number, selected: boolean) => this.setSelected(id, selected),
+      onToggleSelect: (id: string) => this.toggleSelect(id),
+      onSetSelected: (id: string, selected: boolean) => this.setSelected(id, selected),
       onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
       onSetGroupSelection: (messages: NotifyMessage[], selected: boolean) => this.setGroupSelection(messages, selected),
       onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
@@ -844,9 +845,9 @@ export struct NotifyView {
       this.selectedIds = [];
       return;
     }
-    const ids: number[] = [];
+    const ids: string[] = [];
     for (let i = 0; i < this.messages.length; i++) {
-      ids.push(this.messages[i].id);
+      ids.push(notifyIdentity(this.messages[i]));
     }
     this.selectedIds = ids;
   }
@@ -1018,7 +1019,7 @@ export struct NotifyView {
       } else {
         const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
         if (cur && cur.deviceKey && cur.deviceKey.length > 0) {
-          const grouped = await MessageCacheStore.loadGroupedLatest(cur.deviceKey, 100);
+          const grouped = await MessageCacheStore.loadAllGroupedLatest(this.getCurrentHistoryKeys(), 100);
           if (grouped.messages.length > 0) {
             this.messages = grouped.messages;
             this.groupTotals = grouped.totals;
@@ -1027,9 +1028,9 @@ export struct NotifyView {
         if (cur) {
           const changed: boolean = await this.syncSingleServer(cur, false, seq);
           if (changed || this.messages.length === 0) {
-            const deviceKey: string = cur.deviceKey;
-            if (deviceKey && deviceKey.length > 0) {
-              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+            const deviceKeys: string[] = this.getCurrentHistoryKeys();
+            if (deviceKeys.length > 0) {
+              const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
               this.messages = refreshed.messages;
               this.groupTotals = refreshed.totals;
             }
@@ -1245,9 +1246,9 @@ export struct NotifyView {
           const changed: boolean = await this.syncSingleServer(cur, false, -1);
           // 单服务器模式有变化时从本地重新加载（保持与 syncFromServer 原行为一致）
           if (changed || this.messages.length === 0) {
-            const deviceKey: string = cur.deviceKey;
-            if (deviceKey && deviceKey.length > 0) {
-              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+            const keys: string[] = this.getCurrentHistoryKeys();
+            if (keys.length > 0) {
+              const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 100);
               this.messages = refreshed.messages;
               this.groupTotals = refreshed.totals;
             }
@@ -1302,17 +1303,17 @@ export struct NotifyView {
     }
   }
 
-  private isSelected(id: number): boolean {
+  private isSelected(id: string): boolean {
     return hasSelectedMessage(this.selectedIds, id);
   }
 
-  private toggleSelect(id: number): void {
+  private toggleSelect(id: string): void {
     this.selectedIds = toggleSelectedMessage(this.selectedIds, id);
   }
 
   /** Checkbox 的 onChange 可能由状态回显触发，仅在目标状态不同的时候写入。 */
-  private setSelected(id: number, selected: boolean): void {
-    const next: number[] = setSelectedMessage(this.selectedIds, id, selected);
+  private setSelected(id: string, selected: boolean): void {
+    const next: string[] = setSelectedMessage(this.selectedIds, id, selected);
     if (next !== this.selectedIds) {
       this.selectedIds = next;
     }
@@ -1427,17 +1428,17 @@ export struct NotifyView {
   }
 
   private setGroupSelection(groupMessages: NotifyMessage[], selected: boolean): void {
-    const next: number[] = setGroupMessagesSelection(this.selectedIds, groupMessages, selected);
+    const next: string[] = setGroupMessagesSelection(this.selectedIds, groupMessages, selected);
     if (next !== this.selectedIds) {
       this.selectedIds = next;
     }
   }
 
-  private removeFromList(ids: number[]): void {
-    const idSet: Set<number> = new Set<number>(ids);
+  private removeFromList(ids: string[]): void {
+    const idSet: Set<string> = new Set<string>(ids);
     const newList: NotifyMessage[] = [];
     for (let i = 0; i < this.messages.length; i++) {
-      if (!idSet.has(this.messages[i].id)) {
+      if (!idSet.has(notifyIdentity(this.messages[i]))) {
         newList.push(this.messages[i]);
       }
     }
@@ -1486,11 +1487,9 @@ export struct NotifyView {
       if (m.deviceKey && m.deviceKey.length > 0) {
         const pair: DeviceIdPair = { deviceKey: m.deviceKey, id: m.id };
         await MessageCacheStore.deleteByDeviceIdPairs([pair]);
-        this.groupTotals = this.viewAll
-          ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
-          : await MessageCacheStore.getGroupTotals(m.deviceKey);
+        this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
       }
-      this.removeFromList([m.id]);
+      this.removeFromList([notifyIdentity(m)]);
       this.exitEditMode();
       // 从详情发起删除时，确认成功后再关闭 Sheet；取消时保留当前详情。
       if (closeDetailOnSuccess) {
@@ -1517,7 +1516,7 @@ export struct NotifyView {
         return;
       }
       showToast(uiCtx, `正在删除 ${count} 条本地通知…`);
-      const deviceKeys: string[] = this.viewAll ? this.getAllDeviceKeys() : [this.findCurrentDeviceKey()];
+      const deviceKeys: string[] = this.getVisibleHistoryKeys();
       const deleted: number = await MessageCacheStore.deleteGroup(deviceKeys, section.groupKey);
       if (deleted < 0) {
         showToast(uiCtx, '删除失败，请稍后重试');
@@ -1525,17 +1524,19 @@ export struct NotifyView {
       }
       this.removeGroupFromList(section.groupKey);
       // 刷新分组总数
-      this.groupTotals = this.viewAll
-        ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
-        : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
+      this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
       showToast(uiCtx, `已从本机删除 ${deleted} 条`);
     });
   }
 
-  /** 获取当前服务器 deviceKey（单服务器模式刷新分组总数用） */
-  private findCurrentDeviceKey(): string {
+  /** 当前服务器的全部本地历史（含旧数据库实例）。 */
+  private getCurrentHistoryKeys(): string[] {
     const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
-    return cur ? cur.deviceKey : '';
+    return cur ? ServerManager.getInstance().getHistoryKeysForServer(cur) : [];
+  }
+
+  private getVisibleHistoryKeys(): string[] {
+    return this.viewAll ? this.getAllDeviceKeys() : this.getCurrentHistoryKeys();
   }
 
   private confirmDeleteSelected(): void {
@@ -1554,12 +1555,12 @@ export struct NotifyView {
       if (err || result.index !== 1) {
         return;
       }
-      const ids: number[] = [...this.selectedIds];
+      const ids: string[] = [...this.selectedIds];
       // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
       const pairs: DeviceIdPair[] = [];
       for (let i = 0; i < this.messages.length; i++) {
         const m: NotifyMessage = this.messages[i];
-        if (ids.indexOf(m.id) < 0) {
+        if (ids.indexOf(notifyIdentity(m)) < 0) {
           continue;
         }
         if (m.deviceKey && m.deviceKey.length > 0) {
@@ -1569,9 +1570,7 @@ export struct NotifyView {
       if (pairs.length > 0) {
         await MessageCacheStore.deleteByDeviceIdPairs(pairs);
       }
-      this.groupTotals = this.viewAll
-        ? await MessageCacheStore.getAllGroupTotals(this.getAllDeviceKeys())
-        : await MessageCacheStore.getGroupTotals(this.findCurrentDeviceKey());
+      this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
       this.removeFromList(ids);
       this.exitEditMode();
       showToast(uiCtx, `已从本机删除 ${pairs.length} 条`);
@@ -1604,9 +1603,9 @@ export struct NotifyView {
         await MessageCacheStore.clearAllDevices();
         showToast(uiCtx, '已清空本机全部通知');
       } else {
-        const deviceKey: string = this.findCurrentDeviceKey();
-        if (deviceKey && deviceKey.length > 0) {
-          await MessageCacheStore.clearDevice(deviceKey);
+        const keys: string[] = this.getCurrentHistoryKeys();
+        for (let i = 0; i < keys.length; i++) {
+          await MessageCacheStore.clearDevice(keys[i]);
         }
         showToast(uiCtx, '已清空本机全部通知');
       }
@@ -1649,7 +1648,18 @@ export struct NotifyView {
     const servers: ServerEntry[] = this.getAllRegisteredServers();
     const keys: string[] = [];
     for (let i = 0; i < servers.length; i++) {
-      keys.push(servers[i].deviceKey);
+      const owned: string[] = ServerManager.getInstance().getHistoryKeysForServer(servers[i]);
+      for (let j = 0; j < owned.length; j++) {
+        if (keys.indexOf(owned[j]) < 0) {
+          keys.push(owned[j]);
+        }
+      }
+    }
+    const unknown: string[] = ServerManager.getInstance().getLegacyUnknownKeys();
+    for (let i = 0; i < unknown.length; i++) {
+      if (keys.indexOf(unknown[i]) < 0) {
+        keys.push(unknown[i]);
+      }
     }
     return keys;
   }
@@ -1693,9 +1703,9 @@ export struct NotifyView {
           const changed: boolean = await this.syncSingleServer(cur, false, seq);
           // 同步完成后从缓存回填列表（onChange 已清空 this.messages，必须回填）
           if (changed || this.messages.length === 0) {
-            const deviceKey: string = cur.deviceKey;
-            if (deviceKey && deviceKey.length > 0) {
-              const refreshed = await MessageCacheStore.loadGroupedLatest(deviceKey, 100);
+            const keys: string[] = this.getCurrentHistoryKeys();
+            if (keys.length > 0) {
+              const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 100);
               this.messages = refreshed.messages;
               this.groupTotals = refreshed.totals;
             }
@@ -1745,13 +1755,14 @@ export struct NotifyView {
     let after: number = 0;
     let newMaxId: number = 0;
     let delCursor: number = 0;
-    if (forceFull) {
-      await MessageCacheStore.clearDevice(deviceKey);
-    } else {
-      const meta = await MessageCacheStore.getMeta(deviceKey);
+    let sourceKey: string = notifySourceKey(server.instanceId, server.id, deviceKey);
+    if (!forceFull) {
+      const meta = await MessageCacheStore.getMeta(sourceKey);
       newMaxId = meta.maxId;
       delCursor = meta.delCursor;
     }
+    let clearCurrentSource: boolean = forceFull;
+    let instanceRestarted: boolean = false;
 
     let hasNewMessages: boolean = false;
     // 最后一个消息页的删除流水 hasMore：消息翻页结束后据此继续翻删除流水
@@ -1769,13 +1780,41 @@ export struct NotifyView {
         return false;
       }
 
+      // 响应所属实例必须先确认，再应用删除流水或推进游标。
+      // 数据库重建或服务端升级首次提供 instanceId 时，旧实例的游标不能用于新实例。
+      const responseSource: string = notifySourceKey(result.instanceId, server.id, deviceKey);
+      if (responseSource !== sourceKey) {
+        if (instanceRestarted) {
+          this.syncErrors.set(server.id, '服务器历史实例在同步中变化');
+          return false;
+        }
+        instanceRestarted = true;
+        sourceKey = responseSource;
+        after = 0;
+        const nextMeta = await MessageCacheStore.getMeta(sourceKey);
+        newMaxId = forceFull ? 0 : nextMeta.maxId;
+        delCursor = forceFull ? 0 : nextMeta.delCursor;
+        continue;
+      }
+      if (server.instanceId !== result.instanceId || server.historyKeys.indexOf(sourceKey) < 0) {
+        const saved: boolean = await ServerManager.getInstance().rememberHistory(server.id, result.instanceId, sourceKey);
+        if (!saved) {
+          this.syncErrors.set(server.id, '无法保存服务器历史身份');
+          return false;
+        }
+      }
+      if (clearCurrentSource) {
+        await MessageCacheStore.clearDevice(sourceKey);
+        clearCurrentSource = false;
+      }
+
       // 先消费本页删除流水，再落库本页消息：只应用 extraIds（Bark delete=1 墓碑）
       // 删除本地副本；ids/purges 不消费——客户端迁移后删除远程副本会在服务端
       // 留下同 id 墓碑，消费 ids 会把刚落库的消息误删。
       // 必须先删后写：同一 extras.id「先 delete=1 后重推」时，本页同时携带墓碑与
       // 新消息，若先写后删会把刚落库的新消息一并按 extras.id 删掉。
       // 删除本地副本也视为"有变化"，触发同步完成后的列表重载。
-      if (await this.applyDeletionExtraIds(deviceKey, result)) {
+      if (await this.applyDeletionExtraIds(sourceKey, result)) {
         hasNewMessages = true;
       }
       // 仅当响应携带 deletions 信封时推进游标（区分"无信封"与"cursor=0"）；
@@ -1787,7 +1826,7 @@ export struct NotifyView {
       let nextAfter: number = after;
       if (result.messages.length > 0) {
         // 解密已在 getMessages 中完成；明文、ciphertext 和 IV 必须一起成功落库后才能删远程。
-        const written: boolean = await MessageCacheStore.upsertMessages(deviceKey, result.messages);
+        const written: boolean = await MessageCacheStore.upsertMessages(sourceKey, result.messages);
         if (!written) {
           hilog.warn(DOMAIN, TAG, 'syncSingleServer 本地写入失败，保留历史游标：%{public}s', deviceKey);
           return false;
@@ -1795,7 +1834,7 @@ export struct NotifyView {
         // 本轮新消息收集到 newMessagesThisRound，供同步完成后交给 AutoCopyService 评估自动复制。
         // deviceKey 是运行时字段，fromRaw 不解析；这里补齐以便 AutoCopyService 跨服务器去重。
         for (let i = 0; i < result.messages.length; i++) {
-          result.messages[i].deviceKey = deviceKey;
+          result.messages[i].deviceKey = sourceKey;
           this.newMessagesThisRound.push(result.messages[i]);
         }
         // 非归档加密消息不会显示在 App 列表；先逐条发布解密后的本地通知，成功后才允许删除远端密文。
@@ -1828,7 +1867,7 @@ export struct NotifyView {
 
       // maxId 仅用于本地统计；远程扫描起点固定为 0，不以它跳过删除失败项。
       const metaSaved: boolean = await MessageCacheStore.saveMeta(
-        deviceKey, newMaxId, delCursor, 0, true);
+        sourceKey, newMaxId, delCursor, 0, true);
       if (!metaSaved) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 同步进度保存失败：%{public}s', deviceKey);
         return false;
@@ -1854,14 +1893,18 @@ export struct NotifyView {
         this.syncErrors.set(server.id, drain.errorMsg);
         return false;
       }
-      if (await this.applyDeletionExtraIds(deviceKey, drain)) {
+      if (notifySourceKey(drain.instanceId, server.id, deviceKey) !== sourceKey) {
+        this.syncErrors.set(server.id, '服务器历史实例在同步中变化');
+        return false;
+      }
+      if (await this.applyDeletionExtraIds(sourceKey, drain)) {
         hasNewMessages = true;
       }
       if (drain.hasDeletions) {
         delCursor = drain.delCursor;
       }
       const drainSaved: boolean = await MessageCacheStore.saveMeta(
-        deviceKey, newMaxId, delCursor, 0, true);
+        sourceKey, newMaxId, delCursor, 0, true);
       if (!drainSaved) {
         hilog.warn(DOMAIN, TAG, 'syncSingleServer 删除流水游标保存失败：%{public}s', deviceKey);
         return false;
@@ -2009,7 +2052,7 @@ export struct NotifyView {
   }
 
   /**
-   * 组内"加载更多"：加载某 group_key 下比当前内存中最老 id 更老的 100 条。
+   * 组内"加载更多"：按时间、ID 和来源组成的全序加载更旧的 100 条。
    * 数据源为本地 DB（首次播种已拉取足够消息，组内分页只读本地）。
    * append 到 this.messages 末尾，buildNotifySections 会自动聚合到已有 section。
    */
@@ -2017,42 +2060,33 @@ export struct NotifyView {
     if (this.groupLoadingMore.has(groupKey)) {
       return;
     }
-    // 找到该 group 在内存中的最老消息 id（id 最小）
-    let oldestId: number = Number.MAX_SAFE_INTEGER;
+    let oldest: NotifyMessage | null = null;
     for (let i = 0; i < this.messages.length; i++) {
-      if (this.messages[i].group === groupKey && this.messages[i].id < oldestId) {
-        oldestId = this.messages[i].id;
+      const message: NotifyMessage = this.messages[i];
+      if (message.group === groupKey && (!oldest || compareNotifyOrder(oldest, message) < 0)) {
+        oldest = message;
       }
     }
-    if (oldestId === Number.MAX_SAFE_INTEGER) {
+    if (!oldest) {
       return;
     }
     this.groupLoadingMore = new Set<string>(this.groupLoadingMore).add(groupKey);
     try {
       const PAGE_SIZE: number = 100;
-      let older: NotifyMessage[] = [];
-      if (this.viewAll) {
-        // 全部模式：跨所有服务器加载该 group 的更老消息
-        const deviceKeys: string[] = this.getAllDeviceKeys();
-        older = await MessageCacheStore.loadAllGroupOlder(deviceKeys, groupKey, oldestId, PAGE_SIZE);
-      } else {
-        const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-        if (!deviceKey || deviceKey.length === 0) {
-          return;
-        }
-        older = await MessageCacheStore.loadGroupOlder(deviceKey, groupKey, oldestId, PAGE_SIZE);
-      }
+      const keys: string[] = this.getVisibleHistoryKeys();
+      const older: NotifyMessage[] = await MessageCacheStore.loadAllGroupOlder(keys, groupKey, oldest, PAGE_SIZE);
       if (older.length > 0) {
         // 去重后 append
-        const existingIds: Set<number> = new Set<number>();
+        const existingIds: Set<string> = new Set<string>();
         for (let i = 0; i < this.messages.length; i++) {
-          existingIds.add(this.messages[i].id);
+          existingIds.add(notifyIdentity(this.messages[i]));
         }
         const deduped: NotifyMessage[] = [];
         for (let i = 0; i < older.length; i++) {
-          if (!existingIds.has(older[i].id)) {
+          const identity: string = notifyIdentity(older[i]);
+          if (!existingIds.has(identity)) {
             deduped.push(older[i]);
-            existingIds.add(older[i].id);
+            existingIds.add(identity);
           }
         }
         if (deduped.length > 0) {

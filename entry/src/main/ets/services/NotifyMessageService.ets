@@ -50,6 +50,8 @@ class GotifyMessageResponse extends Object {
   paging: Object | null = null;
   messages: Object | null = null;
   deletions: Object | null = null;
+  instanceId: string = '';
+  instancePersistent: boolean = false;
 }
 
 /** 把 getMessages 失败的 errorMsg 映射为列表上展示的简短错误文案 */
@@ -77,6 +79,8 @@ export class MessageListResult {
   ok: boolean = false;
   messages: NotifyMessage[] = [];
   errorMsg: string = '';
+  instanceId: string = '';
+  instancePersistent: boolean = false;
   // ====== 增量同步协议字段（after + deletedSince）======
   // after 翻页是否还有更新的消息
   hasMore: boolean = false;
@@ -322,6 +326,10 @@ export class NotifyMessageService {
     }
 
     // 顶层直接是 {paging, messages}，不走服务端统一 envelope
+    const raw = resp.result as Object as Record<string, Object>;
+    const instanceValue: Object | undefined = raw['instanceId'];
+    result.instanceId = typeof instanceValue === 'string' ? instanceValue as string : '';
+    result.instancePersistent = raw['instancePersistent'] === true;
     result.messages = NotifyMessageService.extractMessages(resp.result as Object);
     if (activeServer) {
       const encryption: EncryptionConfig = await EncryptionConfigService.get(context, activeServer.id);
@@ -351,7 +359,6 @@ export class NotifyMessageService {
     }
 
     // 解析 paging.hasMore（after 增量翻页用）
-    const raw = resp.result as Object as Record<string, Object>;
     const pagingVal: Object | undefined = raw['paging'];
     if (pagingVal && typeof pagingVal === 'object') {
       const paging = pagingVal as Record<string, Object>;
@@ -471,18 +478,21 @@ export class NotifyMessageService {
     if (!encryption.enabled) {
       return 0;
     }
-    const messages: NotifyMessage[] = await MessageCacheStore.loadEncryptedMessages(server.deviceKey);
     let successCount: number = 0;
-    for (let i: number = 0; i < messages.length; i++) {
-      try {
-        const decrypted: Record<string, Object> = await MessageCryptoService.decrypt(
-          encryption, messages[i].ciphertext, messages[i].iv);
-        messages[i].applyDecrypted(decrypted);
-        if (await MessageCacheStore.upsertMessages(server.deviceKey, [messages[i]])) {
-          successCount++;
+    const keys: string[] = ServerManager.getInstance().getHistoryKeysForServer(server);
+    for (let k: number = 0; k < keys.length; k++) {
+      const messages: NotifyMessage[] = await MessageCacheStore.loadEncryptedMessages(keys[k]);
+      for (let i: number = 0; i < messages.length; i++) {
+        try {
+          const decrypted: Record<string, Object> = await MessageCryptoService.decrypt(
+            encryption, messages[i].ciphertext, messages[i].iv);
+          messages[i].applyDecrypted(decrypted);
+          if (await MessageCacheStore.upsertMessages(keys[k], [messages[i]])) {
+            successCount++;
+          }
+        } catch (_err) {
+          // 保留已有明文和原始密文；可能属于旧 Key，不能用失败占位内容覆盖。
         }
-      } catch (_err) {
-        // 保留已有明文和原始密文；可能属于旧 Key，不能用失败占位内容覆盖。
       }
     }
     return successCount;

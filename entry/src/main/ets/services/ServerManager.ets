@@ -118,7 +118,10 @@ export class ServerManager {
   // 内置 server 的 clientToken 映射（id → token）。内置条目本身不持久化，
   // 但用户配置的 per-server client token 必须跨启动保留
   private static readonly KEY_BUILTIN_CLIENT_TOKENS: string = 'server_builtin_client_tokens';
+  private static readonly KEY_HISTORY_PREFIX: string = 'server_history_';
+  private static readonly KEY_LEGACY_UNKNOWN: string = 'server_legacy_unknown_keys';
   private servers: ServerEntry[] = [];
+  private legacyUnknownKeys: string[] = [];
   private currentId: string = '';
   // 视图模式：true=显示所有服务器通知，false=只显示当前服务器
   private viewAllMode: boolean = true;
@@ -281,6 +284,37 @@ export class ServerManager {
       }
 
       this.servers = list;
+      // 历史命名空间单独按服务器 ID 保存，内置服务器重建对象后也能恢复；
+      // 读取失败时不生成新实例 ID，等待下一次服务端同步确认。
+      for (let i = 0; i < this.servers.length; i++) {
+        const server: ServerEntry = this.servers[i];
+        const saved: string = await PreferencesUtil.getString(ctx, ServerManager.KEY_HISTORY_PREFIX + server.id, '');
+        if (!saved) {
+          continue;
+        }
+        try {
+          const state = JSON.parse(saved) as Record<string, Object>;
+          server.instanceId = typeof state['instanceId'] === 'string' ? state['instanceId'] as string : '';
+          const keys: Object | undefined = state['historyKeys'];
+          if (keys instanceof Array) {
+            server.historyKeys = (keys as Object[]).filter((key: Object) => typeof key === 'string') as string[];
+          }
+        } catch (_ignore) {
+          hilog.warn(DOMAIN, TAG, '历史命名空间读取失败：serverId=%{public}s', server.id);
+        }
+      }
+      const unknownRaw: string = await PreferencesUtil.getString(ctx, ServerManager.KEY_LEGACY_UNKNOWN, '');
+      if (unknownRaw) {
+        try {
+          const saved = JSON.parse(unknownRaw) as Object;
+          if (saved instanceof Array) {
+            this.legacyUnknownKeys = (saved as Object[]).filter((key: Object) => typeof key === 'string') as string[];
+          }
+        } catch (_ignore) {
+          hilog.warn(DOMAIN, TAG, '来源不明旧通知的命名空间读取失败');
+        }
+      }
+      await this.refreshLegacyUnknownKeys(ctx);
       const savedId: string = await PreferencesUtil.getString(ctx, PreferencesUtil.KEY_SERVER_CURRENT_ID, '');
       if (savedId && this.findById(savedId)) {
         this.currentId = savedId;
@@ -339,6 +373,66 @@ export class ServerManager {
 
   getCurrentServer(): ServerEntry | null {
     return this.findById(this.currentId);
+  }
+
+  /** 包含旧实例的本地历史键；来源不明的旧键只属于“全部”视图。 */
+  getHistoryKeysForServer(server: ServerEntry): string[] {
+    const keys: string[] = server.historyKeys.filter((key: string) =>
+      this.legacyUnknownKeys.indexOf(key) < 0);
+    if (server.deviceKey && this.legacyUnknownKeys.indexOf(server.deviceKey) < 0 &&
+      keys.indexOf(server.deviceKey) < 0) {
+      keys.push(server.deviceKey);
+    }
+    return keys;
+  }
+
+  getLegacyUnknownKeys(): string[] { return [...this.legacyUnknownKeys]; }
+
+  /** 同一个原始 device_key 曾属于多台服务器时，不把旧缓存误归给任何单台服务器。 */
+  private async refreshLegacyUnknownKeys(context: common.Context | null): Promise<void> {
+    const counts: Map<string, number> = new Map<string, number>();
+    for (let i = 0; i < this.servers.length; i++) {
+      const server: ServerEntry = this.servers[i];
+      const owned: string[] = [...server.historyKeys];
+      if (server.deviceKey && owned.indexOf(server.deviceKey) < 0) {
+        owned.push(server.deviceKey);
+      }
+      for (let j = 0; j < owned.length; j++) {
+        const key: string = owned[j];
+        if (key && !key.startsWith('["db:') && !key.startsWith('["server:')) {
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+        }
+      }
+    }
+    let changed: boolean = false;
+    counts.forEach((count: number, key: string) => {
+      if (count > 1 && this.legacyUnknownKeys.indexOf(key) < 0) {
+        this.legacyUnknownKeys.push(key);
+        changed = true;
+      }
+    });
+    if (changed) {
+      await PreferencesUtil.putString(context, ServerManager.KEY_LEGACY_UNKNOWN,
+        JSON.stringify(this.legacyUnknownKeys));
+    }
+  }
+
+  /** 同步确认后保存实例与本地历史命名空间；落盘失败时不改变运行时身份。 */
+  async rememberHistory(serverId: string, instanceId: string, sourceKey: string): Promise<boolean> {
+    const server: ServerEntry | null = this.findById(serverId);
+    if (!server) {
+      return false;
+    }
+    const keys: string[] = server.historyKeys.indexOf(sourceKey) >= 0
+      ? [...server.historyKeys] : [...server.historyKeys, sourceKey];
+    const saved: boolean = await PreferencesUtil.putString(null, ServerManager.KEY_HISTORY_PREFIX + serverId,
+      JSON.stringify({ instanceId, historyKeys: keys }));
+    if (!saved) {
+      return false;
+    }
+    server.instanceId = instanceId;
+    server.historyKeys = keys;
+    return true;
   }
 
   /** 获取视图模式：true=全部服务器，false=仅当前服务器 */
@@ -402,8 +496,17 @@ export class ServerManager {
     const entry: ServerEntry | null = this.findById(serverId);
     if (entry) {
       if (entry.deviceKey !== deviceKey) {
+        const previousKey: string = entry.deviceKey;
+        if (previousKey && entry.historyKeys.indexOf(previousKey) < 0) {
+          const remembered: boolean = await this.rememberHistory(serverId, entry.instanceId, previousKey);
+          if (!remembered) {
+            hilog.warn(DOMAIN, TAG, '旧 device_key 归属保存失败：serverId=%{public}s', serverId);
+            return;
+          }
+        }
         entry.deviceKey = deviceKey;
         await this.persist(ctx);
+        await this.refreshLegacyUnknownKeys(ctx);
         hilog.info(DOMAIN, TAG, '已更新 device_key：serverId=%{public}s key=%{public}s', serverId, deviceKey);
         // key 决定通知缓存与远端历史的归属；变更后必须通知视图丢弃旧 key 的内存数据并重新同步。
         this.emitChange();

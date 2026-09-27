@@ -1,33 +1,34 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
+import { notifyIdentity } from '../../utils/NotifyIdentity';
 
 /** 返回指定消息是否处于多选集合中。 */
-export function hasSelectedMessage(selectedIds: number[], id: number): boolean {
+export function hasSelectedMessage(selectedIds: string[], id: string): boolean {
   return selectedIds.indexOf(id) >= 0;
 }
 
 /** 不可变地切换单条消息的选中状态。 */
-export function toggleSelectedMessage(selectedIds: number[], id: number): number[] {
+export function toggleSelectedMessage(selectedIds: string[], id: string): string[] {
   const index: number = selectedIds.indexOf(id);
   if (index < 0) {
     return [...selectedIds, id];
   }
-  const next: number[] = [...selectedIds];
+  const next: string[] = [...selectedIds];
   next.splice(index, 1);
   return next;
 }
 
 /** 按 Checkbox 给出的目标状态设置单条消息；重复回显不产生新状态。 */
-export function setSelectedMessage(selectedIds: number[], id: number, selected: boolean): number[] {
+export function setSelectedMessage(selectedIds: string[], id: string, selected: boolean): string[] {
   return hasSelectedMessage(selectedIds, id) === selected ? selectedIds : toggleSelectedMessage(selectedIds, id);
 }
 
 /** 判断一组消息是否已全部选中。 */
-export function areGroupMessagesSelected(selectedIds: number[], messages: NotifyMessage[]): boolean {
+export function areGroupMessagesSelected(selectedIds: string[], messages: NotifyMessage[]): boolean {
   if (messages.length === 0) {
     return false;
   }
   for (let i = 0; i < messages.length; i++) {
-    if (!hasSelectedMessage(selectedIds, messages[i].id)) {
+    if (!hasSelectedMessage(selectedIds, notifyIdentity(messages[i]))) {
       return false;
     }
   }
@@ -35,25 +36,26 @@ export function areGroupMessagesSelected(selectedIds: number[], messages: Notify
 }
 
 /** 不可变地切换整组消息的选择状态。 */
-export function toggleGroupMessages(selectedIds: number[], messages: NotifyMessage[]): number[] {
+export function toggleGroupMessages(selectedIds: string[], messages: NotifyMessage[]): string[] {
   if (areGroupMessagesSelected(selectedIds, messages)) {
-    const groupIds: Set<number> = new Set<number>();
+    const groupIds: Set<string> = new Set<string>();
     for (let i = 0; i < messages.length; i++) {
-      groupIds.add(messages[i].id);
+      groupIds.add(notifyIdentity(messages[i]));
     }
-    return selectedIds.filter((id: number) => !groupIds.has(id));
+    return selectedIds.filter((id: string) => !groupIds.has(id));
   }
-  const next: number[] = [...selectedIds];
+  const next: string[] = [...selectedIds];
   for (let i = 0; i < messages.length; i++) {
-    if (!hasSelectedMessage(next, messages[i].id)) {
-      next.push(messages[i].id);
+    const id: string = notifyIdentity(messages[i]);
+    if (!hasSelectedMessage(next, id)) {
+      next.push(id);
     }
   }
   return next;
 }
 
 /** 按 Checkbox 的目标状态设置已加载组内消息；重复回显不再反向切换。 */
-export function setGroupMessagesSelection(selectedIds: number[], messages: NotifyMessage[], selected: boolean): number[] {
+export function setGroupMessagesSelection(selectedIds: string[], messages: NotifyMessage[], selected: boolean): string[] {
   if (messages.length === 0 || areGroupMessagesSelected(selectedIds, messages) === selected) {
     return selectedIds;
   }

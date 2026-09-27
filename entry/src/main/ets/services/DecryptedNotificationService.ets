@@ -3,6 +3,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN } from '../common/Constant';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { ServerEntry } from '../model/ServerEntry';
+import { notifyIdentity } from '../utils/NotifyIdentity';
 
 const TAG: string = 'DecryptNotify';
 const MAX_NOTIFICATION_ID: number = 2147483647;
@@ -19,7 +20,7 @@ export class DecryptedNotificationService {
 
     const title: string = message.title.trim().length > 0 ? message.title.trim() : '[订阅] 通知';
     const body: string = DecryptedNotificationService.resolveBody(message);
-    const identity: string = `decrypted-${server.id}-${message.id}`;
+    const identity: string = `decrypted-${notifyIdentity(message)}`;
     const normalizedId: number = DecryptedNotificationService.normalizeId(message.id);
     const request: notificationManager.NotificationRequest = {
       id: normalizedId,

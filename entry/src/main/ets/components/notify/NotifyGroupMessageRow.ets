@@ -1,4 +1,5 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
+import { notifyIdentity } from '../../utils/NotifyIdentity';
 import { formatNotifyTime, isExpiringSoon, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
 import { NotifyEncryptionBadge, NotifyExpiryBadge } from './NotifyGroupVisuals';
 
@@ -10,8 +11,8 @@ export struct NotifyGroupMessageRow {
   @Prop isEditing: boolean = false;
   @Prop selected: boolean = false;
   @Prop contentTransitionId: string = '';
-  onSelect: (id: number) => void = (_id: number) => {};
-  onSelectionChange: (id: number, selected: boolean) => void = (_id: number, _selected: boolean) => {};
+  onSelect: (id: string) => void = (_id: string) => {};
+  onSelectionChange: (id: string, selected: boolean) => void = (_id: string, _selected: boolean) => {};
   onOpen: (message: NotifyMessage) => void = (_message: NotifyMessage) => {};
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
@@ -77,7 +78,7 @@ export struct NotifyGroupMessageRow {
         Row({ space: 12 }) {
           if (this.isEditing) {
             Checkbox().select(this.selected).selectedColor($r('app.color.color_brand')).shape(CheckBoxShape.CIRCLE)
-              .flexShrink(0).onChange((selected: boolean) => this.onSelectionChange(this.message.id, selected));
+              .flexShrink(0).onChange((selected: boolean) => this.onSelectionChange(notifyIdentity(this.message), selected));
           }
           if (this.message.icon.length > 0) {
             Image(this.message.icon)
@@ -131,6 +132,6 @@ export struct NotifyGroupMessageRow {
     .width('100%').backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: this.isLast ? 12 : 0, bottomRight: this.isLast ? 12 : 0 })
     .clip(true).transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
-    .onClick(() => this.isEditing ? this.onSelect(this.message.id) : this.onOpen(this.message));
+    .onClick(() => this.isEditing ? this.onSelect(notifyIdentity(this.message)) : this.onOpen(this.message));
   }
 }

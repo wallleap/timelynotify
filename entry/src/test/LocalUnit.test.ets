@@ -7,6 +7,9 @@ import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { AutoCopyService, AutoCopySelection } from '../main/ets/services/AutoCopyService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
+import { notifyIdentity, notifySourceKey, originalDeviceKey } from '../main/ets/utils/NotifyIdentity';
+import { buildNotifyListRows } from '../main/ets/components/notify/NotifyListDataSource';
+import { buildNotifySections } from '../main/ets/components/notify/NotifyViewTypes';
 
 class RawMessageExtras extends Object {
   ciphertext: string = '';
@@ -113,13 +116,13 @@ export default function localUnitTest() {
       const second: NotifyMessage = new NotifyMessage();
       second.id = 2;
       const group: NotifyMessage[] = [first, second];
-      let selected: number[] = toggleSelectedMessage([], first.id);
+      let selected: string[] = toggleSelectedMessage([], notifyIdentity(first));
       expect(selected.length).assertEqual(1);
       expect(areGroupMessagesSelected(selected, group)).assertFalse();
       selected = toggleGroupMessages(selected, group);
       expect(selected.length).assertEqual(2);
       expect(areGroupMessagesSelected(selected, group)).assertTrue();
-      selected = toggleSelectedMessage(selected, second.id);
+      selected = toggleSelectedMessage(selected, notifyIdentity(second));
       expect(selected.length).assertEqual(1);
       expect(areGroupMessagesSelected(selected, group)).assertFalse();
       selected = toggleGroupMessages(selected, group);
@@ -133,14 +136,29 @@ export default function localUnitTest() {
       const second: NotifyMessage = new NotifyMessage();
       second.id = 2;
       const group: NotifyMessage[] = [first, second];
-      const selected: number[] = setSelectedMessage([], first.id, true);
-      expect(setSelectedMessage(selected, first.id, true) === selected).assertTrue();
-      const groupSelected: number[] = setGroupMessagesSelection(selected, group, true);
+      const selected: string[] = setSelectedMessage([], notifyIdentity(first), true);
+      expect(setSelectedMessage(selected, notifyIdentity(first), true) === selected).assertTrue();
+      const groupSelected: string[] = setGroupMessagesSelection(selected, group, true);
       expect(groupSelected.length).assertEqual(2);
       expect(setGroupMessagesSelection(groupSelected, group, true) === groupSelected).assertTrue();
-      const cleared: number[] = setGroupMessagesSelection(groupSelected, group, false);
+      const cleared: string[] = setGroupMessagesSelection(groupSelected, group, false);
       expect(cleared.length).assertEqual(0);
       expect(setGroupMessagesSelection(cleared, group, false) === cleared).assertTrue();
+    });
+    it('separatesSameNumericIdFromDifferentDatabases', 0, () => {
+      const first: NotifyMessage = new NotifyMessage();
+      first.id = 1;
+      first.deviceKey = notifySourceKey('db-one', 'server-a', 'same-key');
+      const second: NotifyMessage = new NotifyMessage();
+      second.id = 1;
+      second.deviceKey = notifySourceKey('db-two', 'server-b', 'same-key');
+      expect(notifyIdentity(first) === notifyIdentity(second)).assertFalse();
+      const selected: string[] = toggleSelectedMessage([], notifyIdentity(first));
+      expect(areGroupMessagesSelected(selected, [first, second])).assertFalse();
+      const rows = buildNotifyListRows(buildNotifySections([first, second], undefined, false), []);
+      expect(rows[0].key === rows[1].key).assertFalse();
+      expect(originalDeviceKey(first.deviceKey)).assertEqual('same-key');
+      expect(originalDeviceKey('legacy-key')).assertEqual('legacy-key');
     });
     it('collapsesGroupWhenOnlyOneMessageRemains', 0, () => {
       // g1 删除后仅剩 1 条且真实总数为 1；g2 仍有 2 条；空 group_key 代表“默认”分组。
