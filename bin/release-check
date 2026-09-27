@@ -267,23 +267,22 @@ if [ -n "$CUR_BRANCH" ] && [ "$CUR_BRANCH" != "$RELEASE_BRANCH" ]; then
   fi
 fi
 
-# 8. tag 是否撞号（模拟 bin/release 中的冲突检查）
+# 8. 提示当前版本；具体目标由 bin/release 菜单选择并完成撞号检查
 sub "检查最近版本号区间…"
-LATEST_TAG="$(git tag --list 'v[0-9]*' --sort=-v:refname 2>/dev/null | head -n1 || true)"
+source bin/versioning.sh
+LATEST_TAG=""
+LATEST_CODE=-1
+while IFS= read -r CANDIDATE; do
+  if version_parse "$CANDIDATE" 2>/dev/null && [ "$VERSION_CODE" -gt "$LATEST_CODE" ]; then
+    LATEST_TAG="$CANDIDATE"
+    LATEST_CODE="$VERSION_CODE"
+    LATEST_STAGE="$VERSION_STAGE"
+  fi
+done < <(git tag --list 'v[0-9]*' 2>/dev/null)
 if [ -n "$LATEST_TAG" ]; then
-  NEXT_MINOR="0"
-  if [[ "${LATEST_TAG#v}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-    NEXT_MINOR=$(( BASH_REMATCH[2] + 1 ))
-  fi
-  EXPECTED_NEXT="v${BASH_REMATCH[1]:-1}.${NEXT_MINOR}.0"
-  pass "最近版本 tag: $LATEST_TAG → 自动递增下一版预计: $EXPECTED_NEXT"
-  # 检查不存在冲突 tag（例如用户自己手动创建未 push 的）
-  if git rev-parse -q --verify "refs/tags/$EXPECTED_NEXT" >/dev/null 2>&1; then
-    fail "预期下一版 tag $EXPECTED_NEXT 已存在本地（会冲突）" \
-         "删除本地冲突 tag：git tag -d $EXPECTED_NEXT；或手动指定更高版本：bin/release 1.x.0"
-  fi
+  pass "最近版本 tag: $LATEST_TAG（${LATEST_STAGE}，versionCode=$LATEST_CODE）；发版时选择 major/minor/patch 和 beta/正式版"
 else
-  warn "尚未有任何 v* 版本 tag，首次发版默认 1.0.0" "如需自定义首版：bin/release 0.9.0 等"
+  warn "尚未有合法的 v* 版本 tag；发版菜单将按 0.0.0 展示候选版本" "请在 bin/release 的菜单中选择版本增量与发布阶段"
 fi
 
 # 9. 能否 push tag（只做连通性试探，不真正推送）—— 检查凭证
@@ -441,7 +440,7 @@ if [ -n "${OHPM_BIN:-}" ] && command -v "$OHPM_BIN" >/dev/null 2>&1; then
   fi
 fi
 
-# C6. 试跑一次 bin/build（构建版本号用 0.0.1-CI-check，避免 tag 冲突）
+# C6. 试跑一次 bin/build（使用未发布版本 0.0.999，避免 tag 冲突）
 sub "试跑 bin/build（构建模式，预计耗时 3~10 分钟）…"
 CHECK_VERSION="0.0.999"
 # bin/build 本身成功返回 0；失败返回非 0

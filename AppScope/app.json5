@@ -2,7 +2,7 @@
   "app": {
     "bundleName": "cn.oicode.timelynotify",
     "vendor": "oicode",
-    "versionCode": 1000000,
+    "versionCode": 100000000,
     "versionName": "1.0.0",
     "icon": "$media:app_layered_image",
     "label": "$string:app_name"

@@ -3,17 +3,17 @@
 # 版本号唯一来源是 git tag：CI 构建时从 tag 注入 AppScope/app.json5（本地构建用 bin/build 同理）
 # 仓库设置了分支保护（不允许直接 push main），本脚本不产生任何 commit，只推送 tag
 #
-# 用法: bin/release [-y] [--dry-run]              自动发版：最近版本 tag 的 minor +1、patch 清零；无 tag 时发 1.0.0
-#       bin/release [-y] [--dry-run] <[v]x.y.z>   指定版本号发版（v 前缀可选：1.2.3 或 v1.2.3）
+# 用法: bin/release [--dry-run]                    交互选择版本增量及测试/正式阶段
+#       bin/release --bump minor --stage beta [-y] [--dry-run]  非交互选择，不接受手填版本号
 #
 # 参数:
 #   -y          跳过交互确认（自动化场景）
 #   --dry-run   预览发版流程（版本号计算/各项校验/发布信息），不切分支、不打 tag、不推送
 #
 # 版本号规则:
-#   tag          = v{x.y.z}（annotated，含作者/时间/说明）
-#   versionName  = x.y.z（构建时注入）
-#   versionCode  = x*1000000 + y*1000 + z（与仓库现有编码一致，必须大于上一版本）
+#   tag          = v{x.y.z[-beta.n]}（annotated，含作者/时间/说明）
+#   versionName  = x.y.z-beta.n（测试）或 x.y.z（正式）
+#   versionCode  = (x*1000000 + y*1000 + z)*100 + slot（beta=01–98，正式=99）
 set -euo pipefail
 
 RELEASE_BRANCH="${RELEASE_BRANCH:-main}"
@@ -21,26 +21,40 @@ RELEASE_BRANCH="${RELEASE_BRANCH:-main}"
 # ---------- 1. 参数解析 ----------
 ASSUME_YES=0
 DRY_RUN=0
-VERSION_ARG=""
-for arg in "$@"; do
-  case "$arg" in
+VERSION_BUMP=""
+RELEASE_STAGE=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     -y) ASSUME_YES=1 ;;
     --dry-run) DRY_RUN=1 ;;
-    v[0-9]*|[0-9]*)
-      if [ -n "$VERSION_ARG" ]; then
-        echo "错误: 版本号参数重复: $arg"
-        exit 1
-      fi
-      VERSION_ARG="$arg" ;;
+    --bump)
+      [ "$#" -ge 2 ] || { echo "错误: --bump 缺少参数"; exit 1; }
+      VERSION_BUMP="$2"; shift ;;
+    --stage)
+      [ "$#" -ge 2 ] || { echo "错误: --stage 缺少参数"; exit 1; }
+      RELEASE_STAGE="$2"; shift ;;
+    -h|--help)
+      echo "用法: bin/release [--dry-run] [--bump major|minor|patch|current] [--stage beta|stable] [-y]"
+      echo "未指定选项时显示带目标版本号的交互菜单；current 仅用于完成现有 beta 候选版本。"
+      exit 0 ;;
     *)
-      echo "错误: 未知参数: $arg"
-      echo "用法: bin/release [-y] [--dry-run] [[v]x.y.z]"
+      echo "错误: 未知参数: $1（不再支持手填版本号）"
+      echo "用法: bin/release [--bump major|minor|patch|current] [--stage beta|stable] [-y] [--dry-run]"
       exit 1 ;;
   esac
+  shift
 done
+
+case "$VERSION_BUMP" in ""|major|minor|patch|current) ;; *) echo "错误: --bump 选项无效: $VERSION_BUMP"; exit 1 ;; esac
+case "$RELEASE_STAGE" in ""|beta|stable) ;; *) echo "错误: --stage 选项无效: $RELEASE_STAGE"; exit 1 ;; esac
+if [ "$ASSUME_YES" -eq 1 ] && { [ -z "$VERSION_BUMP" ] || [ -z "$RELEASE_STAGE" ]; }; then
+  echo "错误: -y 必须同时指定 --bump 与 --stage，避免误发版本"
+  exit 1
+fi
 
 # ---------- 2. 同步仓库状态 ----------
 cd "$(git rev-parse --show-toplevel)"
+source "bin/versioning.sh"
 
 # 工作区必须干净：防止跨分支切换携带/冲突未提交改动
 if [ -n "$(git status --porcelain)" ]; then
@@ -74,65 +88,113 @@ else
   HEAD_INFO="$(git log -1 --format='%h %s' HEAD)"
 fi
 
-# ---------- 3. 确定版本号 ----------
-# 版本号最高的 v tag（按版本排序取最大，而非最近创建；首次发版时为空）
-LATEST_TAG="$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
-
-if [ -z "$VERSION_ARG" ]; then
-  # 自动模式：最近 tag 的 minor +1、patch 清零；无历史 tag 时首次发版默认 1.0.0
-  if [ -z "$LATEST_TAG" ]; then
-    VERSION="1.0.0"
-    echo "首次发版，无历史 tag，使用默认版本 1.0.0"
-  else
-    CURRENT="${LATEST_TAG#v}"
-    if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-      echo "错误: 最近版本 tag '$CURRENT' 不是有效的版本号，请手动指定 [v]x.y.z"
-      exit 1
-    fi
-    MAJOR="${CURRENT%%.*}"
-    REST="${CURRENT#*.}"
-    MINOR=$(( ${REST%%.*} + 1 ))
-    PATCH=0
-    if [ "$MINOR" -ge 1000 ]; then
-      MAJOR=$((MAJOR + 1))
-      MINOR=0
-    fi
-    VERSION="$MAJOR.$MINOR.$PATCH"
-    echo "自动发版: $CURRENT -> $VERSION"
+# ---------- 3. 从已有 tag 计算候选版本 ----------
+# 按新编号规则比较所有合法 tag；同一基础版本的 stable(slot=99) 总在 beta 之后。
+LATEST_TAG=""
+LATEST_CODE=-1
+LATEST_MAJOR=0
+LATEST_MINOR=0
+LATEST_PATCH=0
+LATEST_STAGE=""
+LATEST_BETA=0
+while IFS= read -r candidate; do
+  if version_parse "$candidate" 2>/dev/null && [ "$VERSION_CODE" -gt "$LATEST_CODE" ]; then
+    LATEST_TAG="$candidate"
+    LATEST_CODE="$VERSION_CODE"
+    LATEST_MAJOR="$VERSION_MAJOR"
+    LATEST_MINOR="$VERSION_MINOR"
+    LATEST_PATCH="$VERSION_PATCH"
+    LATEST_STAGE="$VERSION_STAGE"
+    LATEST_BETA="${VERSION_BETA:-0}"
   fi
+done < <(git tag --list 'v[0-9]*')
+
+MAJOR_BASE="$((LATEST_MAJOR + 1)).0.0"
+NEXT_MINOR=$((LATEST_MINOR + 1))
+if [ "$NEXT_MINOR" -ge 1000 ]; then
+  MINOR_BASE="$((LATEST_MAJOR + 1)).0.0"
 else
-  # 手动模式：使用传入的版本号（剥掉可选的 v 前缀，v1.2.3 与 1.2.3 等价）
-  VERSION="${VERSION_ARG#v}"
+  MINOR_BASE="$LATEST_MAJOR.$NEXT_MINOR.0"
 fi
-
-if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "错误: 版本号必须为 x.y.z 格式（如 1.2.3），收到: $VERSION"
-  exit 1
+NEXT_PATCH=$((LATEST_PATCH + 1))
+if [ "$NEXT_PATCH" -ge 1000 ]; then
+  PATCH_BASE="$MINOR_BASE"
+else
+  PATCH_BASE="$LATEST_MAJOR.$LATEST_MINOR.$NEXT_PATCH"
 fi
+CURRENT_BASE="$LATEST_MAJOR.$LATEST_MINOR.$LATEST_PATCH"
 
-MAJOR="${VERSION%%.*}"
-REST="${VERSION#*.}"
-MINOR="${REST%%.*}"
-PATCH="${REST#*.}"
-
-# versionCode 编码约束（int32 上限 2147483647 内，各段不溢出）
-if [ "$MAJOR" -gt 2147 ] || [ "$MINOR" -ge 1000 ] || [ "$PATCH" -ge 1000 ]; then
-  echo "错误: 版本段超出范围（major <= 2147，minor/patch < 1000）"
-  exit 1
-fi
-
-VERSION_CODE=$((MAJOR * 1000000 + MINOR * 1000 + PATCH))
-TAG="v$VERSION"
-
-# versionCode 倒退校验：AGC 要求单调递增，倒退的包在上传时会被拒
-if [ -n "$LATEST_TAG" ] && [[ "${LATEST_TAG#v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  LAST="${LATEST_TAG#v}"
-  LREST="${LAST#*.}"
-  LAST_CODE=$(( ${LAST%%.*} * 1000000 + ${LREST%%.*} * 1000 + ${LREST#*.} ))
-  if [ "$VERSION_CODE" -le "$LAST_CODE" ]; then
-    echo "错误: 新版本 $VERSION (versionCode=$VERSION_CODE) 不大于最近版本 $LAST (versionCode=$LAST_CODE)，AGC 要求 versionCode 单调递增"
-    exit 1
+if [ -z "$VERSION_BUMP" ]; then
+  [ -t 0 ] || { echo "错误: 非交互环境请指定 --bump 和 --stage"; exit 1; }
+  echo "当前版本: ${LATEST_TAG:-无}"
+  echo "选择版本增量："
+  echo "  1) major   → $MAJOR_BASE-beta.1 / $MAJOR_BASE"
+  echo "  2) minor   → $MINOR_BASE-beta.1 / $MINOR_BASE"
+  echo "  3) patch   → $PATCH_BASE-beta.1 / $PATCH_BASE"
+  if [ "$LATEST_STAGE" = "beta" ]; then
+    echo "  4) current → $CURRENT_BASE-beta.$((LATEST_BETA + 1)) / $CURRENT_BASE"
   fi
+  read -r -p '请选择 [1-4]: ' choice
+  case "$choice" in
+    1) VERSION_BUMP=major ;; 2) VERSION_BUMP=minor ;; 3) VERSION_BUMP=patch ;;
+    4) VERSION_BUMP=current ;; *) echo "错误: 无效的版本增量选项"; exit 1 ;;
+  esac
+fi
+
+case "$VERSION_BUMP" in
+  major) TARGET_BASE="$MAJOR_BASE" ;;
+  minor) TARGET_BASE="$MINOR_BASE" ;;
+  patch) TARGET_BASE="$PATCH_BASE" ;;
+  current)
+    [ "$LATEST_STAGE" = "beta" ] || { echo "错误: current 仅在最近版本为 beta 时可用"; exit 1; }
+    TARGET_BASE="$CURRENT_BASE" ;;
+esac
+
+MAX_BETA=0
+while IFS= read -r candidate; do
+  if version_parse "$candidate" 2>/dev/null && [ "$VERSION_BASE" = "$TARGET_BASE" ] &&
+     [ "$VERSION_STAGE" = "beta" ] && [ "$VERSION_BETA" -gt "$MAX_BETA" ]; then
+    MAX_BETA="$VERSION_BETA"
+  fi
+done < <(git tag --list "v$TARGET_BASE-beta.*")
+NEXT_BETA=$((MAX_BETA + 1))
+STABLE_NAME="$TARGET_BASE"
+version_parse "$STABLE_NAME" || exit 1
+STABLE_CODE="$VERSION_CODE"
+BETA_NAME="$TARGET_BASE-beta.$NEXT_BETA"
+if [ "$NEXT_BETA" -le 98 ]; then
+  version_parse "$BETA_NAME" || exit 1
+  BETA_CODE="$VERSION_CODE"
+else
+  BETA_CODE="已用尽"
+fi
+
+if [ -z "$RELEASE_STAGE" ]; then
+  [ -t 0 ] || { echo "错误: 非交互环境请指定 --stage"; exit 1; }
+  echo "选择发布阶段："
+  if [ "$NEXT_BETA" -le 98 ]; then
+    echo "  1) 测试版 → $BETA_NAME (versionCode=$BETA_CODE)"
+  fi
+  echo "  2) 正式版 → $STABLE_NAME (versionCode=$STABLE_CODE)"
+  read -r -p '请选择 [1-2]: ' choice
+  case "$choice" in
+    1) RELEASE_STAGE=beta ;; 2) RELEASE_STAGE=stable ;;
+    *) echo "错误: 无效的发布阶段选项"; exit 1 ;;
+  esac
+fi
+
+if [ "$RELEASE_STAGE" = "beta" ]; then
+  [ "$NEXT_BETA" -le 98 ] || { echo "错误: $TARGET_BASE 已用尽 98 个 beta 编号"; exit 1; }
+  version_parse "$BETA_NAME" || exit 1
+else
+  version_parse "$STABLE_NAME" || exit 1
+fi
+VERSION="$VERSION_NAME"
+TAG="$VERSION_TAG"
+
+if [ "$VERSION_CODE" -le "$LATEST_CODE" ]; then
+  echo "错误: $TAG 的 versionCode=$VERSION_CODE 不大于最近版本 $LATEST_TAG 的 $LATEST_CODE"
+  exit 1
 fi
 
 # ---------- 4. tag 冲突校验与发版确认 ----------
