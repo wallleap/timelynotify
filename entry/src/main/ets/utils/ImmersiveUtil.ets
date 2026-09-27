@@ -158,17 +158,6 @@ export function isImmersiveMaterialActive(): boolean {
 }
 
 /**
- * uiMaterial 模块已加载且用户开关开启（不要求设备 supported）。
- * 用于「材质样式分支」：systemMaterial 调用本身在不支持设备上安全（no-op），
- * 配套半透明色/backgroundColor 兜底即可，半模态内容层据此保持通透。
- */
-export function isImmersiveMaterialLoaded(): boolean {
-  return SUPPORTS_IMMERSIVE_MATERIAL
-    && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false
-    && AppStorage.get<boolean>(KEY_MATERIAL_LOADED) === true;
-}
-
-/**
  * 弹窗专用：材质生效时返回 dialog 材质（挂到 CustomDialogControllerOptions /
  * promptAction.showDialog 等 options 的 systemMaterial 字段），否则返回 undefined
  * （字段缺省即系统纯色弹窗）。可在组件字段初始化期安全调用：未就绪时返回 undefined。

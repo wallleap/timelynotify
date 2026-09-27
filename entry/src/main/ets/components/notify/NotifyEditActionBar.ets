@@ -14,22 +14,17 @@ export struct NotifyEditActionBar {
   onDelete: () => void = () => {};
 
   build() {
-    Column({ space: 6 }) {
-      // 多选仅针对当前已加载到列表内存的消息，显式提示避免与分组真实总数混淆。
-      Text(this.selectedCount > 0 ? `已选 ${this.selectedCount} 条已加载通知` : '仅可操作已加载通知')
-        .fontSize(11).fontColor($r('app.color.color_text_hint')).width('100%').textAlign(TextAlign.Center);
-      Row() {
-        Text('取消').fontSize(15).fontColor($r('app.color.color_text_tertiary')).onClick(() => this.onCancel());
-        Blank();
-        Text(this.selectedCount === this.messageCount ? '取消全选' : '全选').fontSize(15)
-          .fontColor($r('app.color.color_text_tertiary')).padding({ right: 16 }).onClick(() => this.onToggleAll());
-        Text(this.exporting ? '导出中…' : `导出(${this.selectedCount})`).fontSize(15)
-          .fontColor(this.selectedCount > 0 && !this.exporting ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
-          .padding({ right: 16 }).onClick(() => this.onExport());
-        Text(`删除(${this.selectedCount})`).fontSize(15)
-          .fontColor(this.selectedCount > 0 ? $r('app.color.color_error') : $r('app.color.color_text_hint'))
-          .onClick(() => this.onDelete());
-      }.width('100%');
+    Row() {
+      Text('取消').fontSize(15).fontColor($r('app.color.color_text_tertiary')).onClick(() => this.onCancel());
+      Blank();
+      Text(this.selectedCount === this.messageCount ? '取消全选' : '全选').fontSize(15)
+        .fontColor($r('app.color.color_text_tertiary')).padding({ right: 16 }).onClick(() => this.onToggleAll());
+      Text(this.exporting ? '导出中…' : `导出(${this.selectedCount})`).fontSize(15)
+        .fontColor(this.selectedCount > 0 && !this.exporting ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
+        .padding({ right: 16 }).onClick(() => this.onExport());
+      Text(`删除(${this.selectedCount})`).fontSize(15)
+        .fontColor(this.selectedCount > 0 ? $r('app.color.color_error') : $r('app.color.color_text_hint'))
+        .onClick(() => this.onDelete());
     }
     .width('100%').padding({ left: 16, right: 16, top: 12,
       bottom: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.navBarHeight + 72 : this.navBarHeight + 64 })

@@ -35,7 +35,6 @@ import {
 import showToast from '../components/showToast';
 import { NotifySection } from '../components/notify/NotifyViewTypes';
 import {
-  areGroupMessagesSelected,
   hasSelectedMessage,
   retainExpandableGroups,
   setGroupMessagesSelection,
@@ -155,7 +154,7 @@ export struct NotifyView {
     this.loadExpandedGroups();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
       this.exitEditMode();
-      // 从 ServerManager 同步视图模式（ServerSettingsContent 切换全部/单服务器时触发）
+      // 从 ServerManager 同步视图模式（ServerSwitchDialog 切换全部/单服务器时触发）
       const newViewAll: boolean = ServerManager.getInstance().getViewAllMode();
       const viewModeChanged: boolean = this.viewAll !== newViewAll;
       this.viewAll = newViewAll;
@@ -1285,10 +1284,6 @@ export struct NotifyView {
     } else {
       this.toggleGroupExpanded(section.groupKey);
     }
-  }
-
-  private isGroupAllSelected(groupMessages: NotifyMessage[]): boolean {
-    return areGroupMessagesSelected(this.selectedIds, groupMessages);
   }
 
   private toggleGroupSelection(groupMessages: NotifyMessage[]): void {

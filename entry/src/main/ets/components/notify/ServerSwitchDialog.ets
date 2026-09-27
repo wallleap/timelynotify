@@ -2,7 +2,7 @@ import { TextModifier } from '@kit.ArkUI';
 import { HdsListItemCard, SuffixRadio } from '@kit.UIDesignKit';
 import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
-import { extractHost } from '../ServerSettingsContent';
+import { extractHost } from '../../utils/ServerUrlUtil';
 import { isImmersiveMaterialActive } from '../../utils/ImmersiveUtil';
 
 // 空 builder 占位（controller 字段默认值，避免 SDK 注入前的空引用崩溃）
@@ -27,7 +27,7 @@ const LIST_MAX_HEIGHT: number = 280;
  * 未选中行 color_border_default 描边，透出系统容器层的 COMPONENT_THICK 模糊（透明模糊背景）；
  * 降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
  * 结构对齐其它弹窗：Scroll 根（整体超高兜底滚动）+ 居中标题与右上角关闭图标 +
- * 定高 List（服务器多时内部滚动）。服务器的增删/Token/加密等管理仍在「我的 → 服务器设置」页。
+ * 定高 List（服务器多时内部滚动）。服务器的增删/Token/加密等管理在「服务」页。
  */
 @CustomDialog
 export struct ServerSwitchDialog {

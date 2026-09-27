@@ -139,9 +139,6 @@ export function parseNotifyTextSegments(text: string): NotifyTextSegment[] {
   return segments;
 }
 
-/** 无 group 消息聚合后的虚拟 groupKey（空串在 RDB 中作为 group_key 存储） */
-export const UNGROUPED_GROUP_KEY: string = '';
-
 /** 虚拟 groupKey 对应的展示名称（展开态顶栏标题 + 折叠态卡片标题） */
 export function displayGroupTitle(groupKey: string): string {
   return groupKey.length === 0 ? '默认' : groupKey;

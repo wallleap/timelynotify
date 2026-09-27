@@ -28,14 +28,14 @@ entry/src/main/ets/
 │   └── EntryBackupAbility.ets    # 备份扩展 Ability
 ├── pages/               # 路由页面（@Entry）
 │   ├── Index.ets                 # 主页（Tab 导航）
-│   ├── ServerSettingsPage.ets    # 服务器设置页
 │   └── SharePage.ets             # WebView 页面
 ├── views/               # 视图组件（Tab 内容）
 │   ├── NotifyView.ets            # 通知列表视图
+│   ├── ServerView.ets            # 服务与服务器管理视图
 │   └── MineView.ets              # 我的（设置）视图
 ├── components/          # 可复用 UI 组件
 │   ├── ServerSwitchDialog.ets    # 切换通知服务弹窗（首页标题，notify/ 目录）
-│   ├── ServerSettingsContent.ets # 服务器列表管理组件
+│   ├── server/ServerList.ets     # 服务页的服务器列表管理组件
 │   ├── ServerActionDialogs.ets   # 操作菜单弹窗集
 │   ├── ClientTokenDialog.ets     # ClientToken 配置弹窗
 │   └── showToast.ets             # Toast 提示封装
@@ -51,6 +51,7 @@ entry/src/main/ets/
 ├── utils/               # 工具类
 │   ├── HttpUtil.ets              # HTTP 请求封装
 │   ├── PreferencesUtil.ets       # Preferences 持久化封装
+│   ├── ServerUrlUtil.ets         # 服务器地址显示工具
 │   └── ImmersiveUtil.ets         # 沉浸式/状态栏高度工具
 └── common/              # 全局通用
     ├── AppContextStore.ets       # Context 存储单例
@@ -254,7 +255,7 @@ NotifyView.getMessages → GET /:device_key/message (Header: X-Gotify-Key)
 ### 服务器管理流程
 
 ```
-MineView / ServerSettingsContent
+ServerView / server/ServerList
   → ServerManager.addServer(name, url) → 保存到 Preferences
   → ServerManager.removeServer(id) → 保存到 Preferences
   → ServerManager.loadServers() → 刷新 UI

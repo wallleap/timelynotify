@@ -358,16 +358,6 @@ export class ServerManager {
     this.emitChange();
   }
 
-  /** private isBuiltInId(id: string): boolean {
-  const builtIn: ServerEntry[] = this.getBuiltInServers();
-  for (let i = 0; i < builtIn.length; i++) {
-  if (builtIn[i].id === id) {
-  return true;
-  }
-  }
-  return false;
-  } */
-
   getCurrentBaseURL(): string {
     const cur = this.findById(this.currentId);
     if (cur) {
