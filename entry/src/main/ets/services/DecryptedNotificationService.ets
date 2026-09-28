@@ -9,12 +9,12 @@ const TAG: string = 'DecryptNotify';
 const MAX_NOTIFICATION_ID: number = 2147483647;
 
 /**
- * 为不归档的端到端加密消息发布解密后的本地通知。
+ * 为端到端加密消息发布解密后的本地通知；归档消息由用户偏好决定是否补发。
  * 使用稳定的 id + label，远程删除失败而重试同步时只更新原通知，不重复堆叠。
  */
 export class DecryptedNotificationService {
-  static async publish(message: NotifyMessage, server: ServerEntry): Promise<boolean> {
-    if (!message.needsDecryptedNotification()) {
+  static async publish(message: NotifyMessage, server: ServerEntry, resendArchived: boolean = false): Promise<boolean> {
+    if (!message.needsDecryptedNotification(Date.now(), resendArchived)) {
       return true;
     }
 

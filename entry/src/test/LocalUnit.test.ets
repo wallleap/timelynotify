@@ -293,20 +293,28 @@ export default function localUnitTest() {
       expect(message.isExpired(Date.parse('2026-09-23T00:00:29Z'))).assertFalse();
       expect(message.isExpired(Date.parse('2026-09-23T00:00:30Z'))).assertTrue();
     });
-    it('requestsLocalNotificationOnlyForDecryptedTransientCiphertext', 0, () => {
+    it('resendsDecryptedCiphertextAccordingToArchivePreference', 0, () => {
       const message = new NotifyMessage();
       message.encrypted = true;
       message.archive = false;
       message.migrationReady = true;
       expect(message.needsDecryptedNotification(100)).assertTrue();
+      expect(message.needsDecryptedNotification(100, true)).assertTrue();
       message.migrationReady = false;
       expect(message.needsDecryptedNotification(100)).assertFalse();
+      expect(message.needsDecryptedNotification(100, true)).assertFalse();
       message.migrationReady = true;
       message.archive = true;
       expect(message.needsDecryptedNotification(100)).assertFalse();
+      expect(message.needsDecryptedNotification(100, true)).assertTrue();
+      expect(message.archive).assertTrue();
       message.archive = false;
       message.expiresAt = 100;
       expect(message.needsDecryptedNotification(100)).assertFalse();
+      expect(message.needsDecryptedNotification(100, true)).assertFalse();
+      message.expiresAt = 0;
+      message.encrypted = false;
+      expect(message.needsDecryptedNotification(100, true)).assertFalse();
     });
     it('formatsTtlExpiryForListAndDetail', 0, () => {
       const now: number = Date.parse('2026-09-23T00:00:00Z');

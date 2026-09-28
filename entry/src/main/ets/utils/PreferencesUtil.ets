@@ -49,6 +49,8 @@ export class PreferencesUtil {
   /** 通知视图范围：'true' 为聚合全部服务器，'false' 为仅当前服务器；缺失时默认聚合。 */
   static readonly KEY_SERVER_VIEW_ALL_MODE: string = 'server_view_all_mode';
   static readonly KEY_NOTIFY_ENABLED: string = 'notify_enabled';
+  /** 归档加密通知解密后是否也重发本地通知；缺失时关闭，不影响 isArchive 留存策略。 */
+  static readonly KEY_ENCRYPTED_NOTIFICATION_RESEND: string = 'encrypted_notification_resend';
   /** 主题颜色模式：'system'（跟随系统）/ 'light'（浅色）/ 'dark'（深色） */
   static readonly KEY_COLOR_MODE: string = 'color_mode';
   /** 沉浸光感开关：'true'（开启，默认）/ 'false'（关闭，走 blur 降级）。仅 API 26+ 生效 */

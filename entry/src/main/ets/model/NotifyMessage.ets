@@ -213,9 +213,9 @@ export class NotifyMessage extends Object {
     return this.expiresAt > 0 && this.expiresAt <= now;
   }
 
-  // 非归档加密消息在成功解密后不会进入列表，需要通过本地通知向用户展示真实内容。
-  needsDecryptedNotification(now: number = Date.now()): boolean {
-    return this.encrypted && !this.archive && this.migrationReady && !this.isExpired(now);
+  // 非归档加密消息始终补发；用户开启重发后，归档加密消息也补发，但不改变 archive 本身。
+  needsDecryptedNotification(now: number = Date.now(), resendArchived: boolean = false): boolean {
+    return this.encrypted && this.migrationReady && !this.isExpired(now) && (!this.archive || resendArchived);
   }
 
   // 从 Bark 参数读取归档与 ttl；primary 优先，兼容服务端小写键与加密内容驼峰键。

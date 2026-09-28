@@ -111,14 +111,14 @@ export struct NotifySettingsSection {
         this.exportMessages();
       });
 
-      // 个性化设置入口紧随导出卡片，主题模式、沉浸光感等视觉偏好集中在独立页面中管理。
+      // 个性化设置入口紧随导出卡片，主题、通知重发与沉浸光感偏好集中在独立页面中管理。
       Row() {
         Column({ space: 4 }) {
           Text('个性化设置')
             .fontSize(16)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.color_text_primary'));
-          Text('主题模式、沉浸光感')
+          Text('主题模式、加密通知重发、沉浸光感')
             .fontSize(12)
             .fontColor($r('app.color.color_text_hint'));
         }.alignItems(HorizontalAlign.Start).layoutWeight(1);
@@ -137,7 +137,7 @@ export struct NotifySettingsSection {
     .width('100%');
   }
 
-  // 进入个性化设置页：主题模式、沉浸光感等视觉偏好集中管理。
+  // 进入个性化设置页：主题模式、加密通知重发、沉浸光感等偏好集中管理。
   private async openPersonalizationSettings(): Promise<void> {
     const uiCtx: UIContext = this.getUIContext();
     try {

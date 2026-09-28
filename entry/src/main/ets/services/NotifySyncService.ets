@@ -5,6 +5,7 @@ import { ServerEntry } from '../model/ServerEntry';
 import { notifySourceKey } from '../utils/NotifyIdentity';
 import { AutoCopyService, AutoCopySyncRound } from './AutoCopyService';
 import { DecryptedNotificationService } from './DecryptedNotificationService';
+import { EncryptedNotificationResendService } from './EncryptedNotificationResendService';
 import { MessageCacheStore } from './MessageCacheStore';
 import { MessageListResult, NotifyMessageService } from './NotifyMessageService';
 import { ServerManager } from './ServerManager';
@@ -286,11 +287,13 @@ export class NotifySyncService {
           this.errors.set(server.id, '本地保存失败；远端通知已保留，稍后可重试');
           return;
         }
+        // 每页处理前读取最新偏好：设置页开启后，后续同步页立即按新规则发布。
+        const resendArchived: boolean = await EncryptedNotificationResendService.isEnabled();
         for (let i: number = 0; i < result.messages.length; i++) {
           const message: NotifyMessage = result.messages[i];
           message.deviceKey = sourceKey;
-          if (message.needsDecryptedNotification() &&
-            !(await DecryptedNotificationService.publish(message, server))) {
+          if (message.needsDecryptedNotification(Date.now(), resendArchived) &&
+            !(await DecryptedNotificationService.publish(message, server, resendArchived))) {
             message.migrationReady = false;
           }
           if (message.encrypted && !message.migrationReady) {
