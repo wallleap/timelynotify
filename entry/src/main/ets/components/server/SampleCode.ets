@@ -127,17 +127,42 @@ export struct SampleCode {
 
       // 两个底部操作均使用卡片选中的服务器，不修改通知列表的目标。
       Row({ space: 8 }) {
-        Button('复制地址和 Key')
-          .layoutWeight(1)
+        // 复制操作合并为分段按钮：主区域复制 Key，右侧菜单提供地址及完整推送地址。
+        Row() {
+          Button('复制 Key')
+            .layoutWeight(1)
+            .height(44)
+            .fontSize(14)
+            .fontColor($r('app.color.color_text_primary'))
+            .backgroundColor(Color.Transparent)
+            .borderRadius(0)
+            .enabled(this.serverList.length > 0)
+            .onClick(() => {
+              this.copyKey();
+            });
+          Divider()
+            .vertical(true)
+            .height(20)
+            .strokeWidth(0.5)
+            .color($r('app.color.color_border_subtle'));
+          Row() {
+            Image($r('app.media.select_more'))
+              .width(16)
+              .height(16)
+              .fillColor($r('app.color.color_text_secondary'))
+              .draggable(false);
+          }
+          .width(34)
           .height(44)
-          .fontSize(14)
-          .fontColor($r('app.color.color_text_primary'))
-          .backgroundColor($r('app.color.color_bg_control_glass'))
-          .borderRadius(10)
+          .justifyContent(FlexAlign.Center)
           .enabled(this.serverList.length > 0)
-          .onClick(() => {
-            this.copyAddressAndKey();
-          });
+          .bindMenu(this.copyMenu(), this.menuOptions());
+        }
+        .layoutWeight(1)
+        .height(44)
+        .backgroundColor($r('app.color.color_bg_control_glass'))
+        .borderRadius(10)
+        .clip(true);
 
         Button() {
           Row({ space: 6 }) {
@@ -305,6 +330,21 @@ export struct SampleCode {
     .backgroundColor($r('app.color.color_bg_dialog_glass'));
   }
 
+  // 分段按钮右侧的菜单只操作卡片当前选中的服务器。
+  @Builder
+  private copyMenu() {
+    Menu() {
+      MenuItem({ content: '复制地址' }).onClick(() => {
+        this.copyAddress();
+      });
+      MenuItem({ content: '复制地址和 Key' }).onClick(() => {
+        this.copyAddressAndKey();
+      });
+    }
+    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
+    .backgroundColor($r('app.color.color_bg_dialog_glass'));
+  }
+
   // 复制当前展示模式的完整、可执行命令。
   private async copyCode(): Promise<void> {
     const server: ServerEntry | null = this.selectedServer();
@@ -338,6 +378,33 @@ export struct SampleCode {
     const baseURL: string = server.baseURL.replace(/\/+$/, '');
     const ok: boolean = await ClipboardService.copyText(`${baseURL}/${key}`);
     showToast(this.getUIContext(), ok ? '已复制地址和 Key' : '复制失败');
+  }
+
+  // 单独复制服务器地址，不依赖设备 Key 是否已注册。
+  private async copyAddress(): Promise<void> {
+    const server: ServerEntry | null = this.selectedServer();
+    if (!server) {
+      showToast(this.getUIContext(), '暂无可用服务器');
+      return;
+    }
+    const ok: boolean = await ClipboardService.copyText(server.baseURL.replace(/\/+$/, ''));
+    showToast(this.getUIContext(), ok ? '已复制地址' : '复制失败');
+  }
+
+  // 单独复制当前服务器的设备 Key；缺失时先复用原有注册流程获取。
+  private async copyKey(): Promise<void> {
+    const server: ServerEntry | null = this.selectedServer();
+    if (!server) {
+      showToast(this.getUIContext(), '暂无可用服务器');
+      return;
+    }
+    const key: string = await this.ensureDeviceKey(server);
+    if (!key) {
+      showToast(this.getUIContext(), '未获取到设备 Key');
+      return;
+    }
+    const ok: boolean = await ClipboardService.copyText(key);
+    showToast(this.getUIContext(), ok ? '已复制 Key' : '复制失败');
   }
 
   // 向选中的服务器发送与代码块相同参数的 POST 测试推送。
