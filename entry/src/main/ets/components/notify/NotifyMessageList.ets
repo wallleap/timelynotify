@@ -111,14 +111,11 @@ export struct NotifyMessageList {
 
   build() {
     List({ space: 0, scroller: this.listScroller }) {
-      // 自绘标题栏按实际遮挡距离避让，再留出与列表左右边距相同的间距。
-      // 沉浸光感下 HDS 自行避让标题栏，仅保留与左右边距相同的视觉间距。
+      // 顶部占位：避让标题栏与覆盖在列表上层的错误 Banner，再留出与列表左右边距相同的间距。
       ListItem() {
         Row()
           .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled
-            ? LIST_EDGE_SPACING
-            : this.topInset + LIST_EDGE_SPACING);
+          .height(this.topInset + LIST_EDGE_SPACING);
       }
 
       LazyForEach(this.dataSource, (row: NotifyListRow) => {
