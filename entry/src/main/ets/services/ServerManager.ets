@@ -593,7 +593,11 @@ export class ServerManager {
     hilog.info(DOMAIN, TAG, '正在 ping：%{public}s', pingURL);
     const resp: HttpResponse<PingResponse> = await HttpUtil.get<PingResponse>(pingURL);
     if (resp.code !== 200) {
-      return `服务器无响应（HTTP ${resp.code}）`;
+      // code=0 为连接层异常（网络超时、DNS 失败、服务器无响应、地址错误等），
+      // 用用户可理解的文案替代技术性的 "HTTP 0"
+      return resp.code === 0
+        ? '无法连接到服务器，请检查网络或服务器地址'
+        : `服务器无响应（HTTP ${resp.code}）`;
     }
     if (!resp.result) {
       return '服务器返回格式无效';

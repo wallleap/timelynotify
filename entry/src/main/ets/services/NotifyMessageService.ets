@@ -317,7 +317,11 @@ export class NotifyMessageService {
       return result;
     }
     if (resp.code < 200 || resp.code >= 300) {
-      result.errorMsg = `请求失败（HTTP ${resp.code}）`;
+      // code=0 为连接层异常（网络超时、DNS 失败、服务器无响应、地址错误等），
+      // 用用户可理解的文案替代技术性的 "HTTP 0"，引导同时排查网络与服务器
+      result.errorMsg = resp.code === 0
+        ? '无法连接到服务器，请检查网络或服务器地址'
+        : `请求失败（HTTP ${resp.code}）`;
       return result;
     }
     if (!resp.result) {
@@ -455,7 +459,9 @@ export class NotifyMessageService {
         return '';
       }
       if (resp.code < 200 || resp.code >= 300) {
-        return `删除失败（HTTP ${resp.code}）`;
+        return resp.code === 0
+          ? '无法连接到服务器，请检查网络或服务器地址'
+          : `删除失败（HTTP ${resp.code}）`;
       }
       hilog.info(DOMAIN, TAG, '消息 %{public}d 删除成功', messageId);
       return '';
@@ -531,7 +537,9 @@ export class NotifyMessageService {
         return '客户端 Token 无效';
       }
       if (resp.code < 200 || resp.code >= 300) {
-        return `清空失败（HTTP ${resp.code}）`;
+        return resp.code === 0
+          ? '无法连接到服务器，请检查网络或服务器地址'
+          : `清空失败（HTTP ${resp.code}）`;
       }
       hilog.info(DOMAIN, TAG, '全部消息清空成功');
       return '';
@@ -555,8 +563,10 @@ export class NotifyMessageService {
     try {
       const resp: HttpResponse<PushEnvelope> = await HttpUtil.post<PushEnvelope, TestPushPayload>(fullURL, req);
       if (resp.code < 200 || resp.code >= 300) {
-        // code=0 为网络层异常（resp.message 已含原因），否则为 HTTP 状态错误
-        return resp.code === 0 ? resp.message : `推送失败（HTTP ${resp.code}）`;
+        // code=0 为连接层异常，用用户可理解的文案替代技术性错误详情
+        return resp.code === 0
+          ? '无法连接到服务器，请检查网络或服务器地址'
+          : `推送失败（HTTP ${resp.code}）`;
       }
       if (!resp.result) {
         return '响应为空';

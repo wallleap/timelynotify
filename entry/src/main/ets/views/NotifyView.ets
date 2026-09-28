@@ -283,17 +283,17 @@ export struct NotifyView {
   }
 
   /**
-   * 固定 Banner 覆盖在降级布局的列表之上时，为首项和下拉刷新指示器预留实际高度。
-   * 沉浸布局仍沿用 HDS 的内容安全区，不额外增加间距。
+   * Banner 覆盖在列表之上时（沉浸光感与降级模式均如此），为首项和下拉刷新指示器预留实际高度，
+   * 避免首条通知被 Banner 遮挡。无 Banner 时只保留标题栏避让距离。
    */
   private getListTopInset(): number {
     const titleInset: number = this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
       ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0;
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled || this.serverErrorBanner.length === 0) {
+    if (this.serverErrorBanner.length === 0) {
       return titleInset;
     }
-    const fallbackBannerHeight: number = this.serverErrorBannerCollapsed ? 32 : 44;
-    return titleInset + Math.max(this.serverErrorBannerHeight, fallbackBannerHeight) +
+    const bannerHeight: number = this.serverErrorBannerCollapsed ? 32 : 44;
+    return titleInset + Math.max(this.serverErrorBannerHeight, bannerHeight) +
       (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0);
   }
 
@@ -453,11 +453,10 @@ export struct NotifyView {
 
   @Builder
   refreshContentBody() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+    // 沉浸光感与降级模式统一使用 Stack 覆盖布局：Banner 浮于列表上层，
+    // 避免正常流布局把列表往下推、或滚动内容覆盖 Banner。
+    Stack({ alignContent: Alignment.TopStart }) {
       Column() {
-        if (this.serverErrorBanner.length > 0) {
-          this.serverErrorBannerView();
-        }
         if (this.syncProgressText.length > 0 || this.syncFeedbackText.length > 0) {
           this.syncProgressView();
         }
@@ -465,25 +464,13 @@ export struct NotifyView {
       }
       .width('100%')
       .height('100%');
-    } else {
-      Stack({ alignContent: Alignment.TopStart }) {
-        Column() {
-          if (this.syncProgressText.length > 0 || this.syncFeedbackText.length > 0) {
-            this.syncProgressView();
-          }
-          this.refreshListContent();
-        }
-        .width('100%')
-        .height('100%');
 
-        // 降级布局中错误提示固定在列表上层，避免滚动内容覆盖。
-        if (this.serverErrorBanner.length > 0) {
-          this.serverErrorBannerView();
-        }
+      if (this.serverErrorBanner.length > 0) {
+        this.serverErrorBannerView();
       }
-      .width('100%')
-      .height('100%');
     }
+    .width('100%')
+    .height('100%');
   }
 
   /** 大批量历史迁移时给出已处理数量，不宣称总数或删除成功数。 */
@@ -778,8 +765,7 @@ export struct NotifyView {
   @Builder
   refreshHeaderBuilder() {
     NotifyRefreshHeader({ refreshState: this.refreshState,
-      topInset: this.getListTopInset(),
-      immersiveEnabled: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled });
+      topInset: this.getListTopInset() });
   }
 
   @Builder
