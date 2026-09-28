@@ -38,6 +38,8 @@ export struct NotifyMessageList {
   @Prop @Watch('reloadDataSource') expandedGroups: string[] = [];
   @Prop groupCardHeights: Map<string, number> = new Map<string, number>();
   @Prop @Watch('reloadDataSource') groupTotals: Map<string, number> = new Map<string, number>();
+  // 每个 group_key 当前选中的缓存消息数（由页面异步查询数据库后传入）
+  @Prop @Watch('reloadDataSource') selectedGroupCounts: Map<string, number> = new Map<string, number>();
   @Prop groupLoadingMore: Set<string> = new Set<string>();
   // 是否启用分组显示（false 时所有消息平铺）
   @Prop @Watch('reloadDataSource') groupEnabled: boolean = true;
@@ -126,7 +128,11 @@ export struct NotifyMessageList {
               isEditing: this.isEditing,
               selected: this.isSelected(notifyIdentity(row.message)),
               onSelect: (id: string) => this.onToggleSelect(id),
-              onSelectionChange: (id: string, selected: boolean) => this.onSetSelected(id, selected),
+              // 过滤 select 属性回显触发的 onChange（如全选后属性同步），避免误操作
+              onSelectionChange: (id: string, selected: boolean) => {
+                if (selected === this.isSelected(id)) return;
+                this.onSetSelected(id, selected);
+              },
               onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
               onOpenUrl: (url: string) => this.onOpenUrl(url),
               onCopyCode: (code: string) => this.onCopyCode(code),
@@ -145,10 +151,15 @@ export struct NotifyMessageList {
               section: row.section,
               isEditing: this.isEditing,
               groupSelected: this.groupSelected(row.section.messages),
-              selectedCount: this.groupSelectedCount(row.section.messages),
+              selectedCount: this.groupSelectedCount(row.section!),
               cardHeight: this.groupCardHeights.get(row.section.groupKey) ?? 0,
               onToggleSelection: () => this.onToggleGroupSelection(row.section!.messages),
-              onSelectionChange: (selected: boolean) => this.onSetGroupSelection(row.section!.messages, selected),
+              // 过滤 select 属性回显触发的 onChange：目标状态与当前 group 选中态一致时不处理，
+              // 避免取消组内单条后 groupSelected 变 false 又回调取消整组
+              onSelectionChange: (selected: boolean) => {
+                if (selected === this.groupSelected(row.section!.messages)) return;
+                this.onSetGroupSelection(row.section!.messages, selected);
+              },
               onOpen: () => this.onOpenGroup(row.section!),
               onHeightChange: (height: number) => this.onHeightChange(row.section!.groupKey, height),
               onOpenUrl: (url: string) => this.onOpenUrl(url),
@@ -174,7 +185,11 @@ export struct NotifyMessageList {
               selected: this.isSelected(notifyIdentity(row.message)),
               contentTransitionId: row.indexInGroup === 0 ? `gmc:${row.section.groupKey}` : '',
               onSelect: (id: string) => this.onToggleSelect(id),
-              onSelectionChange: (id: string, selected: boolean) => this.onSetSelected(id, selected),
+              // 过滤 select 属性回显触发的 onChange，避免全选/组选后属性同步误操作
+              onSelectionChange: (id: string, selected: boolean) => {
+                if (selected === this.isSelected(id)) return;
+                this.onSetSelected(id, selected);
+              },
               onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
               onOpenUrl: (url: string) => this.onOpenUrl(url),
               onCopyCode: (code: string) => this.onCopyCode(code),
@@ -354,11 +369,19 @@ export struct NotifyMessageList {
     return messages.length > 0 && messages.every((message: NotifyMessage) => this.isSelected(notifyIdentity(message)));
   }
 
-  /** 返回当前已加载的分组消息中已选数量；真实总数由 section.total 单独展示。 */
-  private groupSelectedCount(messages: NotifyMessage[]): number {
+  /**
+   * 返回某 group 当前选中的缓存消息数。
+   * 优先使用页面异步查询的 selectedGroupCounts（覆盖未加载到内存的历史消息），
+   * 回退到已加载消息的本地计数。
+   */
+  private groupSelectedCount(section: NotifySection): number {
+    const fromCache: number | undefined = this.selectedGroupCounts.get(section.groupKey);
+    if (fromCache !== undefined) {
+      return fromCache;
+    }
     let count: number = 0;
-    for (let i = 0; i < messages.length; i++) {
-      if (this.isSelected(notifyIdentity(messages[i]))) {
+    for (let i = 0; i < section.messages.length; i++) {
+      if (this.isSelected(notifyIdentity(section.messages[i]))) {
         count++;
       }
     }
@@ -412,10 +435,14 @@ export struct NotifyMessageList {
       section: section,
       isEditing: this.isEditing,
       groupSelected: this.groupSelected(section.messages),
-      selectedCount: this.groupSelectedCount(section.messages),
+      selectedCount: this.groupSelectedCount(section),
       onToggle: () => this.isEditing ? this.onToggleGroupSelection(section.messages) :
         this.onToggleGroupExpanded(section.groupKey),
-      onSelectionChange: (selected: boolean) => this.onSetGroupSelection(section.messages, selected)
+      // 过滤 select 属性回显触发的 onChange，避免取消组内单条后误取消整组
+      onSelectionChange: (selected: boolean) => {
+        if (selected === this.groupSelected(section.messages)) return;
+        this.onSetGroupSelection(section.messages, selected);
+      }
     });
   }
 }

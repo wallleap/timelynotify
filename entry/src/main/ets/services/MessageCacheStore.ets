@@ -956,6 +956,100 @@ export class MessageCacheStore {
   }
 
   /**
+   * 获取指定 device_keys 下所有消息的身份字符串（JSON.stringify([deviceKey, id])）。
+   * 用于"全选"时选中全部本地缓存消息，不受列表分页加载数量限制。
+   * 只查询 device_key 和 id 两列，避免加载完整消息对象造成内存压力。
+   */
+  static async getAllIdentities(deviceKeys: string[]): Promise<string[]> {
+    const identities: string[] = [];
+    const db = await MessageCacheStore.getStore();
+    if (!db || deviceKeys.length === 0) {
+      return identities;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT device_key, id FROM ${TABLE_MSG} WHERE device_key IN (${placeholders})`, deviceKeys);
+      if (rs.goToFirstRow()) {
+        const dkIdx: number = rs.getColumnIndex('device_key');
+        const idIdx: number = rs.getColumnIndex('id');
+        do {
+          identities.push(JSON.stringify([rs.getString(dkIdx), rs.getLong(idIdx)]));
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'getAllIdentities 失败：%{public}s', formatError(err));
+    }
+    return identities;
+  }
+
+  /**
+   * 统计指定 device_keys 下，每个 group_key 中被选中的消息数量。
+   * selectedIds 为 JSON.stringify([deviceKey, id]) 格式的身份字符串数组。
+   * 只查询 group_key、device_key、id 三列，避免加载完整消息对象。
+   */
+  static async getSelectedGroupCounts(deviceKeys: string[], selectedIds: string[]): Promise<Map<string, number>> {
+    const counts: Map<string, number> = new Map<string, number>();
+    const db = await MessageCacheStore.getStore();
+    if (!db || deviceKeys.length === 0 || selectedIds.length === 0) {
+      return counts;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const selectedSet: Set<string> = new Set<string>(selectedIds);
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT group_key, device_key, id FROM ${TABLE_MSG} WHERE device_key IN (${placeholders})`, deviceKeys);
+      if (rs.goToFirstRow()) {
+        const gkIdx: number = rs.getColumnIndex('group_key');
+        const dkIdx: number = rs.getColumnIndex('device_key');
+        const idIdx: number = rs.getColumnIndex('id');
+        do {
+          const identity: string = JSON.stringify([rs.getString(dkIdx), rs.getLong(idIdx)]);
+          if (selectedSet.has(identity)) {
+            const gk: string = rs.getString(gkIdx);
+            counts.set(gk, (counts.get(gk) ?? 0) + 1);
+          }
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'getSelectedGroupCounts 失败：%{public}s', formatError(err));
+    }
+    return counts;
+  }
+
+  /**
+   * 获取指定 device_keys 下某个 group_key 的所有消息身份字符串。
+   * 用于 group 勾选时覆盖该组全部本地缓存消息（含未加载到列表内存的历史消息）。
+   */
+  static async getGroupIdentities(deviceKeys: string[], groupKey: string): Promise<string[]> {
+    const identities: string[] = [];
+    const db = await MessageCacheStore.getStore();
+    if (!db || deviceKeys.length === 0) {
+      return identities;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const args: string[] = deviceKeys.slice();
+      args.push(groupKey);
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT device_key, id FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND group_key=?`, args);
+      if (rs.goToFirstRow()) {
+        const dkIdx: number = rs.getColumnIndex('device_key');
+        const idIdx: number = rs.getColumnIndex('id');
+        do {
+          identities.push(JSON.stringify([rs.getString(dkIdx), rs.getLong(idIdx)]));
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'getGroupIdentities 失败：%{public}s', formatError(err));
+    }
+    return identities;
+  }
+
+  /**
    * 跨多个历史命名空间按 (timestamp,id,device_key) 全序加载更旧的组内通知。
    * 单独用 id 作游标会漏掉其它服务器上数字 id 相同或更大的旧通知。
    */

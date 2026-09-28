@@ -38,11 +38,10 @@ import { NotifySyncService } from '../services/NotifySyncService';
 import showToast from '../components/showToast';
 import { NotifySection } from '../components/notify/NotifyViewTypes';
 import {
+  areGroupMessagesSelected,
   hasSelectedMessage,
   retainExpandableGroups,
-  setGroupMessagesSelection,
   setSelectedMessage,
-  toggleGroupMessages,
   toggleSelectedMessage
 } from '../components/notify/NotifySelectionUtils';
 import { NotifyMessageDetail } from '../components/notify/NotifyMessageDetail';
@@ -89,13 +88,17 @@ export struct NotifyView {
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
   @StorageLink(KEY_NOTIFY_EDITING) @Watch('onIsEditingChanged') isEditing: boolean = false;
-  @State selectedIds: string[] = [];
+  @State @Watch('onSelectedIdsChanged') selectedIds: string[] = [];
+  // 每个 group_key 当前选中的缓存消息数，供 group 头部"已选 X / Y"显示真实选中数量
+  @State selectedGroupCounts: Map<string, number> = new Map<string, number>();
   // 导出选中消息：防重复触发
   @State exportingSelected: boolean = false;
   @State expandedGroups: string[] = [];
   @State groupCardHeights: Map<string, number> = new Map<string, number>();
   // 每个 group_key 的真实总数（含未加载到内存的部分），用于徽标显示和"加载更多"按钮
   @State groupTotals: Map<string, number> = new Map<string, number>();
+  // 当前可见 device_keys 的本地缓存消息总数，用于"全选"计数与判断
+  @State totalCachedCount: number = 0;
   // 组内加载更多进行中的 group_key 集合，用于按钮显示 loading 态
   @State groupLoadingMore: Set<string> = new Set<string>();
   // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
@@ -772,7 +775,8 @@ export struct NotifyView {
   listView() {
     NotifyMessageList({ messages: this.messages, isEditing: this.isEditing, selectedIds: this.selectedIds,
       expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights,
-      groupTotals: this.groupTotals, groupLoadingMore: this.groupLoadingMore,
+      groupTotals: this.groupTotals, selectedGroupCounts: this.selectedGroupCounts,
+      groupLoadingMore: this.groupLoadingMore,
       groupEnabled: this.groupEnabled,
       statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
       topInset: this.getListTopInset(),
@@ -823,7 +827,7 @@ export struct NotifyView {
   // 多选模式底部操作栏（需要加在 Refresh 外面）
   @Builder
   editActionBar() {
-    NotifyEditActionBar({ selectedCount: this.selectedIds.length, messageCount: this.messages.length,
+    NotifyEditActionBar({ selectedCount: this.selectedIds.length, messageCount: this.totalCachedCount,
       exporting: this.exportingSelected, navBarHeight: this.navBarHeight,
       immersiveLightEnabled: this.immersiveLightEnabled,
       onCancel: () => this.exitEditMode(),
@@ -832,17 +836,17 @@ export struct NotifyView {
       onDelete: () => this.handleDeleteSelected() });
   }
 
-  /** 切换当前列表的全选状态，供多选底栏回调使用。 */
-  private toggleAllSelection(): void {
-    if (this.selectedIds.length === this.messages.length) {
+  /** 切换当前列表的全选状态，供多选底栏回调使用。全选覆盖所有本地缓存消息，不受内存加载数量限制。 */
+  private async toggleAllSelection(): Promise<void> {
+    // 已选中全部缓存消息时取消全选
+    if (this.selectedIds.length >= this.totalCachedCount && this.totalCachedCount > 0) {
       this.selectedIds = [];
       return;
     }
-    const ids: string[] = [];
-    for (let i = 0; i < this.messages.length; i++) {
-      ids.push(notifyIdentity(this.messages[i]));
-    }
-    this.selectedIds = ids;
+    // 从本地缓存查询所有消息身份，确保全选覆盖未加载到内存的历史消息
+    const keys: string[] = this.getVisibleHistoryKeys();
+    const allIds: string[] = await MessageCacheStore.getAllIdentities(keys);
+    this.selectedIds = allIds;
   }
 
   /** 处理导出入口，保留空选择和重复点击提示。 */
@@ -1194,15 +1198,33 @@ export struct NotifyView {
     }
   }
 
+  /** selectedIds 变化时异步刷新各 group 的真实选中计数。 */
+  private onSelectedIdsChanged(): void {
+    this.refreshSelectedGroupCounts();
+  }
+
+  /**
+   * 查询本地缓存，计算每个 group_key 当前被选中的消息数。
+   */
+  private async refreshSelectedGroupCounts(): Promise<void> {
+    if (this.selectedIds.length === 0) {
+      this.selectedGroupCounts = new Map<string, number>();
+      return;
+    }
+    const keys: string[] = this.getVisibleHistoryKeys();
+    if (keys.length === 0) {
+      return;
+    }
+    this.selectedGroupCounts = await MessageCacheStore.getSelectedGroupCounts(keys, this.selectedIds);
+  }
+
   private handleMultiSelectClicked(): void {
     if (this.messages.length === 0) {
       showToast(this.getUIContext(), '暂无可多选的通知');
       return;
     }
     if (this.isEditing) {
-      if (this.selectedIds.length === this.messages.length) {
-        this.selectedIds = [];
-      } else if (this.selectedIds.length > 0) {
+      if (this.selectedIds.length > 0) {
         this.selectedIds = [];
       } else {
         this.exitEditMode();
@@ -1344,14 +1366,53 @@ export struct NotifyView {
     }
   }
 
-  private toggleGroupSelection(groupMessages: NotifyMessage[]): void {
-    this.selectedIds = toggleGroupMessages(this.selectedIds, groupMessages);
+  /**
+   * 切换某 group 的选中状态。与"全选"一致，覆盖该组全部本地缓存消息
+   * （含未加载到列表内存的历史消息），而非仅操作已加载的 section.messages。
+   */
+  private async toggleGroupSelection(groupMessages: NotifyMessage[]): Promise<void> {
+    if (groupMessages.length === 0) {
+      return;
+    }
+    const groupKey: string = groupMessages[0].group;
+    const groupIds: string[] = await MessageCacheStore.getGroupIdentities(this.getVisibleHistoryKeys(), groupKey);
+    // 已加载消息全部选中时视为整组选中，此时取消选中该组全部缓存消息
+    if (areGroupMessagesSelected(this.selectedIds, groupMessages)) {
+      const removeSet: Set<string> = new Set<string>(groupIds);
+      this.selectedIds = this.selectedIds.filter((id: string) => !removeSet.has(id));
+    } else {
+      const existing: Set<string> = new Set<string>(this.selectedIds);
+      const next: string[] = [...this.selectedIds];
+      for (let i = 0; i < groupIds.length; i++) {
+        if (!existing.has(groupIds[i])) {
+          next.push(groupIds[i]);
+        }
+      }
+      this.selectedIds = next;
+    }
   }
 
-  private setGroupSelection(groupMessages: NotifyMessage[], selected: boolean): void {
-    const next: string[] = setGroupMessagesSelection(this.selectedIds, groupMessages, selected);
-    if (next !== this.selectedIds) {
+  /**
+   * 按 Checkbox 目标状态设置某 group 的选中状态，覆盖该组全部本地缓存消息。
+   */
+  private async setGroupSelection(groupMessages: NotifyMessage[], selected: boolean): Promise<void> {
+    if (groupMessages.length === 0) {
+      return;
+    }
+    const groupKey: string = groupMessages[0].group;
+    const groupIds: string[] = await MessageCacheStore.getGroupIdentities(this.getVisibleHistoryKeys(), groupKey);
+    if (selected) {
+      const existing: Set<string> = new Set<string>(this.selectedIds);
+      const next: string[] = [...this.selectedIds];
+      for (let i = 0; i < groupIds.length; i++) {
+        if (!existing.has(groupIds[i])) {
+          next.push(groupIds[i]);
+        }
+      }
       this.selectedIds = next;
+    } else {
+      const removeSet: Set<string> = new Set<string>(groupIds);
+      this.selectedIds = this.selectedIds.filter((id: string) => !removeSet.has(id));
     }
   }
 
@@ -1409,6 +1470,7 @@ export struct NotifyView {
         const pair: DeviceIdPair = { deviceKey: m.deviceKey, id: m.id };
         await MessageCacheStore.deleteByDeviceIdPairs([pair]);
         this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
+        this.totalCachedCount = Math.max(0, this.totalCachedCount - 1);
       }
       this.removeFromList([notifyIdentity(m)]);
       this.exitEditMode();
@@ -1444,8 +1506,11 @@ export struct NotifyView {
         return;
       }
       this.removeGroupFromList(section.groupKey);
-      // 刷新分组总数
+      // 刷新分组总数与缓存总数
       this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
+      let total: number = 0;
+      this.groupTotals.forEach((cnt: number) => { total += cnt; });
+      this.totalCachedCount = total;
       showToast(uiCtx, `已从本机删除 ${deleted} 条`);
     });
   }
@@ -1477,21 +1542,28 @@ export struct NotifyView {
         return;
       }
       const ids: string[] = [...this.selectedIds];
-      // 按 (deviceKey, id) 精确删除，避免跨服务器同 id 误删
+      // 直接解析身份字符串（JSON.stringify([deviceKey, id])）为删除对，
+      // 不依赖内存中的 this.messages，确保未加载到列表的历史消息也能被删除
       const pairs: DeviceIdPair[] = [];
-      for (let i = 0; i < this.messages.length; i++) {
-        const m: NotifyMessage = this.messages[i];
-        if (ids.indexOf(notifyIdentity(m)) < 0) {
-          continue;
-        }
-        if (m.deviceKey && m.deviceKey.length > 0) {
-          pairs.push({ deviceKey: m.deviceKey, id: m.id });
+      for (let i = 0; i < ids.length; i++) {
+        try {
+          const parsed: Object = JSON.parse(ids[i]);
+          if (parsed instanceof Array && parsed.length === 2 &&
+            typeof parsed[0] === 'string' && typeof parsed[1] === 'number') {
+            pairs.push({ deviceKey: parsed[0] as string, id: parsed[1] as number });
+          }
+        } catch (_ignore) {
+          // 忽略无法解析的身份字符串
         }
       }
       if (pairs.length > 0) {
         await MessageCacheStore.deleteByDeviceIdPairs(pairs);
       }
       this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
+      // 重新统计缓存总数
+      let total: number = 0;
+      this.groupTotals.forEach((count: number) => { total += count; });
+      this.totalCachedCount = total;
       this.removeFromList(ids);
       this.exitEditMode();
       showToast(uiCtx, `已从本机删除 ${pairs.length} 条`);
@@ -1535,6 +1607,7 @@ export struct NotifyView {
       this.expandedGroups = [];
       this.groupCardHeights = new Map<string, number>();
       this.groupTotals = new Map<string, number>();
+      this.totalCachedCount = 0;
       this.groupLoadingMore = new Set<string>();
     });
   }
@@ -1601,10 +1674,15 @@ export struct NotifyView {
           return;
         }
         const keys: string[] = this.viewAll ? this.getAllDeviceKeys() : this.getCurrentHistoryKeys();
-        const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 100);
+        // 本地缓存加载上限：提高到 500，使更多已缓存消息可被全选/分组选中（网络同步 PAGE_SIZE 仍为 100）
+        const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 500);
         if (seq === this.loadSeq) {
           this.messages = refreshed.messages;
           this.groupTotals = refreshed.totals;
+          // 统计所有可见 device_keys 的缓存消息总数，供"全选"计数使用
+          let total: number = 0;
+          refreshed.totals.forEach((count: number) => { total += count; });
+          this.totalCachedCount = total;
         }
       } while (this.pageRefreshPending);
     } finally {
@@ -1788,7 +1866,7 @@ export struct NotifyView {
     }
     this.groupLoadingMore = new Set<string>(this.groupLoadingMore).add(groupKey);
     try {
-      const PAGE_SIZE: number = 100;
+      const PAGE_SIZE: number = 500;
       const keys: string[] = this.getVisibleHistoryKeys();
       const older: NotifyMessage[] = await MessageCacheStore.loadAllGroupOlder(keys, groupKey, oldest, PAGE_SIZE);
       if (older.length > 0) {
@@ -1868,7 +1946,7 @@ export struct NotifyView {
         showToast(uiContext, '上下文获取失败');
         return;
       }
-      const count: number = await NotifyExportService.exportSelected(abilityContext, this.messages, this.selectedIds);
+      const count: number = await NotifyExportService.exportSelected(abilityContext, this.getVisibleHistoryKeys(), this.selectedIds);
       if (count < 0) {
         showToast(uiContext, '设备未注册，无法导出');
       } else if (count > 0) {

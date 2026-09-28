@@ -54,14 +54,23 @@ export class ExportAllResult {
 
 /** 选中通知的系统文件导出服务，保持页面只负责触发与提示。 */
 export class NotifyExportService {
-  static async exportSelected(context: common.UIAbilityContext, messages: NotifyMessage[], selectedIds: string[]): Promise<number> {
+  static async exportSelected(context: common.UIAbilityContext, deviceKeys: string[], selectedIds: string[]): Promise<number> {
     await ServerManager.getInstance().ensureLoaded();
     const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
     if (!deviceKey || deviceKey.length === 0) {
       return -1;
     }
+    // 从本地缓存加载所有可见 device_keys 的消息，再按选中身份过滤，
+    // 确保未加载到列表内存的历史消息也能被导出
+    const all: NotifyMessage[] = [];
+    for (let i = 0; i < deviceKeys.length; i++) {
+      const portion: NotifyMessage[] | null = await MessageCacheStore.loadAllForExport(deviceKeys[i]);
+      if (portion) {
+        all.push(...portion);
+      }
+    }
     const ids: Set<string> = new Set<string>(selectedIds);
-    const selected: NotifyMessage[] = messages.filter((message: NotifyMessage) => ids.has(notifyIdentity(message)));
+    const selected: NotifyMessage[] = all.filter((message: NotifyMessage) => ids.has(notifyIdentity(message)));
     if (selected.length === 0) {
       return 0;
     }
