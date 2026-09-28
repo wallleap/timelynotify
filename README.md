@@ -30,7 +30,7 @@ TODO:
 - 兼容 bark 的所有接口（`/register`、`/push` 等）
 - 服务端暂存待同步的通知；客户端同步并写入本地历史后删除远程副本。通知列表和「导出通知」均读取本地历史。服务端 `delete=1`
   推送删除会写入 `extraIds` 墓碑，客户端按此同步清理本地已同步副本
-- 大量待同步通知按每页最多 100 条拉取，并在本地数据库中整页事务提交；成功后才清理该页远端副本。每页提交后列表和「已处理 N 条」进度会更新；「全部」视图最多同时同步 2 个服务器。中断或写入失败时，尚未清理的远端通知会在下次进入或轮询时重试；密钥缺失、解密失败或解密后本地通知发布失败时保留远端密文并提示检查配置。自动复制只保留本轮最新候选，不缓存整批通知
+- 大量待同步通知按每页最多 100 条拉取，并在本地数据库中整页事务提交；成功后才清理该页远端副本。每页提交后列表和「已处理 N 条」进度会更新；「全部」视图最多同时同步 2 个服务器。中断或写入失败时，尚未清理的远端通知会在下次进入或轮询时重试；密钥缺失、解密失败或解密后本地通知发布失败时保留远端密文并提示检查配置。手动删除解密失败的通知时，会先核对服务器当前持久化实例 ID，再清理其远端密文；无法确认实例或远端删除失败的条目留在本地供重试。自动复制只保留本轮最新候选，不缓存整批通知
 - 同步由应用前台生命周期管理：离开通知页、切到「服务」「我的」或其它应用内页面时仍会完成当前同步；进入系统后台后暂停后续分页与轮询，回前台自动续拉。通知 Tab 展示同步进度和短暂完成提示，其他 Tab 在通知图标上显示同步指示。同步失败的远端副本保留以待重试。
 - 本地历史按服务端返回的数据库实例 ID、`device_key` 与数字消息 ID 共同标识；服务器重建数据库后即使数字 ID 重复，也不会覆盖旧通知或误打开另一条详情。旧版服务器没有实例 ID 时仍可同步，按服务器配置隔离新缓存。升级前已保存的旧通知继续保留；若同一个旧 `device_key` 曾属于多个服务器，来源无法判定的旧记录仅在「全部」视图显示，不误归入单服务器。
 - 加密配置按服务器分别保存在 Harmony 客户端；Key 可明文输入或点击重置图标安全随机生成，并使用 Asset Store 安全存储、禁止设备/云同步，普通
@@ -136,7 +136,7 @@ TODO:
     ├─ isArchive 缺省/1 → 保存本地；其它值 → 不保存本地
     └─ ttl 正整数秒 → 保存绝对过期时间，进入/刷新列表时清理到期记录
 
-  用户删除：仅删除本地副本，不再请求远程删除
+  用户删除：已迁移通知仅删本地；解密失败通知先删当前实例的远端副本，失败则保留本地
     ├─ 单条/多选/清空均明确提示“删除后无法恢复”；详情 Sheet 底部固定「删除」按钮，API 26+ 使用 Button 系统材质、旧系统使用模糊降级，确认成功后关闭详情
     │  详情 Sheet 标题栏采用 HdsNavigation 半模态（MODAL）样式：正文上滚穿入标题栏区域时呈现动态模糊（API 26+ 为渐变模糊+沉浸光感材质，旧系统为通用模糊背板），回滚到顶自动消退；关闭按钮由标题栏菜单承载、拖拽条悬浮，正文 List 在材质样式分支透明、卡片为 color_bg_surface_glass（亮 65% 白/暗 60% 深色）；Sheet 容器背板与内容样式分支均在 API 26+ 且开关开时走材质路径（容器见 useSheetSystemMaterial 不看加载状态；内容见 useDetailSheetMaterial 只要求 KEY_MATERIAL_LOADED 即模块已加载/实例已预创建），均不看设备 supported——no-op 时系统默认半模态面板本身即半透明材质，比灰底 blur 降级更透；只有 isImmersiveMaterialActive（KEY_MATERIAL_READY，弹窗/Toast 等真 uiMaterial 渲染）才要求 supported=true
     │  全部弹窗统一沉浸光感：切换通知服务及服务器操作相关弹窗的背板统一由 ImmersiveUtil.getDialogBackgroundOptions() 生成并挂到 CustomDialogControllerOptions（controller 一律打开时构造）：沉浸材质生效设备走 systemMaterial（ULTRA_THICK）；其它设备（旧系统/低算力/模拟器/开关关）走系统容器 backgroundBlurStyle(COMPONENT_THICK) + color_bg_dialog_glass（80% 弹窗底色）。关键：模糊只能挂 controller options 系统容器（与 bindSheet/promptAction 同渲染路径），挂 @CustomDialog 内容根节点采样不到下层页面只会得到不透明 tint 白底；内容根节点因此恒为 Color.Transparent，背板圆角 14。首页标题点击打开「切换通知服务」单选弹窗（ServerSwitchDialog；服务器增删/Token/加密管理在「服务」页）：弹窗结构对齐其它弹窗：Scroll 根（maxHeight 80% 兜底）+ 居中标题与右上角 close 图标（app.media.close，无底部按钮）+ List 列表；列表行使用 HDS HdsListItemCard（List>ListItem>Card，SuffixRadio 单选指示，首项「全部通知」+其后服务器名称/URL 列表，cardHeight 68 双行），HdsListItemCard 自带 16vp（API23）/20vp（API26+）卡片左右内缩，故弹窗容器不再叠加水平 padding（否则双重缩进），卡片内部 10vp 文字边距为 HDS 固定规范、无 options 可调；List 限高 280vp，服务器多时在定高区域内上下滚动（scrollBar Auto + Spring）；isImmersiveMaterialActive 时保留 HDS 默认卡片表面，降级时卡片背景用 color_bg_surface_glass、选中用 color_bg_selected_glass+品牌描边与品牌字（透明玻璃质感，模糊来自弹窗系统容器层）；点击即应用（全部→setViewAllMode(true)，服务器→setViewAllMode(false)+switchTo）并关闭弹窗，NotifyView 经 ServerManager listener 刷新标题与列表；viewAll 错误提示条点击打开对应服务器的修复弹窗。promptAction 系统确认框/Toast 默认即 COMPONENT_ULTRA_THICK 容器模糊（挂 systemMaterial 供材质机升级，且 blur 非 NONE 时不设 backgroundColor）；加密设置算法/模式 Menu 无 HDS 对应组件（HDS 仅有 HdsSideMenu 侧边栏、HdsNavigation 标题栏菜单），原生 Menu 的沉浸光感官方入口是 bindMenu 第二参 MenuOptions（继承 ContextMenuOptions）的 systemMaterial 字段（API 26，官方菜单默认样式 THICK，由 ImmersiveUtil.getMenuMaterial() 提供；不要挂 Menu 组件的 .systemMaterial() 通用属性，非文档入口）；Menu 组件自身恒挂 COMPONENT_THICK+color_bg_dialog_glass 作降级，材质生效时官方规定材质优先于组件自身背景/模糊，故无需 if/else 双分支。「我的-外观」入口行在 API 26+ 即显示（不闸 isImmersiveMaterialSupported，低算力模拟器上开关为 no-op 走降级但入口保留），容器模糊全设备仍在
