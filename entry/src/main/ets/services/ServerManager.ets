@@ -528,9 +528,13 @@ export class ServerManager {
     const ctx: common.Context | null = resolveContext(context);
     const entry: ServerEntry | null = this.findById(serverId);
     if (entry) {
+      const changed: boolean = entry.clientToken !== clientToken;
       entry.clientToken = clientToken;
       await this.persist(ctx);
       hilog.info(DOMAIN, TAG, '已更新 client_token：serverId=%{public}s', serverId);
+      if (changed) {
+        this.emitChange();
+      }
     }
   }
 

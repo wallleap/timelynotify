@@ -5,6 +5,7 @@ import { MessageCryptoService } from '../main/ets/services/MessageCryptoService'
 import { NotifyMessage } from '../main/ets/model/NotifyMessage';
 import { ServerEntry } from '../main/ets/model/ServerEntry';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
+import { retryDelayMs } from '../main/ets/services/NotifySyncService';
 import { AutoCopyService, AutoCopySelection, AutoCopySyncRound } from '../main/ets/services/AutoCopyService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
@@ -146,6 +147,13 @@ export default function localUnitTest() {
       const cleared: string[] = setGroupMessagesSelection(groupSelected, group, false);
       expect(cleared.length).assertEqual(0);
       expect(setGroupMessagesSelection(cleared, group, false) === cleared).assertTrue();
+    });
+    it('backsOffFailedServerWithoutStoppingAutomaticRetry', 0, () => {
+      expect(retryDelayMs(1)).assertEqual(15000);
+      expect(retryDelayMs(2)).assertEqual(30000);
+      expect(retryDelayMs(3)).assertEqual(60000);
+      expect(retryDelayMs(5)).assertEqual(300000);
+      expect(retryDelayMs(20)).assertEqual(300000);
     });
     it('separatesSameNumericIdFromDifferentDatabases', 0, () => {
       const first: NotifyMessage = new NotifyMessage();

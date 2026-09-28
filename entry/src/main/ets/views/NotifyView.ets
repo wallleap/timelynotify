@@ -137,6 +137,7 @@ export struct NotifyView {
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   private loadSeq: number = 0;
   private loadQueued: boolean = false;
+  private forceRefreshQueued: boolean = false;
   // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
@@ -500,6 +501,7 @@ export struct NotifyView {
           hilog.warn(DOMAIN, TAG, 'redecrypt cached messages 失败：%{public}s',
             err instanceof Error ? err.message : String(err));
         }
+        NotifySyncService.getInstance().retryServer(serverId);
         this.loadMessages();
       }
       showToast(this.getUIContext(), ok ? '加密设置已保存' : '保存失败');
@@ -525,6 +527,7 @@ export struct NotifyView {
           hilog.warn(DOMAIN, TAG, 'redecrypt cached messages 失败：%{public}s',
             err instanceof Error ? err.message : String(err));
         }
+        NotifySyncService.getInstance().retryServer(serverId);
         this.loadMessages();
       }
       showToast(this.getUIContext(), ok ? '加密设置已清除' : '清除失败');
@@ -689,7 +692,7 @@ export struct NotifyView {
       } else if (this.loading && this.messages.length === 0) {
         NotifyContentState({ mode: 'loading' });
       } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
-        NotifyContentState({ mode: 'error', errorMsg: this.errorMsg, onRetry: () => this.loadMessages() });
+        NotifyContentState({ mode: 'error', errorMsg: this.errorMsg, onRetry: () => this.loadMessages(true) });
       } else if (this.messages.length === 0) {
         NotifyContentState({ mode: 'empty' });
       } else {
@@ -705,7 +708,7 @@ export struct NotifyView {
     })
     .onRefreshing(() => {
       this.refreshing = true;
-      this.loadMessages();
+      this.loadMessages(true);
     });
   }
 
@@ -1206,7 +1209,9 @@ export struct NotifyView {
       this.loading = false;
       if (this.loadQueued) {
         this.loadQueued = false;
-        this.loadMessages();
+        const queuedForce: boolean = this.forceRefreshQueued;
+        this.forceRefreshQueued = false;
+        this.loadMessages(queuedForce);
       } else {
         this.processPendingPushNotice();
       }
@@ -1930,16 +1935,16 @@ export struct NotifyView {
     ServerManager.getInstance().setViewAllMode(viewAll);
   }
 
-  private async loadMessages(): Promise<void> {
+  private async loadMessages(forceAll: boolean = false): Promise<void> {
     if (this.loading) {
       this.refreshing = false;
       this.loadQueued = true;
+      this.forceRefreshQueued = this.forceRefreshQueued || forceAll;
       return;
     }
     this.loading = true;
     const seq: number = ++this.loadSeq;
     this.errorMsg = '';
-    this.serverErrorBanner = '';
     try {
       await ServerManager.getInstance().ensureLoaded();
       const expiredDeleted: number = await MessageCacheStore.purgeExpired();
@@ -1948,7 +1953,7 @@ export struct NotifyView {
         this.groupTotals = new Map<string, number>();
       }
       await this.refreshVisibleAfterSyncPage(seq);
-      await NotifySyncService.getInstance().requestSync();
+      await NotifySyncService.getInstance().requestSync(forceAll);
       await this.refreshVisibleAfterSyncPage(seq);
       this.updateSyncErrorPresentation();
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
@@ -1963,7 +1968,9 @@ export struct NotifyView {
       this.refreshing = false;
       if (this.loadQueued) {
         this.loadQueued = false;
-        this.loadMessages(); // 补拉：消费排队期间产生的最新拉取需求
+        const queuedForce: boolean = this.forceRefreshQueued;
+        this.forceRefreshQueued = false;
+        this.loadMessages(queuedForce); // 补拉：消费排队期间产生的最新拉取需求
       } else {
         this.processPendingPushNotice();
       }

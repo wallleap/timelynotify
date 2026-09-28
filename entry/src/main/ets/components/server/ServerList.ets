@@ -8,6 +8,7 @@ import { ClientTokenDialog } from '../ClientTokenDialog';
 import { EncryptionConfig } from '../../model/EncryptionConfig';
 import { EncryptionConfigService } from '../../services/EncryptionConfigService';
 import { NotifyMessageService, toShortSyncError } from '../../services/NotifyMessageService';
+import { NotifySyncService } from '../../services/NotifySyncService';
 import { EncryptionSettingsDialog } from '../EncryptionSettingsDialog';
 import showToast from '../showToast';
 import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_REFRESH_SIGNAL } from '../../common/Constant';
@@ -581,6 +582,7 @@ export struct ServerList {
     if (ok) {
       this.currentEncryptionConfig = config;
       await this.refreshEncryptedMessages(server.deviceKey);
+      NotifySyncService.getInstance().retryServer(server.id);
     }
     showToast(this.getUIContext(), ok ? '加密设置已保存' : '保存失败');
   }
@@ -594,6 +596,7 @@ export struct ServerList {
     if (ok) {
       this.currentEncryptionConfig = new EncryptionConfig();
       await this.refreshEncryptedMessages(server.deviceKey);
+      NotifySyncService.getInstance().retryServer(server.id);
     }
     showToast(this.getUIContext(), ok ? '加密设置已清除' : '清除失败');
   }

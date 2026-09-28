@@ -16,6 +16,19 @@ const SERVER_CONCURRENCY: number = 2;
 const DELETE_CONCURRENCY: number = 6;
 const NOTIFY_POLL_MS: number = 3000;
 const OTHER_POLL_MS: number = 15000;
+const RETRY_DELAYS_MS: number[] = [15000, 30000, 60000, 120000, 300000];
+
+interface ServerRetryState {
+  failures: number;
+  nextRetryAt: number;
+  version: number;
+  completedVersion: number;
+}
+
+/** 失败服务器独立退避；达到上限后保持五分钟低频自动重试。 */
+export function retryDelayMs(failures: number): number {
+  return RETRY_DELAYS_MS[Math.min(Math.max(failures - 1, 0), RETRY_DELAYS_MS.length - 1)];
+}
 
 /** 同步由 Ability 生命周期持有；页面离开、Tab 切换和组件销毁均不取消已启动的前台同步。 */
 export class NotifySyncService {
@@ -25,14 +38,28 @@ export class NotifySyncService {
   private queued: boolean = false;
   private manualDeletions: number = 0;
   private pollTimer: number = -1;
-  private displayTimer: number = -1;
   private feedbackTimer: number = -1;
   private tabIndex: number = 0;
   private epoch: number = 0;
   private processed: number = 0;
   private errors: Map<string, string> = new Map<string, string>();
-  private serverSignature: string = '';
+  private retryStates: Map<string, ServerRetryState> = new Map<string, ServerRetryState>();
+  private serverFingerprints: Map<string, string> = new Map<string, string>();
+  private forceAllQueued: boolean = false;
   private serverChangeListener: ((list: ServerEntry[], currentId: string) => void) | null = null;
+
+  private stateFor(id: string): ServerRetryState {
+    let state: ServerRetryState | undefined = this.retryStates.get(id);
+    if (!state) {
+      state = { failures: 0, nextRetryAt: 0, version: 0, completedVersion: -1 };
+      this.retryStates.set(id, state);
+    }
+    return state;
+  }
+
+  private serverFingerprint(server: ServerEntry): string {
+    return JSON.stringify([server.baseURL, server.deviceKey, server.clientToken]);
+  }
 
   static getInstance(): NotifySyncService {
     if (!NotifySyncService.instance) {
@@ -45,11 +72,26 @@ export class NotifySyncService {
   startForeground(): void {
     if (!this.serverChangeListener) {
       this.serverChangeListener = (list: ServerEntry[], _currentId: string): void => {
-        const signature: string = list.map((server: ServerEntry) =>
-          `${server.id}\u0000${server.baseURL}\u0000${server.deviceKey}`).join('\u0001');
-        if (signature !== this.serverSignature) {
-          this.serverSignature = signature;
-          this.requestSync();
+        const present: Set<string> = new Set<string>();
+        for (let i: number = 0; i < list.length; i++) {
+          const server: ServerEntry = list[i];
+          present.add(server.id);
+          const fingerprint: string = this.serverFingerprint(server);
+          if (this.serverFingerprints.get(server.id) !== fingerprint) {
+            this.serverFingerprints.set(server.id, fingerprint);
+            this.retryServer(server.id);
+          }
+        }
+        let errorsChanged: boolean = false;
+        this.serverFingerprints.forEach((_fingerprint: string, id: string) => {
+          if (!present.has(id)) {
+            this.retryStates.delete(id);
+            this.serverFingerprints.delete(id);
+            errorsChanged = this.errors.delete(id) || errorsChanged;
+          }
+        });
+        if (errorsChanged) {
+          this.publishRevision();
         }
       };
       ServerManager.getInstance().addChangeListener(this.serverChangeListener);
@@ -66,7 +108,6 @@ export class NotifySyncService {
     this.foreground = false;
     this.epoch++;
     this.clearPollTimer();
-    this.clearDisplayTimer();
     if (this.feedbackTimer >= 0) {
       clearTimeout(this.feedbackTimer);
       this.feedbackTimer = -1;
@@ -78,13 +119,22 @@ export class NotifySyncService {
   /** Tab 只影响下一次轮询间隔，不影响正在同步的批次。 */
   setTabIndex(index: number): void {
     this.tabIndex = index;
+    const nextNormal: number = Date.now() + (index === 0 ? NOTIFY_POLL_MS : OTHER_POLL_MS);
+    this.retryStates.forEach((state: ServerRetryState) => {
+      if (state.failures === 0) {
+        state.nextRetryAt = Math.min(state.nextRetryAt, nextNormal);
+      }
+    });
     if (this.foreground && !this.running) {
       this.schedulePoll();
     }
   }
 
   /** UI 手动刷新和 Ability 前台恢复共用同一入口，飞行中合并为一轮补拉。 */
-  requestSync(): Promise<void> {
+  requestSync(forceAll: boolean = false): Promise<void> {
+    if (forceAll) {
+      this.forceAllQueued = true;
+    }
     if (!this.foreground || this.manualDeletions > 0) {
       this.queued = true;
       return Promise.resolve();
@@ -92,10 +142,23 @@ export class NotifySyncService {
     this.clearPollTimer();
     if (this.running) {
       this.queued = true;
-      return this.running;
+      const inFlight: Promise<void> = this.running;
+      // 手动下拉刷新必须等排队的强制轮次完成，不能只等当前正在飞行的旧轮次。
+      return forceAll ? inFlight.then((): Promise<void> => this.running ?? Promise.resolve()) : inFlight;
     }
-    this.running = this.runRound();
+    const runForced: boolean = this.forceAllQueued;
+    this.forceAllQueued = false;
+    this.queued = false;
+    this.running = this.runRound(runForced);
     return this.running;
+  }
+
+  /** 地址、Token、Key 或加密设置变化后，只让目标服务器立即验证；旧请求结果不再更新其错误状态。 */
+  retryServer(serverId: string): Promise<void> {
+    const state: ServerRetryState = this.stateFor(serverId);
+    state.version++;
+    state.nextRetryAt = 0;
+    return this.requestSync();
   }
 
   /** 手动删除前等当前同步页安全完成，避免远端删除后被飞行中的同步结果重新写回本地。 */
@@ -127,7 +190,12 @@ export class NotifySyncService {
     if (!this.foreground) {
       return;
     }
-    await this.requestSync();
+    const attempt: Promise<void> = this.retryServer(server.id);
+    const version: number = this.stateFor(server.id).version;
+    await attempt;
+    if (this.foreground && this.stateFor(server.id).completedVersion < version) {
+      await this.requestSync();
+    }
   }
 
   /** 给通知页读取各服务的最后同步错误；失败状态不因切换页面而丢失。 */
@@ -142,22 +210,28 @@ export class NotifySyncService {
     }
   }
 
-  private clearDisplayTimer(): void {
-    if (this.displayTimer >= 0) {
-      clearTimeout(this.displayTimer);
-      this.displayTimer = -1;
-    }
-  }
-
   private schedulePoll(): void {
     this.clearPollTimer();
     if (!this.foreground || this.running || this.manualDeletions > 0) {
       return;
     }
+    const now: number = Date.now();
+    let delay: number = Number.MAX_SAFE_INTEGER;
+    const servers: ServerEntry[] = ServerManager.getInstance().getList();
+    for (let i: number = 0; i < servers.length; i++) {
+      if (!servers[i].deviceKey) {
+        continue;
+      }
+      const nextRetryAt: number = this.stateFor(servers[i].id).nextRetryAt;
+      delay = Math.min(delay, Math.max(0, nextRetryAt - now));
+    }
+    if (delay === Number.MAX_SAFE_INTEGER) {
+      return;
+    }
     this.pollTimer = setTimeout(() => {
       this.pollTimer = -1;
       this.requestSync();
-    }, this.tabIndex === 0 ? NOTIFY_POLL_MS : OTHER_POLL_MS);
+    }, delay);
   }
 
   private publishRevision(): void {
@@ -167,34 +241,55 @@ export class NotifySyncService {
 
   private recordPage(count: number): void {
     this.processed += count;
-    this.clearDisplayTimer();
     if (this.foreground) {
       AppStorage.setOrCreate(KEY_NOTIFY_SYNC_PROGRESS, `正在同步 · 已处理 ${this.processed} 条`);
     }
     this.publishRevision();
   }
 
-  private async runRound(): Promise<void> {
+  private recordServerResult(serverId: string, error: string): void {
+    const state: ServerRetryState = this.stateFor(serverId);
+    const previous: string | undefined = this.errors.get(serverId);
+    if (error.length > 0) {
+      state.failures++;
+      state.nextRetryAt = Date.now() + retryDelayMs(state.failures);
+      this.errors.set(serverId, error);
+    } else {
+      state.failures = 0;
+      state.nextRetryAt = Date.now() + (this.tabIndex === 0 ? NOTIFY_POLL_MS : OTHER_POLL_MS);
+      this.errors.delete(serverId);
+    }
+    if ((previous ?? '') !== error) {
+      this.publishRevision();
+    }
+  }
+
+  private attemptCurrent(serverId: string, version: number, epoch: number): boolean {
+    return this.foreground && epoch === this.epoch && this.manualDeletions === 0 &&
+      this.stateFor(serverId).version === version;
+  }
+
+  private async runRound(forceAll: boolean): Promise<void> {
     const epoch: number = this.epoch;
     this.processed = 0;
-    this.errors = new Map<string, string>();
     AppStorage.setOrCreate(KEY_NOTIFY_SYNC_FEEDBACK, '');
-    this.clearDisplayTimer();
-    this.displayTimer = setTimeout(() => {
-      this.displayTimer = -1;
-      if (this.foreground && epoch === this.epoch) {
-        AppStorage.setOrCreate(KEY_NOTIFY_SYNC_PROGRESS, '正在同步…');
-      }
-    }, 600);
     let round: AutoCopySyncRound | null = null;
     try {
       await ServerManager.getInstance().ensureLoaded();
+      const configured: ServerEntry[] = ServerManager.getInstance().getList();
+      for (let i: number = 0; i < configured.length; i++) {
+        if (!this.serverFingerprints.has(configured[i].id)) {
+          this.serverFingerprints.set(configured[i].id, this.serverFingerprint(configured[i]));
+        }
+      }
       const expired: number = await MessageCacheStore.purgeExpired();
       if (expired > 0) {
         this.publishRevision();
       }
-      const servers: ServerEntry[] = ServerManager.getInstance().getList().filter(
-        (server: ServerEntry) => server.deviceKey.length > 0);
+      const now: number = Date.now();
+      const servers: ServerEntry[] = configured.filter(
+        (server: ServerEntry) => server.deviceKey.length > 0 &&
+          (forceAll || this.stateFor(server.id).nextRetryAt <= now));
       if (servers.length === 0 || !this.foreground || epoch !== this.epoch) {
         return;
       }
@@ -204,11 +299,25 @@ export class NotifySyncService {
       for (let worker: number = 0; worker < Math.min(SERVER_CONCURRENCY, servers.length); worker++) {
         workers.push((async (): Promise<void> => {
           while (this.foreground && epoch === this.epoch && this.manualDeletions === 0 && next < servers.length) {
-            const server: ServerEntry = servers[next++];
+            const current: ServerEntry = servers[next++];
+            const state: ServerRetryState = this.stateFor(current.id);
+            const version: number = state.version;
+            const server: ServerEntry = new ServerEntry(current.id, current.name, current.baseURL,
+              current.isBuiltIn, current.deviceKey, current.clientToken);
+            server.instanceId = current.instanceId;
+            server.historyKeys = [...current.historyKeys];
             try {
-              await this.syncServer(server, epoch, round!);
+              const error: string = await this.syncServer(server, epoch, round!, version);
+              if (state.version !== version || !this.foreground || epoch !== this.epoch) {
+                continue;
+              }
+              this.recordServerResult(server.id, error);
+              state.completedVersion = version;
             } catch (err) {
-              this.errors.set(server.id, '同步异常；未完成的通知会在下次进入前台时重试');
+              if (state.version === version) {
+                this.recordServerResult(server.id, '同步异常；未完成的通知会在下次进入前台时重试');
+                state.completedVersion = version;
+              }
               hilog.warn(DOMAIN, TAG, '服务器同步异常：%{public}s',
                 err instanceof Error ? err.message : String(err));
             }
@@ -219,7 +328,6 @@ export class NotifySyncService {
     } catch (err) {
       hilog.warn(DOMAIN, TAG, '同步轮次异常：%{public}s', err instanceof Error ? err.message : String(err));
     } finally {
-      this.clearDisplayTimer();
       AppStorage.setOrCreate(KEY_NOTIFY_SYNC_PROGRESS, '');
       // 首次历史播种只有完整扫完且无错误才算结束；空服务或后台中断不能提前开启自动复制。
       if (round && (!round.firstSync || (this.foreground && epoch === this.epoch && this.errors.size === 0))) {
@@ -255,7 +363,8 @@ export class NotifySyncService {
     }
   }
 
-  private async syncServer(server: ServerEntry, epoch: number, round: AutoCopySyncRound): Promise<void> {
+  private async syncServer(server: ServerEntry, epoch: number, round: AutoCopySyncRound,
+    version: number): Promise<string> {
     const svc: NotifyMessageService = NotifyMessageService.getInstance();
     const deviceKey: string = server.deviceKey;
     let after: number = 0;
@@ -268,17 +377,18 @@ export class NotifySyncService {
     let remoteDeleteFailed: boolean = false;
     let delHasMore: boolean = false;
 
-    while (this.foreground && epoch === this.epoch && this.manualDeletions === 0) {
+    while (this.attemptCurrent(server.id, version, epoch)) {
       const result: MessageListResult = await svc.getMessages(null, 0, PAGE_SIZE, after, delCursor, server, true);
+      if (!this.attemptCurrent(server.id, version, epoch)) {
+        return '';
+      }
       if (!result.ok) {
-        this.errors.set(server.id, result.errorMsg);
-        return;
+        return result.errorMsg;
       }
       const responseSource: string = notifySourceKey(result.instanceId, server.id, deviceKey);
       if (responseSource !== sourceKey) {
         if (instanceRestarted) {
-          this.errors.set(server.id, '服务器历史实例在同步中变化');
-          return;
+          return '服务器历史实例在同步中变化';
         }
         instanceRestarted = true;
         sourceKey = responseSource;
@@ -290,8 +400,7 @@ export class NotifySyncService {
       }
       if (server.instanceId !== result.instanceId || server.historyKeys.indexOf(sourceKey) < 0) {
         if (!(await ServerManager.getInstance().rememberHistory(server.id, result.instanceId, sourceKey))) {
-          this.errors.set(server.id, '无法保存服务器历史身份');
-          return;
+          return '无法保存服务器历史身份';
         }
       }
       if (await this.applyDeletionExtraIds(sourceKey, result)) {
@@ -303,8 +412,7 @@ export class NotifySyncService {
       let nextAfter: number = after;
       if (result.messages.length > 0) {
         if (!(await MessageCacheStore.upsertMessages(sourceKey, result.messages))) {
-          this.errors.set(server.id, '本地保存失败；远端通知已保留，稍后可重试');
-          return;
+          return '本地保存失败；远端通知已保留，稍后可重试';
         }
         // 每页处理前读取最新偏好：设置页开启后，后续同步页立即按新规则发布。
         const resendArchived: boolean = await EncryptedNotificationResendService.isEnabled();
@@ -323,17 +431,18 @@ export class NotifySyncService {
         }
         AutoCopyService.collectPage(round, result.messages);
         this.recordPage(result.messages.length);
+        if (!this.attemptCurrent(server.id, version, epoch)) {
+          return '';
+        }
         if (await this.deleteMigratedRemoteMessages(server, result.messages) > 0) {
           remoteDeleteFailed = true;
         }
       }
       if (result.hasMore && nextAfter <= after) {
-        this.errors.set(server.id, '服务器分页游标未推进，稍后可重试');
-        return;
+        return '服务器分页游标未推进，稍后可重试';
       }
       if (!(await MessageCacheStore.saveMeta(sourceKey, maxId, delCursor, 0, true))) {
-        this.errors.set(server.id, '同步进度保存失败；远端未完成清理的通知会重试');
-        return;
+        return '同步进度保存失败；远端未完成清理的通知会重试';
       }
       if (!result.hasMore) {
         delHasMore = result.delHasMore;
@@ -342,11 +451,13 @@ export class NotifySyncService {
       after = nextAfter;
     }
 
-    while (this.foreground && epoch === this.epoch && this.manualDeletions === 0 && delHasMore) {
+    while (this.attemptCurrent(server.id, version, epoch) && delHasMore) {
       const result: MessageListResult = await svc.getMessages(null, 0, 0, 0, delCursor, server, false);
+      if (!this.attemptCurrent(server.id, version, epoch)) {
+        return '';
+      }
       if (!result.ok || notifySourceKey(result.instanceId, server.id, deviceKey) !== sourceKey) {
-        this.errors.set(server.id, result.ok ? '服务器历史实例在同步中变化' : result.errorMsg);
-        return;
+        return result.ok ? '服务器历史实例在同步中变化' : result.errorMsg;
       }
       if (await this.applyDeletionExtraIds(sourceKey, result)) {
         this.publishRevision();
@@ -355,19 +466,19 @@ export class NotifySyncService {
         delCursor = result.delCursor;
       }
       if (!(await MessageCacheStore.saveMeta(sourceKey, maxId, delCursor, 0, true))) {
-        this.errors.set(server.id, '删除同步进度保存失败；稍后会重试');
-        return;
+        return '删除同步进度保存失败；稍后会重试';
       }
       delHasMore = result.delHasMore;
     }
-    if (!this.foreground || epoch !== this.epoch) {
-      return;
+    if (!this.attemptCurrent(server.id, version, epoch)) {
+      return '';
     }
     if (pendingEncrypted) {
-      this.errors.set(server.id, '有加密通知尚未解密或发布；请检查加密 Key 与通知权限，远端密文已保留');
+      return '有加密通知尚未解密或发布；请检查加密 Key 与通知权限，远端密文已保留';
     } else if (remoteDeleteFailed) {
-      this.errors.set(server.id, '通知已保存到本地，但部分远端副本清理失败；稍后会重试');
+      return '通知已保存到本地，但部分远端副本清理失败；稍后会重试';
     }
+    return '';
   }
 
   private async applyDeletionExtraIds(sourceKey: string, result: MessageListResult): Promise<boolean> {
