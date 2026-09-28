@@ -4,7 +4,7 @@ import { EncryptionConfig } from '../main/ets/model/EncryptionConfig';
 import { MessageCryptoService } from '../main/ets/services/MessageCryptoService';
 import { NotifyMessage } from '../main/ets/model/NotifyMessage';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
-import { AutoCopyService, AutoCopySelection } from '../main/ets/services/AutoCopyService';
+import { AutoCopyService, AutoCopySelection, AutoCopySyncRound } from '../main/ets/services/AutoCopyService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
 import { belongsToPushInstance, notifyIdentity, notifySourceKey, originalDeviceKey } from '../main/ets/utils/NotifyIdentity';
@@ -531,6 +531,37 @@ export default function localUnitTest() {
       expect(selection.identitiesToMark.indexOf('dev-a:103') >= 0).assertTrue();
       expect(selection.identitiesToMark.indexOf('dev-a:101') >= 0).assertTrue();
       expect(selection.identitiesToMark.indexOf('dev-a:102') >= 0).assertTrue();
+    });
+    it('autoCopyAggregatesPagesWithoutKeepingEveryMessage', 0, () => {
+      AutoCopyService.resetState();
+      const now: number = Date.now();
+      const round: AutoCopySyncRound = new AutoCopySyncRound();
+      const older: NotifyMessage = AutoCopyTestHelper.makeMessage('bulk-a', 1, now - 120000, 'old', true);
+      const newest: NotifyMessage = AutoCopyTestHelper.makeMessage('bulk-b', 2, now - 1000, 'new', true);
+      const middle: NotifyMessage = AutoCopyTestHelper.makeMessage('bulk-a', 3, now - 60000, 'middle', true);
+      AutoCopyService.collectPage(round, [older, newest]);
+      AutoCopyService.collectPage(round, [middle]);
+      expect(round.count).assertEqual(3);
+      expect(round.latest).assertEqual(newest);
+      AutoCopyService.resetState();
+    });
+    it('autoCopyFirstSyncKeepsOnlySourceWatermarks', 0, () => {
+      AutoCopyService.resetState();
+      const round: AutoCopySyncRound = new AutoCopySyncRound();
+      round.firstSync = true;
+      for (let page: number = 0; page < 15; page++) {
+        const messages: NotifyMessage[] = [];
+        for (let i: number = 0; i < 100; i++) {
+          messages.push(AutoCopyTestHelper.makeMessage('bulk-source', page * 100 + i + 1,
+            Date.now(), 'code', true));
+        }
+        AutoCopyService.collectPage(round, messages);
+      }
+      expect(round.count).assertEqual(1500);
+      expect(round.latest === null).assertTrue();
+      expect(round.firstSyncMaxIds.get('bulk-source')).assertEqual(1500);
+      expect(round.firstSyncMaxIds.size).assertEqual(1);
+      AutoCopyService.resetState();
     });
     it('autoCopySkipsProcessedAndEmptyText', 0, () => {
       const now: number = Date.parse('2026-09-23T12:00:00Z');

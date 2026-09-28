@@ -7,6 +7,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
+import { NotifySyncService } from '../services/NotifySyncService';
 import {
   ensureImmersiveMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
@@ -51,6 +52,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    NotifySyncService.getInstance().pause();
     hilog.info(DOMAIN, TAG, 'Ability onDestroy');
   }
 
@@ -85,6 +87,7 @@ export default class EntryAbility extends UIAbility {
 
   onForeground(): void {
     hilog.info(DOMAIN, TAG, 'Ability onForeground');
+    NotifySyncService.getInstance().startForeground();
     // 回前台自动刷新通知列表（后台→前台切换场景）
     this.bumpNotifyRefreshSignal();
     // 打开应用后未读角标已无意义，清除桌面图标角标
@@ -93,12 +96,14 @@ export default class EntryAbility extends UIAbility {
 
   onBackground(): void {
     hilog.info(DOMAIN, TAG, 'Ability onBackground');
+    NotifySyncService.getInstance().pause();
   }
 
   // 温启动：Ability 存活时被再次拉起（如点击通知、recent 任务切换）。
   // 应用已在前台时点击通知只会走这里（onForeground 不重复触发），借此覆盖"前台点通知也要刷新"
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(DOMAIN, TAG, 'Ability onNewWant');
+    NotifySyncService.getInstance().requestSync();
     this.bumpNotifyRefreshSignal();
     // 应用已在前台时点击通知只走这里，同样清除桌面图标角标
     this.clearBadgeNumber();
