@@ -3,11 +3,13 @@ import { EncryptionConfigService } from '../main/ets/services/EncryptionConfigSe
 import { EncryptionConfig } from '../main/ets/model/EncryptionConfig';
 import { MessageCryptoService } from '../main/ets/services/MessageCryptoService';
 import { NotifyMessage } from '../main/ets/model/NotifyMessage';
+import { ServerEntry } from '../main/ets/model/ServerEntry';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { AutoCopyService, AutoCopySelection, AutoCopySyncRound } from '../main/ets/services/AutoCopyService';
 import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
-import { belongsToPushInstance, notifyIdentity, notifySourceKey, originalDeviceKey } from '../main/ets/utils/NotifyIdentity';
+import { belongsToPushInstance, notifyIdentity, notifySourceKey, originalDeviceKey,
+  resolveCurrentRemoteServer } from '../main/ets/utils/NotifyIdentity';
 import { buildNotifyListRows } from '../main/ets/components/notify/NotifyListDataSource';
 import { buildNotifySections } from '../main/ets/components/notify/NotifyViewTypes';
 
@@ -166,6 +168,35 @@ export default function localUnitTest() {
       expect(belongsToPushInstance(source, 'instance-two')).assertFalse();
       expect(belongsToPushInstance('same-key', 'instance-one')).assertFalse();
       expect(belongsToPushInstance(source, 'instance-one","other')).assertFalse();
+    });
+    it('recognizesOnlyUndecryptedCiphertextPlaceholders', 0, () => {
+      const message: NotifyMessage = new NotifyMessage();
+      message.encrypted = true;
+      message.ciphertext = 'opaque';
+      message.title = NotifyMessage.ENCRYPTION_TITLE;
+      message.body = NotifyMessage.DECRYPTION_FAILED_BODY;
+      expect(message.isDecryptionFailed()).assertTrue();
+      message.body = NotifyMessage.MISSING_KEY_BODY;
+      expect(message.isDecryptionFailed()).assertTrue();
+      message.body = '解密后的正文';
+      expect(message.isDecryptionFailed()).assertFalse();
+      message.body = NotifyMessage.DECRYPTION_FAILED_BODY;
+      message.ciphertext = '';
+      expect(message.isDecryptionFailed()).assertFalse();
+    });
+    it('deletesRemoteOnlyForCurrentServerInstance', 0, () => {
+      const first: ServerEntry = new ServerEntry('first', '一', 'https://one.example', false, 'same-key');
+      first.instanceId = 'db-one';
+      const second: ServerEntry = new ServerEntry('second', '二', 'https://two.example', false, 'same-key');
+      second.instanceId = 'db-two';
+      const message: NotifyMessage = new NotifyMessage();
+      message.id = 1;
+      message.deviceKey = notifySourceKey('db-two', 'second', 'same-key');
+      expect(resolveCurrentRemoteServer(message, [first, second])?.id).assertEqual('second');
+      message.deviceKey = notifySourceKey('old-instance', 'second', 'same-key');
+      expect(resolveCurrentRemoteServer(message, [first, second])).assertEqual(null);
+      message.deviceKey = 'same-key';
+      expect(resolveCurrentRemoteServer(message, [first, second])).assertEqual(null);
     });
     it('collapsesGroupWhenOnlyOneMessageRemains', 0, () => {
       // g1 删除后仅剩 1 条且真实总数为 1；g2 仍有 2 条；空 group_key 代表“默认”分组。

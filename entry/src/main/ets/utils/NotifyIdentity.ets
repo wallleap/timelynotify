@@ -1,4 +1,5 @@
 import { NotifyMessage } from '../model/NotifyMessage';
+import { ServerEntry } from '../model/ServerEntry';
 
 /** 远端 id 只在一份历史数据库内唯一；本地用实例命名空间隔离不同数据库。 */
 export function notifySourceKey(instanceId: string, serverId: string, deviceKey: string): string {
@@ -9,6 +10,17 @@ export function notifySourceKey(instanceId: string, serverId: string, deviceKey:
 /** 本地通知身份；用字符串避免把服务器的数字 id 当作全局唯一值。 */
 export function notifyIdentity(message: NotifyMessage): string {
   return JSON.stringify([message.deviceKey, message.id]);
+}
+
+/** 只有本地来源键仍指向服务器当前数据库实例时，才可按数字 id 删除远端。 */
+export function resolveCurrentRemoteServer(message: NotifyMessage, servers: ServerEntry[]): ServerEntry | null {
+  for (let i: number = 0; i < servers.length; i++) {
+    const server: ServerEntry = servers[i];
+    if (server.deviceKey && message.deviceKey === notifySourceKey(server.instanceId, server.id, server.deviceKey)) {
+      return server;
+    }
+  }
+  return null;
 }
 
 /** 判断本地历史键是否属于点击通知给出的数据库实例，不猜测旧版裸 device_key 的来源。 */

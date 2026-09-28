@@ -52,7 +52,7 @@ import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 import { NotifyExportService } from '../services/NotifyExportService';
-import { belongsToPushInstance, compareNotifyOrder, notifyIdentity } from '../utils/NotifyIdentity';
+import { belongsToPushInstance, compareNotifyOrder, notifyIdentity, resolveCurrentRemoteServer } from '../utils/NotifyIdentity';
 
 const TAG: string = 'NotifyView';
 
@@ -60,6 +60,12 @@ const TAG: string = 'NotifyView';
 interface ServerErrorInfo {
   server: ServerEntry;
   error: string;
+}
+
+interface ManualDeleteResult {
+  deletedIds: string[];
+  remoteFailed: number;
+  localFailed: boolean;
 }
 
 // 收缩错误胶囊与标题栏之间保留的呼吸间距。
@@ -1416,44 +1422,139 @@ export struct NotifyView {
     }
   }
 
-  private removeFromList(ids: string[]): void {
-    const idSet: Set<string> = new Set<string>(ids);
-    const newList: NotifyMessage[] = [];
-    for (let i = 0; i < this.messages.length; i++) {
-      if (!idSet.has(notifyIdentity(this.messages[i]))) {
-        newList.push(this.messages[i]);
+  // ====== 删除确认与执行 ======
+  /** 解析本地身份；不把不同服务器的相同数字 id 合并。 */
+  private parseDeletePairs(ids: string[]): DeviceIdPair[] {
+    const pairs: DeviceIdPair[] = [];
+    for (let i: number = 0; i < ids.length; i++) {
+      try {
+        const parsed: Object = JSON.parse(ids[i]);
+        if (parsed instanceof Array && parsed.length === 2 &&
+          typeof parsed[0] === 'string' && parsed[0].length > 0 &&
+          typeof parsed[1] === 'number' && parsed[1] > 0) {
+          pairs.push({ deviceKey: parsed[0] as string, id: parsed[1] as number });
+        }
+      } catch (_ignore) {
+        // 非法身份不应触发任何远端或本地删除。
       }
     }
-    // 可观察分组会只删除目标子项；动画上下文同步平滑收起该行占用的布局空间。
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
-      this.messages = newList;
-      // 按真实总数同步展开态：整组删到只剩 1 条时自动收起为普通卡片。
-      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups, this.groupTotals);
-      // 如果删光了，退出编辑模式
-      if (this.messages.length === 0) {
-        this.exitEditMode();
-      }
-    });
+    return pairs;
   }
 
-  /** 从当前内存列表移除整个分组，数据库删除会覆盖该组尚未加载的历史通知。 */
-  private removeGroupFromList(groupKey: string): void {
-    const remaining: NotifyMessage[] = this.messages.filter((message: NotifyMessage) => message.group !== groupKey);
-    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, () => {
-      this.messages = remaining;
-      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups, this.groupTotals);
-      if (this.messages.length === 0) {
-        this.exitEditMode();
-      }
-    });
+  /** 解密失败项先删除当前实例的远端副本；失败项留在本地，其他项按原逻辑本地删除。 */
+  private async deleteManualIds(ids: string[] | null, groupKey: string | null = null): Promise<ManualDeleteResult> {
+    const sync: NotifySyncService = NotifySyncService.getInstance();
+    try {
+      await sync.beginManualDeletion();
+      return await this.deleteManualIdsWhileSyncPaused(ids, groupKey);
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, '手动删除通知失败：%{public}s', err instanceof Error ? err.message : String(err));
+      return { deletedIds: [], remoteFailed: 0, localFailed: true };
+    } finally {
+      sync.endManualDeletion();
+    }
   }
 
-  // ====== 删除确认与执行 ======
+  private async deleteManualIdsWhileSyncPaused(ids: string[] | null, groupKey: string | null): Promise<ManualDeleteResult> {
+    const result: ManualDeleteResult = { deletedIds: [], remoteFailed: 0, localFailed: false };
+    const targetIds: string[] = ids ?? (groupKey === null
+      ? await MessageCacheStore.getAllIdentities(this.getVisibleHistoryKeys())
+      : await MessageCacheStore.getGroupIdentities(this.getVisibleHistoryKeys(), groupKey));
+    if (targetIds.length === 0 && ids === null && this.totalCachedCount > 0) {
+      result.localFailed = true;
+      return result;
+    }
+    const pairs: DeviceIdPair[] = this.parseDeletePairs(targetIds);
+    if (pairs.length !== targetIds.length) {
+      result.localFailed = true;
+      return result;
+    }
+    const selected: Set<string> = new Set<string>(targetIds);
+    const failed: Set<string> = new Set<string>();
+    let failures: NotifyMessage[];
+    try {
+      failures = await MessageCacheStore.loadDecryptionFailures(this.getVisibleHistoryKeys(), groupKey);
+    } catch (_err) {
+      result.localFailed = true;
+      return result;
+    }
+    const servers: ServerEntry[] = ServerManager.getInstance().getList();
+    const remoteTargets: NotifyMessage[] = [];
+    const remoteServers: ServerEntry[] = [];
+    for (let i: number = 0; i < failures.length; i++) {
+      const message: NotifyMessage = failures[i];
+      if (!selected.has(notifyIdentity(message))) {
+        continue;
+      }
+      const server: ServerEntry | null = resolveCurrentRemoteServer(message, servers);
+      if (server) {
+        remoteTargets.push(message);
+        remoteServers.push(server);
+      }
+      // 旧实例或来源不明的本地历史不具备安全的远端目标，只清本地，不猜测当前服务器 ID。
+    }
+    // 配置中的实例 ID 可能因服务器重建而过时；删除前再读取当前实例，避免数字 id 撞上新数据库。
+    const verified: Map<string, boolean> = new Map<string, boolean>();
+    for (let i: number = 0; i < remoteTargets.length; i++) {
+      const server: ServerEntry = remoteServers[i];
+      if (verified.has(server.id)) {
+        continue;
+      }
+      if (!server.instanceId) {
+        verified.set(server.id, false);
+        continue;
+      }
+      const probe = await NotifyMessageService.getInstance().getMessages(null, 0, 0, 0, 0, server);
+      verified.set(server.id, probe.ok && probe.instancePersistent && probe.instanceId === server.instanceId);
+    }
+    const concurrency: number = 4;
+    for (let offset: number = 0; offset < remoteTargets.length; offset += concurrency) {
+      const tasks: Promise<string>[] = [];
+      for (let i: number = offset; i < Math.min(offset + concurrency, remoteTargets.length); i++) {
+        if (verified.get(remoteServers[i].id) === true) {
+          tasks.push(NotifyMessageService.getInstance().deleteMessage(remoteTargets[i].id, null, remoteServers[i]));
+        } else {
+          tasks.push(Promise.resolve('无法确认服务器实例'));
+        }
+      }
+      const errors: string[] = await Promise.all(tasks);
+      for (let i: number = 0; i < errors.length; i++) {
+        if (errors[i].length > 0) {
+          failed.add(notifyIdentity(remoteTargets[offset + i]));
+        }
+      }
+    }
+    result.remoteFailed = failed.size;
+    result.deletedIds = targetIds.filter((id: string) => !failed.has(id));
+    if (!(await MessageCacheStore.deleteByDeviceIdPairs(this.parseDeletePairs(result.deletedIds)))) {
+      result.deletedIds = [];
+      result.localFailed = true;
+    }
+    return result;
+  }
+
+  private async finishManualDeletion(result: ManualDeleteResult, uiCtx: UIContext): Promise<void> {
+    if (result.deletedIds.length > 0) {
+      await this.refreshVisibleAfterSyncPage(this.loadSeq);
+      this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups, this.groupTotals);
+      this.exitEditMode();
+    }
+    if (result.localFailed) {
+      showToast(uiCtx, '本地删除失败，请稍后重试');
+    } else if (result.remoteFailed > 0) {
+      showToast(uiCtx, `已删除 ${result.deletedIds.length} 条，${result.remoteFailed} 条远端删除失败，已保留待重试`);
+    } else {
+      showToast(uiCtx, `已删除 ${result.deletedIds.length} 条`);
+    }
+  }
+
   private confirmDeleteOne(m: NotifyMessage, closeDetailOnSuccess: boolean = false): void {
     const uiCtx: UIContext = this.getUIContext();
     uiCtx.getPromptAction().showDialog({
-      title: '从本机删除通知',
-      message: `此通知已从服务器迁移到本机。删除后无法恢复。${m.title && m.title.length > 0 ?
+      title: m.isDecryptionFailed() ? '删除解密失败的通知' : '从本机删除通知',
+      message: `${m.isDecryptionFailed() ?
+        '此通知的密文仍在服务器。将先删除远程记录，再删除本地；远程删除失败时保留此通知以便重试。' :
+        '此通知已从服务器迁移到本机。删除后无法恢复。'}${m.title && m.title.length > 0 ?
         '\n\n「' + m.title + '」' : ''}`,
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
@@ -1465,20 +1566,11 @@ export struct NotifyView {
       if (err || result.index !== 1) {
         return;
       }
-      // 远程记录已在同步落库后清理；用户操作只删除本地副本。
-      if (m.deviceKey && m.deviceKey.length > 0) {
-        const pair: DeviceIdPair = { deviceKey: m.deviceKey, id: m.id };
-        await MessageCacheStore.deleteByDeviceIdPairs([pair]);
-        this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
-        this.totalCachedCount = Math.max(0, this.totalCachedCount - 1);
-      }
-      this.removeFromList([notifyIdentity(m)]);
-      this.exitEditMode();
-      // 从详情发起删除时，确认成功后再关闭 Sheet；取消时保留当前详情。
-      if (closeDetailOnSuccess) {
+      const outcome: ManualDeleteResult = await this.deleteManualIds([notifyIdentity(m)]);
+      await this.finishManualDeletion(outcome, uiCtx);
+      if (outcome.deletedIds.length > 0 && closeDetailOnSuccess) {
         this.showDetail = false;
       }
-      showToast(uiCtx, '已删除');
     });
   }
 
@@ -1486,8 +1578,8 @@ export struct NotifyView {
     const uiCtx: UIContext = this.getUIContext();
     const count: number = section.total;
     uiCtx.getPromptAction().showDialog({
-      title: '从本机删除整个分组',
-      message: `将删除该分组的全部 ${count} 条本地通知，包括尚未加载的历史通知。删除后无法恢复。`,
+      title: '删除整个分组',
+      message: `将删除该分组的全部 ${count} 条本地通知，包括尚未加载的历史通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。`,
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
@@ -1499,19 +1591,8 @@ export struct NotifyView {
         return;
       }
       showToast(uiCtx, `正在删除 ${count} 条本地通知…`);
-      const deviceKeys: string[] = this.getVisibleHistoryKeys();
-      const deleted: number = await MessageCacheStore.deleteGroup(deviceKeys, section.groupKey);
-      if (deleted < 0) {
-        showToast(uiCtx, '删除失败，请稍后重试');
-        return;
-      }
-      this.removeGroupFromList(section.groupKey);
-      // 刷新分组总数与缓存总数
-      this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
-      let total: number = 0;
-      this.groupTotals.forEach((cnt: number) => { total += cnt; });
-      this.totalCachedCount = total;
-      showToast(uiCtx, `已从本机删除 ${deleted} 条`);
+      const outcome: ManualDeleteResult = await this.deleteManualIds(null, section.groupKey);
+      await this.finishManualDeletion(outcome, uiCtx);
     });
   }
 
@@ -1529,8 +1610,8 @@ export struct NotifyView {
     const uiCtx: UIContext = this.getUIContext();
     const count: number = this.selectedIds.length;
     uiCtx.getPromptAction().showDialog({
-      title: '从本机删除通知',
-      message: `将删除选中的 ${count} 条本地通知。删除后无法恢复。`,
+      title: '删除选中通知',
+      message: `将删除选中的 ${count} 条通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。`,
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
@@ -1542,46 +1623,23 @@ export struct NotifyView {
         return;
       }
       const ids: string[] = [...this.selectedIds];
-      // 直接解析身份字符串（JSON.stringify([deviceKey, id])）为删除对，
-      // 不依赖内存中的 this.messages，确保未加载到列表的历史消息也能被删除
-      const pairs: DeviceIdPair[] = [];
-      for (let i = 0; i < ids.length; i++) {
-        try {
-          const parsed: Object = JSON.parse(ids[i]);
-          if (parsed instanceof Array && parsed.length === 2 &&
-            typeof parsed[0] === 'string' && typeof parsed[1] === 'number') {
-            pairs.push({ deviceKey: parsed[0] as string, id: parsed[1] as number });
-          }
-        } catch (_ignore) {
-          // 忽略无法解析的身份字符串
-        }
-      }
-      if (pairs.length > 0) {
-        await MessageCacheStore.deleteByDeviceIdPairs(pairs);
-      }
-      this.groupTotals = await MessageCacheStore.getAllGroupTotals(this.getVisibleHistoryKeys());
-      // 重新统计缓存总数
-      let total: number = 0;
-      this.groupTotals.forEach((count: number) => { total += count; });
-      this.totalCachedCount = total;
-      this.removeFromList(ids);
-      this.exitEditMode();
-      showToast(uiCtx, `已从本机删除 ${pairs.length} 条`);
+      const outcome: ManualDeleteResult = await this.deleteManualIds(ids);
+      await this.finishManualDeletion(outcome, uiCtx);
     });
   }
 
   private confirmDeleteAll(): void {
     const uiCtx: UIContext = this.getUIContext();
     // 本地无消息时无需调用清空接口
-    if (this.messages.length === 0) {
+    if (this.totalCachedCount === 0) {
       showToast(uiCtx, '暂无可删除的通知');
       return;
     }
     uiCtx.getPromptAction().showDialog({
       title: '清空全部通知',
       message: this.viewAll
-        ? '将删除本机保存的所有服务器通知，包括未加载的历史通知。服务器副本已在同步后清理，删除后无法恢复。'
-        : '将删除本机保存的当前服务器全部通知，包括未加载的历史通知。服务器副本已在同步后清理，删除后无法恢复。',
+        ? '将删除本机保存的所有服务器通知，包括未加载的历史通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。'
+        : '将删除本机保存的当前服务器全部通知，包括未加载的历史通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。',
       buttons: [
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
@@ -1592,23 +1650,9 @@ export struct NotifyView {
       if (err || result.index !== 1) {
         return;
       }
-      if (this.viewAll) {
-        await MessageCacheStore.clearAllDevices();
-        showToast(uiCtx, '已清空本机全部通知');
-      } else {
-        const keys: string[] = this.getCurrentHistoryKeys();
-        for (let i = 0; i < keys.length; i++) {
-          await MessageCacheStore.clearDevice(keys[i]);
-        }
-        showToast(uiCtx, '已清空本机全部通知');
-      }
-      this.exitEditMode();
-      this.messages = [];
-      this.expandedGroups = [];
-      this.groupCardHeights = new Map<string, number>();
-      this.groupTotals = new Map<string, number>();
-      this.totalCachedCount = 0;
-      this.groupLoadingMore = new Set<string>();
+      showToast(uiCtx, `正在删除 ${this.totalCachedCount} 条本地通知…`);
+      const outcome: ManualDeleteResult = await this.deleteManualIds(null);
+      await this.finishManualDeletion(outcome, uiCtx);
     });
   }
 

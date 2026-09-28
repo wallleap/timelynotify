@@ -1,6 +1,9 @@
 // 推送消息条目（GET /:device_key/message 返回列表的单项）
 // 兼容 gotify 标准字段与 timelynotify 可能的字段命名差异
 export class NotifyMessage extends Object {
+  static readonly ENCRYPTION_TITLE: string = '加密通知';
+  static readonly MISSING_KEY_BODY: string = '此服务器尚未配置加密密钥';
+  static readonly DECRYPTION_FAILED_BODY: string = '解密失败，请检查算法、模式、Padding 和 Key';
   id: number = 0;
   appid: number = 0;
   title: string = '';
@@ -216,6 +219,12 @@ export class NotifyMessage extends Object {
   // 非归档加密消息始终补发；用户开启重发后，归档加密消息也补发，但不改变 archive 本身。
   needsDecryptedNotification(now: number = Date.now(), resendArchived: boolean = false): boolean {
     return this.encrypted && this.migrationReady && !this.isExpired(now) && (!this.archive || resendArchived);
+  }
+
+  /** 本地缓存不持久化 migrationReady；用同步写入的固定占位内容识别仍留在远端的解密失败项。 */
+  isDecryptionFailed(): boolean {
+    return this.encrypted && this.ciphertext.length > 0 && this.title === NotifyMessage.ENCRYPTION_TITLE &&
+      (this.body === NotifyMessage.MISSING_KEY_BODY || this.body === NotifyMessage.DECRYPTION_FAILED_BODY);
   }
 
   // 从 Bark 参数读取归档与 ttl；primary 优先，兼容服务端小写键与加密内容驼峰键。

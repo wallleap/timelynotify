@@ -23,6 +23,7 @@ export class NotifySyncService {
   private foreground: boolean = false;
   private running: Promise<void> | null = null;
   private queued: boolean = false;
+  private manualDeletions: number = 0;
   private pollTimer: number = -1;
   private displayTimer: number = -1;
   private feedbackTimer: number = -1;
@@ -84,7 +85,7 @@ export class NotifySyncService {
 
   /** UI 手动刷新和 Ability 前台恢复共用同一入口，飞行中合并为一轮补拉。 */
   requestSync(): Promise<void> {
-    if (!this.foreground) {
+    if (!this.foreground || this.manualDeletions > 0) {
       this.queued = true;
       return Promise.resolve();
     }
@@ -95,6 +96,24 @@ export class NotifySyncService {
     }
     this.running = this.runRound();
     return this.running;
+  }
+
+  /** 手动删除前等当前同步页安全完成，避免远端删除后被飞行中的同步结果重新写回本地。 */
+  async beginManualDeletion(): Promise<void> {
+    this.manualDeletions++;
+    this.clearPollTimer();
+    if (this.running) {
+      await this.running;
+    }
+  }
+
+  endManualDeletion(): void {
+    if (this.manualDeletions > 0) {
+      this.manualDeletions--;
+    }
+    if (this.manualDeletions === 0 && this.foreground) {
+      this.requestSync();
+    }
   }
 
   /** 详情定位时确保候选服务已完成新一轮同步；仍经统一队列避免同一服务并行迁移。 */
@@ -132,7 +151,7 @@ export class NotifySyncService {
 
   private schedulePoll(): void {
     this.clearPollTimer();
-    if (!this.foreground || this.running) {
+    if (!this.foreground || this.running || this.manualDeletions > 0) {
       return;
     }
     this.pollTimer = setTimeout(() => {
@@ -184,7 +203,7 @@ export class NotifySyncService {
       const workers: Promise<void>[] = [];
       for (let worker: number = 0; worker < Math.min(SERVER_CONCURRENCY, servers.length); worker++) {
         workers.push((async (): Promise<void> => {
-          while (this.foreground && epoch === this.epoch && next < servers.length) {
+          while (this.foreground && epoch === this.epoch && this.manualDeletions === 0 && next < servers.length) {
             const server: ServerEntry = servers[next++];
             try {
               await this.syncServer(server, epoch, round!);
@@ -249,7 +268,7 @@ export class NotifySyncService {
     let remoteDeleteFailed: boolean = false;
     let delHasMore: boolean = false;
 
-    while (this.foreground && epoch === this.epoch) {
+    while (this.foreground && epoch === this.epoch && this.manualDeletions === 0) {
       const result: MessageListResult = await svc.getMessages(null, 0, PAGE_SIZE, after, delCursor, server, true);
       if (!result.ok) {
         this.errors.set(server.id, result.errorMsg);
@@ -323,7 +342,7 @@ export class NotifySyncService {
       after = nextAfter;
     }
 
-    while (this.foreground && epoch === this.epoch && delHasMore) {
+    while (this.foreground && epoch === this.epoch && this.manualDeletions === 0 && delHasMore) {
       const result: MessageListResult = await svc.getMessages(null, 0, 0, 0, delCursor, server, false);
       if (!result.ok || notifySourceKey(result.instanceId, server.id, deviceKey) !== sourceKey) {
         this.errors.set(server.id, result.ok ? '服务器历史实例在同步中变化' : result.errorMsg);

@@ -661,6 +661,40 @@ export class MessageCacheStore {
     return messages;
   }
 
+  /** 读取指定视图内仍待远端清理的解密失败项；可限定分组，包含未加载到列表的历史。 */
+  static async loadDecryptionFailures(deviceKeys: string[], groupKey: string | null = null): Promise<NotifyMessage[]> {
+    const messages: NotifyMessage[] = [];
+    const db = await MessageCacheStore.getStore();
+    if (!db || deviceKeys.length === 0) {
+      return messages;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const args: string[] = [...deviceKeys, NotifyMessage.ENCRYPTION_TITLE,
+        NotifyMessage.MISSING_KEY_BODY, NotifyMessage.DECRYPTION_FAILED_BODY];
+      let sql: string = `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) ` +
+        `AND encrypted=1 AND ciphertext<>'' AND title=? AND body IN (?, ?)`;
+      if (groupKey !== null) {
+        sql += ' AND group_key=?';
+        args.push(groupKey);
+      }
+      const rs: relationalStore.ResultSet = await db.querySql(sql, args);
+      if (rs.goToFirstRow()) {
+        do {
+          const message: NotifyMessage = rowToMessage(rs);
+          if (message.isDecryptionFailed()) {
+            messages.push(message);
+          }
+        } while (rs.goToNextRow());
+      }
+      rs.close();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadDecryptionFailures 失败：%{public}s', formatError(err));
+      throw err instanceof Error ? err : new Error(formatError(err));
+    }
+    return messages;
+  }
+
   /** 删除一个或多个设备中指定分组的全部本地通知，返回实际删除条数。 */
   static async deleteGroup(deviceKeys: string[], groupKey: string): Promise<number> {
     const db = await MessageCacheStore.getStore();
@@ -1090,23 +1124,35 @@ export class MessageCacheStore {
   }
 
   /** 按 (deviceKey, id) 对列表删除（跨服务器多选删除用，避免不同服务器同 id 误删） */
-  static async deleteByDeviceIdPairs(pairs: DeviceIdPair[]): Promise<void> {
+  static async deleteByDeviceIdPairs(pairs: DeviceIdPair[]): Promise<boolean> {
     if (!pairs || pairs.length === 0) {
-      return;
+      return true;
     }
     const db = await MessageCacheStore.getStore();
     if (!db) {
-      return;
+      return false;
     }
+    let transaction: relationalStore.Transaction | null = null;
     try {
-      // 逐条删除：不同 deviceKey 的 id 可能相同，无法用单条 IN 语句
+      // 跨服务器数字 id 可能相同；整批原子删除，失败时保留本地记录以便重试。
+      transaction = await db.createTransaction();
       for (let i = 0; i < pairs.length; i++) {
-        await db.executeSql(
+        await transaction.execute(
           `DELETE FROM ${TABLE_MSG} WHERE device_key=? AND id=?`,
           [pairs[i].deviceKey, pairs[i].id]);
       }
+      await transaction.commit();
+      return true;
     } catch (err) {
+      if (transaction) {
+        try {
+          await transaction.rollback();
+        } catch (rollbackErr) {
+          hilog.warn(DOMAIN, TAG, 'deleteByDeviceIdPairs 回滚失败：%{public}s', formatError(rollbackErr));
+        }
+      }
       hilog.warn(DOMAIN, TAG, 'deleteByDeviceIdPairs 失败：%{public}s', formatError(err));
+      return false;
     }
   }
 

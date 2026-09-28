@@ -344,8 +344,8 @@ export class NotifyMessageService {
           continue;
         }
         if (!encryption.enabled) {
-          message.title = '加密通知';
-          message.body = '此服务器尚未配置加密密钥';
+          message.title = NotifyMessage.ENCRYPTION_TITLE;
+          message.body = NotifyMessage.MISSING_KEY_BODY;
           continue;
         }
         try {
@@ -356,8 +356,8 @@ export class NotifyMessageService {
           // 不记录密钥、IV 或密文，仅记录无敏感信息的失败原因。
           hilog.warn(DOMAIN, TAG, '消息解密失败：%{public}s',
             err instanceof Error ? err.message : String(err));
-          message.title = '加密通知';
-          message.body = '解密失败，请检查算法、模式、Padding 和 Key';
+          message.title = NotifyMessage.ENCRYPTION_TITLE;
+          message.body = NotifyMessage.DECRYPTION_FAILED_BODY;
         }
       }
     }
