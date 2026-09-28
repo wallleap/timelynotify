@@ -21,10 +21,8 @@ export struct MineView {
   // 沉浸光感开关值（API 26+ 生效；EntryAbility 启动时从 Preferences 写入 AppStorage）：
   // 入口行状态文本与各页面渲染分支均读此权威值；切换走 Dialog → 重启确认 → 重启应用生效
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
-  // 主题颜色模式选中索引：0=跟随系统 1=浅色 2=深色（与 COLOR_MODE_KEYS/ICONS 顺序一致）
-  @State @Watch('onColorModeIndexChanged') colorModeIndex: number = 0;
-  // 冷启动回填是否完成：回填阶段赋值不触发持久化/切换（EntryAbility 启动流程已应用过一次）
-  private colorModeInitialized: boolean = false;
+  // 与“个性化设置”的 Select 共用页面状态；持久化仍由 ThemeService 负责。
+  @StorageLink('color_mode') colorModeKey: string = 'system';
   // 主题三选项的 Symbol 图标（顺序与 COLOR_MODE_KEYS 一致）
   private readonly COLOR_MODE_ICONS: Resource[] = [
     $r('sys.symbol.moon_fill'),
@@ -78,17 +76,19 @@ export struct MineView {
         Row() {
           SymbolGlyph(icon)
             .fontSize(18)
-            .fontColor([idx === this.colorModeIndex ? $r('app.color.color_brand') :
+            .fontColor([this.COLOR_MODE_KEYS[idx] === this.colorModeKey ? $r('app.color.color_brand') :
               $r('app.color.color_text_tertiary')])
         }
         .width(32)
         .height(32)
         .borderRadius(16)
         .justifyContent(FlexAlign.Center)
-        .backgroundColor(idx === this.colorModeIndex ? $r('app.color.color_state_brand_selected') :
+        .backgroundColor(this.COLOR_MODE_KEYS[idx] === this.colorModeKey ? $r('app.color.color_state_brand_selected') :
           Color.Transparent)
         .onClick(() => {
-          this.colorModeIndex = idx;
+          const key: string = this.COLOR_MODE_KEYS[idx];
+          this.colorModeKey = key;
+          ThemeService.applyColorMode(key, this.getUIContext());
         })
       }, (_icon: Resource, idx: number) => `color_mode_${idx}`)
     }
@@ -215,21 +215,9 @@ export struct MineView {
     }
   }
 
-  // 读取持久化的主题偏好并回填选中索引（EntryAbility 启动时已应用过一次，此处仅同步 UI）
+  // 读取持久化的主题偏好并回填共享状态（EntryAbility 启动时已应用过一次，此处仅同步 UI）。
   private async refreshColorMode(): Promise<void> {
     const v: string = await PreferencesUtil.getString(null, PreferencesUtil.KEY_COLOR_MODE, 'system');
-    const idx: number = this.COLOR_MODE_KEYS.indexOf(v);
-    this.colorModeIndex = idx >= 0 ? idx : 0;
-    this.colorModeInitialized = true; // 回填完成后，用户点击才触发持久化/切换
-  }
-
-  // 主题切换回调（@Watch）：持久化用户选择并即时应用到全局颜色模式
-  private onColorModeIndexChanged(): void {
-    if (!this.colorModeInitialized) {
-      return; // 冷启动回填阶段，避免重复写盘/切换（启动流程已处理）
-    }
-    const idx: number = this.colorModeIndex;
-    const key: string = (idx >= 0 && idx < this.COLOR_MODE_KEYS.length) ? this.COLOR_MODE_KEYS[idx] : 'system';
-    ThemeService.applyColorMode(key, this.getUIContext());
+    this.colorModeKey = this.COLOR_MODE_KEYS.includes(v) ? v : 'system';
   }
 }
