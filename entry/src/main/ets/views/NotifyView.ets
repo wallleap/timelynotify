@@ -10,8 +10,11 @@ import { MessageCacheStore } from '../services/MessageCacheStore';
 import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
-import { ServerKeyDialog, ServerActionMenuDialog } from '../components/ServerActionDialogs';
+import { ServerKeyDialog, ServerActionMenuDialog, ServerRenameDialog } from '../components/ServerActionDialogs';
 import { ClientTokenDialog } from '../components/ClientTokenDialog';
+import { EncryptionSettingsDialog } from '../components/EncryptionSettingsDialog';
+import { EncryptionConfig } from '../model/EncryptionConfig';
+import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import {
   getDialogBackgroundOptions,
@@ -156,6 +159,8 @@ export struct NotifyView {
   private fixClientTokenController: CustomDialogController | null = null;
   private fixKeyController: CustomDialogController | null = null;
   private fixActionMenuController: CustomDialogController | null = null;
+  private fixEncryptionController: CustomDialogController | null = null;
+  private fixRenameController: CustomDialogController | null = null;
 
   aboutToAppear() {
     this.initAfterServerManagerReady();
@@ -420,9 +425,9 @@ export struct NotifyView {
           onCopy: () => { this.handleCopyServer(server); },
           onResetKey: () => { this.openKeyDialogFor(server); },
           onClientToken: () => { this.openClientTokenDialogFor(server); },
-          onEncryption: () => { AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 1); },
-          onRename: () => { AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 1); },
-          onDelete: () => { AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 1); },
+          onEncryption: () => { this.openEncryptionDialogFor(server); },
+          onRename: () => { this.openRenameDialogFor(server); },
+          onDelete: () => { this.confirmDeleteServer(server); },
         }),
         alignment: DialogAlignment.Center,
         autoCancel: true,
@@ -435,6 +440,189 @@ export struct NotifyView {
       this.fixActionMenuController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'action menu open 失败');
+    }
+  }
+
+  private findConfiguredServer(id: string): ServerEntry | null {
+    const server: ServerEntry | undefined = ServerManager.getInstance().getList()
+      .find((item: ServerEntry) => item.id === id);
+    return server ?? null;
+  }
+
+  private async openEncryptionDialogFor(server: ServerEntry): Promise<void> {
+    const target: ServerEntry | null = this.findConfiguredServer(server.id);
+    if (!target) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
+    try {
+      const config: EncryptionConfig = await EncryptionConfigService.get(null, target.id);
+      const dialogBg = getDialogBackgroundOptions();
+      this.fixEncryptionController = new CustomDialogController({
+        builder: EncryptionSettingsDialog({
+          getConfig: (): EncryptionConfig => config,
+          getServerName: (): string => target.name || target.baseURL,
+          onSave: (updated: EncryptionConfig): void => {
+            this.saveEncryptionFor(target.id, updated);
+          },
+          onClear: (): void => {
+            this.clearEncryptionFor(target.id);
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
+      this.fixEncryptionController.open();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'encryption dialog open 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      showToast(this.getUIContext(), '弹窗无法打开');
+    }
+  }
+
+  private async saveEncryptionFor(serverId: string, config: EncryptionConfig): Promise<void> {
+    const server: ServerEntry | null = this.findConfiguredServer(serverId);
+    if (!server) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
+    config.deviceKey = server.deviceKey;
+    try {
+      const ok: boolean = await EncryptionConfigService.save(null, serverId, config);
+      if (ok) {
+        try {
+          await NotifyMessageService.getInstance().redecryptCachedMessages(server);
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, 'redecrypt cached messages 失败：%{public}s',
+            err instanceof Error ? err.message : String(err));
+        }
+        this.loadMessages();
+      }
+      showToast(this.getUIContext(), ok ? '加密设置已保存' : '保存失败');
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'save encryption 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      showToast(this.getUIContext(), '保存失败');
+    }
+  }
+
+  private async clearEncryptionFor(serverId: string): Promise<void> {
+    const server: ServerEntry | null = this.findConfiguredServer(serverId);
+    if (!server) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
+    try {
+      const ok: boolean = await EncryptionConfigService.remove(null, serverId);
+      if (ok) {
+        try {
+          await NotifyMessageService.getInstance().redecryptCachedMessages(server);
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, 'redecrypt cached messages 失败：%{public}s',
+            err instanceof Error ? err.message : String(err));
+        }
+        this.loadMessages();
+      }
+      showToast(this.getUIContext(), ok ? '加密设置已清除' : '清除失败');
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'clear encryption 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      showToast(this.getUIContext(), '清除失败');
+    }
+  }
+
+  private openRenameDialogFor(server: ServerEntry): void {
+    if (!this.findConfiguredServer(server.id)) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
+    try {
+      const dialogBg = getDialogBackgroundOptions();
+      this.fixRenameController = new CustomDialogController({
+        builder: ServerRenameDialog({
+          getInitName: (): string => this.findConfiguredServer(server.id)?.name ?? '',
+          onConfirm: (name: string): void => {
+            this.renameServerFor(server.id, name);
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: true,
+        offset: { dx: 0, dy: 0 },
+        cornerRadius: 14,
+        systemMaterial: dialogBg.systemMaterial,
+        backgroundColor: dialogBg.backgroundColor,
+        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+      });
+      this.fixRenameController.open();
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'rename dialog open 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      showToast(this.getUIContext(), '弹窗无法打开');
+    }
+  }
+
+  private async renameServerFor(serverId: string, name: string): Promise<void> {
+    if (!this.findConfiguredServer(serverId)) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
+    try {
+      const ok: boolean = await ServerManager.getInstance().renameServer(null, serverId, name);
+      showToast(this.getUIContext(), ok ? '已重命名' : '重命名失败');
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'rename server 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      showToast(this.getUIContext(), '重命名失败');
+    }
+  }
+
+  private async confirmDeleteServer(server: ServerEntry): Promise<void> {
+    const manager: ServerManager = ServerManager.getInstance();
+    if (!this.findConfiguredServer(server.id)) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
+    if (manager.getList().length <= 1) {
+      showToast(this.getUIContext(), '至少保留一个服务器');
+      return;
+    }
+    try {
+      const result = await this.getUIContext().getPromptAction().showDialog({
+        title: '删除服务器',
+        message: `确定删除「${server.name || server.baseURL}」吗？`,
+        buttons: [
+          { text: '取消', color: $r('app.color.color_text_tertiary') },
+          { text: '确定', color: $r('app.color.color_error') },
+        ],
+        systemMaterial: getDialogBackgroundOptions().systemMaterial,
+      });
+      if (result.index !== 1) {
+        return;
+      }
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'delete server dialog 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      return;
+    }
+    try {
+      const ok: boolean = await manager.deleteServer(null, server.id);
+      if (ok) {
+        try {
+          await EncryptionConfigService.remove(null, server.id);
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, 'delete server encryption config 失败：%{public}s',
+            err instanceof Error ? err.message : String(err));
+        }
+      }
+      showToast(this.getUIContext(), ok ? '已删除' : '删除失败', ok ? 1200 : undefined);
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'delete server 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      showToast(this.getUIContext(), '删除失败');
     }
   }
 
