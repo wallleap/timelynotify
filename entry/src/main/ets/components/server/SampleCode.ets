@@ -82,13 +82,16 @@ export struct SampleCode {
           .width('100%');
 
         Row() {
-          Row({ space: 12 }) {
+          // 每个操作项自行提供四周内边距，整块区域都能响应点击。
+          Row() {
             Text('GET')
               .fontFamily('monospace')
               .fontWeight(this.requestMethod === 'GET' ? FontWeight.Bold : FontWeight.Regular)
               .fontColor(this.requestMethod === 'GET' ? $r('app.color.color_text_primary') :
                 $r('app.color.color_text_secondary'))
               .fontSize(12)
+              .padding({ left: 10, right: 10, top: 14, bottom: 14 })
+              .textAlign(TextAlign.Center)
               .onClick(() => {
                 this.selectMethod('GET');
               });
@@ -98,6 +101,8 @@ export struct SampleCode {
               .fontColor(this.requestMethod === 'POST' ? $r('app.color.color_text_primary') :
                 $r('app.color.color_text_secondary'))
               .fontSize(12)
+              .padding({ left: 10, right: 10, top: 14, bottom: 14 })
+              .textAlign(TextAlign.Center)
               .onClick(() => {
                 this.selectMethod('POST');
               });
@@ -110,15 +115,14 @@ export struct SampleCode {
               .fillColor($r('app.color.color_text_secondary'))
               .draggable(false);
           }
-          .width(32)
-          .height(24)
-          .justifyContent(FlexAlign.End)
+          .padding({ left: 10, right: 10, top: 14, bottom: 14 })
+          .justifyContent(FlexAlign.Center)
+          .alignItems(VerticalAlign.Center)
           .onClick(() => {
             this.copyCode();
           });
         }
         .width('100%')
-        .padding(10)
         .borderRadius({ topLeft: 8, topRight: 8 })
         .backgroundColor($r('app.color.color_bg_page'))
         .alignItems(VerticalAlign.Center)

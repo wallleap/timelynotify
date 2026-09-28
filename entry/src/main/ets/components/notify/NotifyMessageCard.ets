@@ -153,7 +153,7 @@ export struct NotifyMessageCard {
               .objectFit(ImageFit.Contain)
               .flexShrink(0);
             Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
-          }.layoutWeight(1).justifyContent(FlexAlign.Center)
+          }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
           .onClick(() => this.onCopyUrl(url));
 
           Divider()
@@ -171,7 +171,7 @@ export struct NotifyMessageCard {
               .objectFit(ImageFit.Contain)
               .flexShrink(0);
             Text('访问链接').fontSize(13).fontColor($r('app.color.color_brand'));
-          }.layoutWeight(1).justifyContent(FlexAlign.Center)
+          }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
           .onClick(() => this.onOpenUrl(url));
         }
         .width('100%').height(42).backgroundColor($r('app.color.color_bg_action_bar')).alignItems(VerticalAlign.Center);

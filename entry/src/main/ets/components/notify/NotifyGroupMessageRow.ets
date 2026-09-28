@@ -42,14 +42,14 @@ export struct NotifyGroupMessageRow {
             Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
               .objectFit(ImageFit.Contain).flexShrink(0);
             Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
-          }.layoutWeight(1).justifyContent(FlexAlign.Center)
+          }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
             .onClick(() => this.onCopyUrl(url));
           Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
           Row({ space: 4 }) {
             Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
               .objectFit(ImageFit.Contain).flexShrink(0);
             Text('访问链接').fontSize(13).fontColor($r('app.color.color_brand'));
-          }.layoutWeight(1).justifyContent(FlexAlign.Center)
+          }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
             .onClick(() => this.onOpenUrl(url));
         }
         .width('100%').height(42).backgroundColor($r('app.color.color_bg_action_bar')).alignItems(VerticalAlign.Center);

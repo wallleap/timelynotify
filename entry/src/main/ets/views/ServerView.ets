@@ -80,7 +80,7 @@ export struct ServerView {
   // 文档入口：复用应用内 SharePage，分别打开使用指南和推送参数
   @Builder
   doc() {
-    Column({ space: 16 }) {
+    Column() {
       Row({ space: 6 }) {
         Row({ space: 6 }) {
           Image($r('app.media.documentation_colorful'))
@@ -99,6 +99,7 @@ export struct ServerView {
       .width('100%')
       .alignItems(VerticalAlign.Center)
       .justifyContent(FlexAlign.SpaceBetween)
+      .padding({ bottom: 16 })
 
       Divider()
         .color($r('app.color.color_border_subtle'))
@@ -121,6 +122,8 @@ export struct ServerView {
       .width('100%')
       .alignItems(VerticalAlign.Center)
       .justifyContent(FlexAlign.SpaceBetween)
+      // 用行内边距扩展点击区域，替代 Column 的不可点击间距。
+      .padding({ top: 16, bottom: 16 })
       .onClick(() => {
         this.openDocument(`${USE_DOCS_URL}/`, '使用指南');
       })
@@ -146,6 +149,7 @@ export struct ServerView {
       .width('100%')
       .alignItems(VerticalAlign.Center)
       .justifyContent(FlexAlign.SpaceBetween)
+      .padding({ top: 16, bottom: 20 })
       .onClick(() => {
         this.openDocument(PUSH_FIELDS_URL, '推送参数');
       })
@@ -154,7 +158,7 @@ export struct ServerView {
       top: 16,
       left: 16,
       right: 16,
-      bottom: 20
+      bottom: 0
     })
     .borderRadius(10)
     .backgroundColor($r('app.color.color_bg_surface'))
