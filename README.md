@@ -159,7 +159,7 @@ TODO:
     ├─ server_encryption_configs     {serverId: {enabled,algorithm,mode,padding,deviceKey}}（不含 Key）
     ├─ server_current_id             当前选中 server
     ├─ server_deleted_builtin        已删除内置 id 列表
-    ├─ color_mode                    主题颜色模式（system/light/dark）
+    ├─ color_mode                    主题颜色模式（system/light/dark；“我的”标题栏与“个性化设置”选择器实时同步）
     ├─ notify_enabled                通知开关
     └─ client_token                  旧版全局 token：仅作迁移源，迁移进 per-server 后删除
 
