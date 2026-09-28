@@ -5,10 +5,8 @@ import { common, Want } from '@kit.AbilityKit';
 import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
-import { NotifyMessageService, MessageListResult } from '../services/NotifyMessageService';
+import { NotifyMessageService } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
-import { DecryptedNotificationService } from '../services/DecryptedNotificationService';
-import { AutoCopyService } from '../services/AutoCopyService';
 import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
@@ -31,8 +29,12 @@ import {
   KEY_INDEX_PAGE_VISIBLE,
   KEY_NOTIFY_EDITING,
   KEY_NOTIFY_OPEN_REQUEST,
-  KEY_NOTIFY_REFRESH_SIGNAL
+  KEY_NOTIFY_REFRESH_SIGNAL,
+  KEY_NOTIFY_SYNC_FEEDBACK,
+  KEY_NOTIFY_SYNC_PROGRESS,
+  KEY_NOTIFY_SYNC_REVISION
 } from '../common/Constant';
+import { NotifySyncService } from '../services/NotifySyncService';
 import showToast from '../components/showToast';
 import { NotifySection } from '../components/notify/NotifyViewTypes';
 import {
@@ -51,7 +53,7 @@ import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 import { NotifyExportService } from '../services/NotifyExportService';
-import { belongsToPushInstance, compareNotifyOrder, notifyIdentity, notifySourceKey } from '../utils/NotifyIdentity';
+import { belongsToPushInstance, compareNotifyOrder, notifyIdentity } from '../utils/NotifyIdentity';
 
 const TAG: string = 'NotifyView';
 
@@ -61,13 +63,6 @@ interface ServerErrorInfo {
   error: string;
 }
 
-// 前台通知页优先低延迟同步；切到其它 Tab 后降频，兼顾实时性与网络开销。
-const NOTIFY_PAGE_POLL_INTERVAL_MS: number = 3000;
-const BACKGROUND_TAB_POLL_INTERVAL_MS: number = 15000;
-// 服务端单页上限；首次历史播种持续分页，直到服务端明确返回 hasMore=false。
-const SYNC_PAGE_SIZE: number = 100;
-// 远程迁移清理采用小批量并发，避免首次历史较多时同时发出 100 个 DELETE 请求。
-const REMOTE_DELETE_CONCURRENCY: number = 6;
 // 收缩错误胶囊与标题栏之间保留的呼吸间距。
 const COMPACT_BANNER_TOP_GAP: number = 8;
 
@@ -78,6 +73,9 @@ export struct NotifyView {
   @State title: string = '';
   @State @Watch('restoreVisibleExpandedGroups') messages: NotifyMessage[] = [];
   @State loading: boolean = false;
+  @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgressText: string = '';
+  @StorageProp(KEY_NOTIFY_SYNC_FEEDBACK) syncFeedbackText: string = '';
+  @StorageProp(KEY_NOTIFY_SYNC_REVISION) @Watch('onSyncRevisionChanged') syncRevision: number = 0;
   @State errorMsg: string = '';
   // 单服务或全部模式下 per-server 同步错误的非阻塞提示（列出失败的 server 及原因）
   @State @Watch('onServerErrorBannerChanged') serverErrorBanner: string = '';
@@ -134,22 +132,16 @@ export struct NotifyView {
   private detailScroller: Scroller = new Scroller();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
   private isAutoScrolling: boolean = false;
-  private pollTimer: number = -1;
   // 当前列表对应的 device_key 快照；key 切换时需清空内存中的旧设备消息，即使处于“全部”模式。
   private visibleDeviceKeys: string = '';
-  // 防止飞行中的轮询请求在切走 Tab 后又重启循环
-  private pollingEnabled: boolean = false;
-  // 轮询请求进行中标记：防止慢网络下请求堆积
-  private pollInFlight: boolean = false;
   // 持久化的全局展开记录；仅在切换展开/收起时变更，避免切换服务器时误删不可见分组。
   private savedExpandedGroups: string[] = [];
   // Preferences 异步读取完成前不恢复，避免把默认空数组误写回磁盘。
   private expandedGroupsLoaded: boolean = false;
-  // 当前一轮同步新拉到的消息（跨服务器、跨分页聚合），用于同步完成后交给 AutoCopyService。
-  // 仅记录本轮首次拉到、尚未远程删除的批次；上一轮的记录在下一轮开始时清空。
-  private newMessagesThisRound: NotifyMessage[] = [];
-  // 本轮 per-server 同步错误（serverId → errorMsg），由 syncSingleServer 写入，
-  // syncAllServers/loadMessages 统一消费：全失败且无消息→阻塞 errorMsg，部分失败→非阻塞 serverErrorBanner
+  // 页级刷新合并：多个服务器同时提交时避免并行查询造成旧快照覆盖新快照。
+  private pageRefreshInFlight: boolean = false;
+  private pageRefreshPending: boolean = false;
+  // 应用级同步服务保存错误，页面只负责按当前视图展示。
   private syncErrors: Map<string, string> = new Map<string, string>();
   // 失败服务器修复弹窗 controller（必须由成员持有，局部变量会被回收导致 close 失效）
   private fixClientTokenController: CustomDialogController | null = null;
@@ -186,18 +178,13 @@ export struct NotifyView {
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
-    // Index 页面可见时保持轮询：通知 Tab 3 秒，其它前台 Tab 15 秒。
-    if (this.indexPageVisible) {
-      this.startPolling();
-    }
   }
 
   aboutToDisappear() {
     if (this.onChange) {
       ServerManager.getInstance().removeChangeListener(this.onChange);
     }
-    // 组件销毁时停止轮询，避免定时器泄漏
-    this.stopPolling();
+    this.loadSeq++;
   }
 
   @Builder
@@ -471,6 +458,9 @@ export struct NotifyView {
         if (this.serverErrorBanner.length > 0) {
           this.serverErrorBannerView();
         }
+        if (this.syncProgressText.length > 0 || this.syncFeedbackText.length > 0) {
+          this.syncProgressView();
+        }
         this.refreshListContent();
       }
       .width('100%')
@@ -478,12 +468,15 @@ export struct NotifyView {
     } else {
       Stack({ alignContent: Alignment.TopStart }) {
         Column() {
+          if (this.syncProgressText.length > 0 || this.syncFeedbackText.length > 0) {
+            this.syncProgressView();
+          }
           this.refreshListContent();
         }
         .width('100%')
         .height('100%');
 
-        // 降级布局中固定在列表上层，避免 clip(false) 的滚动内容覆盖错误提示。
+        // 降级布局中错误提示固定在列表上层，避免滚动内容覆盖。
         if (this.serverErrorBanner.length > 0) {
           this.serverErrorBannerView();
         }
@@ -491,6 +484,16 @@ export struct NotifyView {
       .width('100%')
       .height('100%');
     }
+  }
+
+  /** 大批量历史迁移时给出已处理数量，不宣称总数或删除成功数。 */
+  @Builder
+  private syncProgressView() {
+    Text(this.syncProgressText.length > 0 ? this.syncProgressText : this.syncFeedbackText)
+      .fontSize(12)
+      .fontColor($r('app.color.color_text_secondary'))
+      .padding({ left: 16, right: 16, top: 6, bottom: 6 })
+      .width('100%');
   }
 
   /** 通知列表与下拉刷新的公共内容层；由外层决定 Banner 是流式还是固定展示。 */
@@ -1001,56 +1004,28 @@ export struct NotifyView {
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
   private async initAfterServerManagerReady(): Promise<void> {
-    this.newMessagesThisRound = [];
+    this.loading = true;
     try {
       await ServerManager.getInstance().ensureLoaded();
-      // 从 ServerManager 同步初始视图模式
       this.viewAll = ServerManager.getInstance().getViewAllMode();
       this.visibleDeviceKeys = this.getAllDeviceKeys().join('|');
       this.refresh();
-      const seq: number = ++this.loadSeq;
-      if (this.viewAll) {
-        // 全部模式：先从本地缓存加载所有服务器的消息
-        const deviceKeys: string[] = this.getAllDeviceKeys();
-        if (deviceKeys.length > 0) {
-          const grouped = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
-          if (grouped.messages.length > 0) {
-            this.messages = grouped.messages;
-            this.groupTotals = grouped.totals;
-          }
-        }
-        await this.syncAllServers(seq);
-      } else {
-        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
-        if (cur && cur.deviceKey && cur.deviceKey.length > 0) {
-          const grouped = await MessageCacheStore.loadAllGroupedLatest(this.getCurrentHistoryKeys(), 100);
-          if (grouped.messages.length > 0) {
-            this.messages = grouped.messages;
-            this.groupTotals = grouped.totals;
-          }
-        }
-        if (cur) {
-          const changed: boolean = await this.syncSingleServer(cur, false, seq);
-          if (changed || this.messages.length === 0) {
-            const deviceKeys: string[] = this.getCurrentHistoryKeys();
-            if (deviceKeys.length > 0) {
-              const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
-              this.messages = refreshed.messages;
-              this.groupTotals = refreshed.totals;
-            }
-          }
-          this.updateSingleServerErrorPresentation(cur);
-        }
-      }
+      await this.refreshVisibleAfterSyncPage(++this.loadSeq);
+      await NotifySyncService.getInstance().requestSync();
+      await this.refreshVisibleAfterSyncPage(this.loadSeq);
+      this.updateSyncErrorPresentation();
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
     } finally {
-      // 首次历史同步：AutoCopyService 内部会把首批消息标记为已处理，不触发自动复制。
-      await AutoCopyService.handleSyncRound(this.newMessagesThisRound, this.getUIContext());
-      this.newMessagesThisRound = [];
-      this.processPendingPushNotice();
+      this.loading = false;
+      if (this.loadQueued) {
+        this.loadQueued = false;
+        this.loadMessages();
+      } else {
+        this.processPendingPushNotice();
+      }
     }
   }
 
@@ -1158,27 +1133,52 @@ export struct NotifyView {
     if (this.isEditing) {
       this.exitEditMode();
     }
-    if (!this.indexPageVisible) {
-      return;
+    NotifySyncService.getInstance().setTabIndex(this.homeTabIndex);
+    if (this.indexPageVisible && this.homeTabIndex === 0) {
+      this.onSyncRevisionChanged();
     }
-    if (this.homeTabIndex === 0) {
-      // 回到通知页立即同步一次，避免用户还要等待下一次 3 秒轮询。
-      this.loadMessages();
-    }
-    // 切换 Tab 后立即按新前台频率重新计时，避免沿用上一种频率的剩余等待时间。
-    this.restartPollingSchedule();
   }
 
   private onPageVisibleChanged(): void {
-    if (this.indexPageVisible) {
-      if (this.homeTabIndex === 0) {
-        // 切回前台时立即拉一次，autoCopy 场景下也能让点系统通知跳进 App 后触发复制。
-        this.loadMessages();
-      }
-      this.restartPollingSchedule();
-    } else {
-      this.stopPolling();
+    if (this.indexPageVisible && this.homeTabIndex === 0) {
+      this.onSyncRevisionChanged();
     }
+  }
+
+  private onSyncRevisionChanged(): void {
+    if (!this.indexPageVisible || this.homeTabIndex !== 0) {
+      return;
+    }
+    const seq: number = this.loadSeq;
+    this.refreshVisibleAfterSyncPage(seq).then(() => {
+      this.updateSyncErrorPresentation();
+    });
+  }
+
+  private updateSyncErrorPresentation(): void {
+    this.syncErrors = NotifySyncService.getInstance().getErrors();
+    if (!this.viewAll) {
+      const current: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
+      if (current) {
+        this.updateSingleServerErrorPresentation(current);
+      }
+      return;
+    }
+    const servers: ServerEntry[] = this.getAllRegisteredServers();
+    let errorText: string = '';
+    let bannerText: string = '';
+    let failed: number = 0;
+    for (let i: number = 0; i < servers.length; i++) {
+      const error: string | undefined = this.syncErrors.get(servers[i].id);
+      if (!error) {
+        continue;
+      }
+      failed++;
+      errorText += (errorText.length > 0 ? '\n' : '') + (servers[i].name || servers[i].baseURL) + '：' + error;
+      bannerText += (bannerText.length > 0 ? '\n' : '') + this.buildServerErrorBannerMessage(servers[i], error);
+    }
+    this.errorMsg = failed === servers.length && this.messages.length === 0 ? errorText : '';
+    this.serverErrorBanner = this.errorMsg.length > 0 ? '' : bannerText;
   }
 
   private onRefreshSignalChanged(): void {
@@ -1201,91 +1201,6 @@ export struct NotifyView {
   }
 
 
-  // 启动轮询：幂等，重复调用不会叠加定时器
-  private startPolling(): void {
-    if (this.pollingEnabled) {
-      return;
-    }
-    this.pollingEnabled = true;
-    this.scheduleNextPoll();
-  }
-
-  private stopPolling(): void {
-    this.pollingEnabled = false;
-    if (this.pollTimer >= 0) {
-      clearTimeout(this.pollTimer);
-      this.pollTimer = -1;
-    }
-  }
-
-  /** 当前 Index 页面中的轮询频率：通知页优先 3 秒，其它前台 Tab 降为 15 秒。 */
-  private getPollInterval(): number {
-    return this.homeTabIndex === 0 ? NOTIFY_PAGE_POLL_INTERVAL_MS : BACKGROUND_TAB_POLL_INTERVAL_MS;
-  }
-
-  /** 切换 Tab/回到前台时按最新频率重置未触发的计时器；飞行中的请求结束后自行续排。 */
-  private restartPollingSchedule(): void {
-    if (!this.pollingEnabled) {
-      this.startPolling();
-      return;
-    }
-    if (this.pollTimer >= 0) {
-      clearTimeout(this.pollTimer);
-      this.pollTimer = -1;
-    }
-    if (!this.pollInFlight) {
-      this.scheduleNextPoll();
-    }
-  }
-
-  private scheduleNextPoll(): void {
-    this.pollTimer = setTimeout(() => {
-      this.pollTimer = -1;
-      this.pollNewMessages().finally(() => {
-        if (this.pollingEnabled) {
-          this.scheduleNextPoll();
-        }
-      });
-    }, this.getPollInterval());
-  }
-
-  // 不清空列表/不重置分页；失败静默，等下一轮
-  private async pollNewMessages(): Promise<void> {
-    if (this.pollInFlight || this.loading || this.needGuideToConfig()) {
-      return;
-    }
-    this.pollInFlight = true;
-    this.newMessagesThisRound = [];
-    try {
-      await ServerManager.getInstance().ensureLoaded();
-      if (this.viewAll) {
-        await this.syncAllServers(-1);
-      } else {
-        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
-        if (cur) {
-          const changed: boolean = await this.syncSingleServer(cur, false, -1);
-          // 单服务器模式有变化时从本地重新加载（保持与 syncFromServer 原行为一致）
-          if (changed || this.messages.length === 0) {
-            const keys: string[] = this.getCurrentHistoryKeys();
-            if (keys.length > 0) {
-              const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 100);
-              this.messages = refreshed.messages;
-              this.groupTotals = refreshed.totals;
-            }
-          }
-          this.updateSingleServerErrorPresentation(cur);
-        }
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, '轮询异常：%{public}s', msg);
-    } finally {
-      this.pollInFlight = false;
-      // 轮询到新通知时评估自动复制；用户停留在通知页时才触发 Toast。
-      await AutoCopyService.handleSyncRound(this.newMessagesThisRound, this.getUIContext());
-      this.newMessagesThisRound = [];
-    }
-  }
 
   private onIsEditingChanged(): void {
     if (!this.isEditing && this.selectedIds.length > 0) {
@@ -1684,6 +1599,33 @@ export struct NotifyView {
     return keys;
   }
 
+
+  /** 多服务逐页提交后合并列表查询；代际变化时不把旧服务结果写回当前页面。 */
+  private async refreshVisibleAfterSyncPage(expectedSeq: number): Promise<void> {
+    if (this.pageRefreshInFlight) {
+      this.pageRefreshPending = true;
+      return;
+    }
+    this.pageRefreshInFlight = true;
+    try {
+      do {
+        this.pageRefreshPending = false;
+        const seq: number = this.loadSeq;
+        if (expectedSeq >= 0 && expectedSeq !== seq) {
+          return;
+        }
+        const keys: string[] = this.viewAll ? this.getAllDeviceKeys() : this.getCurrentHistoryKeys();
+        const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 100);
+        if (seq === this.loadSeq) {
+          this.messages = refreshed.messages;
+          this.groupTotals = refreshed.totals;
+        }
+      } while (this.pageRefreshPending);
+    } finally {
+      this.pageRefreshInFlight = false;
+    }
+  }
+
   /**
    * 切换视图模式（全部 / 单服务器）。
    * 通过 ServerManager 统一管理，onChange 回调会处理列表刷新。
@@ -1699,40 +1641,20 @@ export struct NotifyView {
       return;
     }
     this.loading = true;
-    this.newMessagesThisRound = [];
     const seq: number = ++this.loadSeq;
-    // 清空旧错误，避免短暂闪烁旧错误态
     this.errorMsg = '';
     this.serverErrorBanner = '';
-    this.syncErrors = new Map<string, string>();
     try {
       await ServerManager.getInstance().ensureLoaded();
-      // 每次进入或刷新列表前清理 ttl 已到期的本地历史；清空内存以强制从缓存回填。
       const expiredDeleted: number = await MessageCacheStore.purgeExpired();
       if (expiredDeleted > 0) {
         this.messages = [];
         this.groupTotals = new Map<string, number>();
       }
-      if (this.viewAll) {
-        // 全部模式：并行同步所有已注册服务器
-        await this.syncAllServers(seq);
-      } else {
-        // 单服务器模式：只同步当前服务器
-        const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
-        if (cur) {
-          const changed: boolean = await this.syncSingleServer(cur, false, seq);
-          // 同步完成后从缓存回填列表（onChange 已清空 this.messages，必须回填）
-          if (changed || this.messages.length === 0) {
-            const keys: string[] = this.getCurrentHistoryKeys();
-            if (keys.length > 0) {
-              const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 100);
-              this.messages = refreshed.messages;
-              this.groupTotals = refreshed.totals;
-            }
-          }
-          this.updateSingleServerErrorPresentation(cur);
-        }
-      }
+      await this.refreshVisibleAfterSyncPage(seq);
+      await NotifySyncService.getInstance().requestSync();
+      await this.refreshVisibleAfterSyncPage(seq);
+      this.updateSyncErrorPresentation();
       this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1743,9 +1665,6 @@ export struct NotifyView {
     } finally {
       this.loading = false;
       this.refreshing = false;
-      // 同步完成后评估自动复制：从本轮新消息中选最新一条 autoCopy 写入剪贴板。
-      await AutoCopyService.handleSyncRound(this.newMessagesThisRound, this.getUIContext());
-      this.newMessagesThisRound = [];
       if (this.loadQueued) {
         this.loadQueued = false;
         this.loadMessages(); // 补拉：消费排队期间产生的最新拉取需求
@@ -1791,7 +1710,7 @@ export struct NotifyView {
           if (server.instanceId && server.instanceId !== instanceId) {
             continue;
           }
-          await this.syncSingleServer(server, false);
+          await NotifySyncService.getInstance().syncServerNow(server);
           found = await this.findPushNotice([server], instanceId, id);
         }
       }
@@ -1861,323 +1780,6 @@ export struct NotifyView {
     return null;
   }
 
-  /**
-   * 同步单个服务器的远程暂存消息。
-   * 每页先消费删除流水（extraIds 墓碑删本地副本），再解密落库本页消息、删除远程副本；
-   * 删除失败项会在下一轮幂等重试。删除流水游标随每页 saveMeta 持久化，forceFull 时重置为 0。
-   */
-  private async syncSingleServer(server: ServerEntry, forceFull: boolean,
-    expectedSeq: number = -1): Promise<boolean> {
-    const svc = NotifyMessageService.getInstance();
-    const deviceKey: string = server.deviceKey;
-    if (!deviceKey || deviceKey.length === 0) {
-      return false;
-    }
-
-    // 代际校验
-    if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-      return false;
-    }
-
-    // 远程历史是待迁移队列。每轮必须从 0 检查，才能重试上次已落库但远程删除失败的消息。
-    let after: number = 0;
-    let newMaxId: number = 0;
-    let delCursor: number = 0;
-    let sourceKey: string = notifySourceKey(server.instanceId, server.id, deviceKey);
-    if (!forceFull) {
-      const meta = await MessageCacheStore.getMeta(sourceKey);
-      newMaxId = meta.maxId;
-      delCursor = meta.delCursor;
-    }
-    let clearCurrentSource: boolean = forceFull;
-    let instanceRestarted: boolean = false;
-
-    let hasNewMessages: boolean = false;
-    // 最后一个消息页的删除流水 hasMore：消息翻页结束后据此继续翻删除流水
-    let lastDelHasMore: boolean = false;
-
-    while (true) {
-      if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-        return false;
-      }
-      const result = await svc.getMessages(null, 0, SYNC_PAGE_SIZE, after, delCursor, server, true);
-      if (!result.ok) {
-        hilog.warn(DOMAIN, TAG, 'syncSingleServer 失败（%{public}s）：%{public}s', deviceKey, result.errorMsg);
-        // 记录 per-server 错误，由调用方（syncAllServers/loadMessages）统一处理展示
-        this.syncErrors.set(server.id, result.errorMsg);
-        return false;
-      }
-
-      // 响应所属实例必须先确认，再应用删除流水或推进游标。
-      // 数据库重建或服务端升级首次提供 instanceId 时，旧实例的游标不能用于新实例。
-      const responseSource: string = notifySourceKey(result.instanceId, server.id, deviceKey);
-      if (responseSource !== sourceKey) {
-        if (instanceRestarted) {
-          this.syncErrors.set(server.id, '服务器历史实例在同步中变化');
-          return false;
-        }
-        instanceRestarted = true;
-        sourceKey = responseSource;
-        after = 0;
-        const nextMeta = await MessageCacheStore.getMeta(sourceKey);
-        newMaxId = forceFull ? 0 : nextMeta.maxId;
-        delCursor = forceFull ? 0 : nextMeta.delCursor;
-        continue;
-      }
-      if (server.instanceId !== result.instanceId || server.historyKeys.indexOf(sourceKey) < 0) {
-        const saved: boolean = await ServerManager.getInstance().rememberHistory(server.id, result.instanceId, sourceKey);
-        if (!saved) {
-          this.syncErrors.set(server.id, '无法保存服务器历史身份');
-          return false;
-        }
-      }
-      if (clearCurrentSource) {
-        await MessageCacheStore.clearDevice(sourceKey);
-        clearCurrentSource = false;
-      }
-
-      // 先消费本页删除流水，再落库本页消息：只应用 extraIds（Bark delete=1 墓碑）
-      // 删除本地副本；ids/purges 不消费——客户端迁移后删除远程副本会在服务端
-      // 留下同 id 墓碑，消费 ids 会把刚落库的消息误删。
-      // 必须先删后写：同一 extras.id「先 delete=1 后重推」时，本页同时携带墓碑与
-      // 新消息，若先写后删会把刚落库的新消息一并按 extras.id 删掉。
-      // 删除本地副本也视为"有变化"，触发同步完成后的列表重载。
-      if (await this.applyDeletionExtraIds(sourceKey, result)) {
-        hasNewMessages = true;
-      }
-      // 仅当响应携带 deletions 信封时推进游标（区分"无信封"与"cursor=0"）；
-      // 即使 extraIds 为空也必须推进保存，否则删除流水会每轮重放。
-      if (result.hasDeletions) {
-        delCursor = result.delCursor;
-      }
-
-      let nextAfter: number = after;
-      if (result.messages.length > 0) {
-        // 解密已在 getMessages 中完成；明文、ciphertext 和 IV 必须一起成功落库后才能删远程。
-        const written: boolean = await MessageCacheStore.upsertMessages(sourceKey, result.messages);
-        if (!written) {
-          hilog.warn(DOMAIN, TAG, 'syncSingleServer 本地写入失败，保留历史游标：%{public}s', deviceKey);
-          return false;
-        }
-        // 本轮新消息收集到 newMessagesThisRound，供同步完成后交给 AutoCopyService 评估自动复制。
-        // deviceKey 是运行时字段，fromRaw 不解析；这里补齐以便 AutoCopyService 跨服务器去重。
-        for (let i = 0; i < result.messages.length; i++) {
-          result.messages[i].deviceKey = sourceKey;
-          this.newMessagesThisRound.push(result.messages[i]);
-        }
-        // 非归档加密消息不会显示在 App 列表；先逐条发布解密后的本地通知，成功后才允许删除远端密文。
-        for (let i: number = 0; i < result.messages.length; i++) {
-          const message: NotifyMessage = result.messages[i];
-          if (message.needsDecryptedNotification()) {
-            const published: boolean = await DecryptedNotificationService.publish(message, server);
-            if (!published) {
-              message.migrationReady = false;
-            }
-          }
-        }
-        hasNewMessages = true;
-        for (let i = 0; i < result.messages.length; i++) {
-          if (result.messages[i].id > newMaxId) {
-            newMaxId = result.messages[i].id;
-          }
-          if (result.messages[i].id > nextAfter) {
-            nextAfter = result.messages[i].id;
-          }
-        }
-        await this.deleteMigratedRemoteMessages(server, result.messages);
-      }
-
-      // 服务端有下一页却没有推进 id，会导致无限请求；保持未完成状态并下次重试。
-      if (result.hasMore && nextAfter <= after) {
-        hilog.warn(DOMAIN, TAG, 'syncSingleServer 分页游标未推进：%{public}s', deviceKey);
-        return false;
-      }
-
-      // maxId 仅用于本地统计；远程扫描起点固定为 0，不以它跳过删除失败项。
-      const metaSaved: boolean = await MessageCacheStore.saveMeta(
-        sourceKey, newMaxId, delCursor, 0, true);
-      if (!metaSaved) {
-        hilog.warn(DOMAIN, TAG, 'syncSingleServer 同步进度保存失败：%{public}s', deviceKey);
-        return false;
-      }
-
-      if (!result.hasMore) {
-        lastDelHasMore = result.delHasMore;
-        break;
-      }
-      after = nextAfter;
-    }
-
-    // 消息翻页结束后，删除流水可能仍有下一页（每页固定 500 条）：
-    // 用 limit=0 的空消息页继续消费 deletions，直到 hasMore=false。
-    while (lastDelHasMore) {
-      if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-        return false;
-      }
-      const drain = await svc.getMessages(null, 0, 0, 0, delCursor, server, false);
-      if (!drain.ok) {
-        hilog.warn(DOMAIN, TAG, 'syncSingleServer 删除流水翻页失败（%{public}s）：%{public}s',
-          deviceKey, drain.errorMsg);
-        this.syncErrors.set(server.id, drain.errorMsg);
-        return false;
-      }
-      if (notifySourceKey(drain.instanceId, server.id, deviceKey) !== sourceKey) {
-        this.syncErrors.set(server.id, '服务器历史实例在同步中变化');
-        return false;
-      }
-      if (await this.applyDeletionExtraIds(sourceKey, drain)) {
-        hasNewMessages = true;
-      }
-      if (drain.hasDeletions) {
-        delCursor = drain.delCursor;
-      }
-      const drainSaved: boolean = await MessageCacheStore.saveMeta(
-        sourceKey, newMaxId, delCursor, 0, true);
-      if (!drainSaved) {
-        hilog.warn(DOMAIN, TAG, 'syncSingleServer 删除流水游标保存失败：%{public}s', deviceKey);
-        return false;
-      }
-      lastDelHasMore = drain.delHasMore;
-    }
-
-    if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-      return false;
-    }
-
-    // 清除该 server 的 per-server 错误（本轮同步成功）
-    this.syncErrors.delete(server.id);
-    return hasNewMessages;
-  }
-
-  /**
-   * 应用单页删除流水中的 extraIds（Bark delete=1 推送删除携带的 extras.id 墓碑）：
-   * 从本地库删除 extras.id 命中的副本。ids/purges 字段不消费——客户端迁移后删除
-   * 远程副本会在服务端留下同 id 墓碑，消费 ids 会把刚落库的消息误删。
-   * reset=true 表示游标过旧、删除流水已被压缩：删除事件可能丢失，记 warn 后继续，
-   * 不清空本地库。本方法不推进游标，游标由调用方在整页处理完成后随 saveMeta 持久化。
-   * 返回是否有本地消息被实际删除（用于触发同步完成后的列表重载）。
-   */
-  private async applyDeletionExtraIds(deviceKey: string, result: MessageListResult): Promise<boolean> {
-    if (result.reset) {
-      hilog.warn(DOMAIN, TAG, '删除流水游标过旧被压缩（reset），device=%{public}s，可能丢失部分删除事件', deviceKey);
-    }
-    if (result.deletionExtraIds.length === 0) {
-      return false;
-    }
-    const removedIds: number[] = await MessageCacheStore.deleteByExtraIds(deviceKey, result.deletionExtraIds);
-    if (removedIds.length > 0) {
-      hilog.info(DOMAIN, TAG, '按 extras.id 删除本地副本：%{public}s，共 %{public}d 条',
-        deviceKey, removedIds.length);
-    }
-    return removedIds.length > 0;
-  }
-
-  /** 本地落库完成后并行清理远程副本；失败记录留在服务器供下一轮同步重试。 */
-  private async deleteMigratedRemoteMessages(server: ServerEntry, messages: NotifyMessage[]): Promise<void> {
-    const svc = NotifyMessageService.getInstance();
-    const readyMessages: NotifyMessage[] = messages.filter((message: NotifyMessage) => message.migrationReady);
-    let failed: number = 0;
-    for (let offset: number = 0; offset < readyMessages.length; offset += REMOTE_DELETE_CONCURRENCY) {
-      const tasks: Promise<string>[] = [];
-      const end: number = Math.min(offset + REMOTE_DELETE_CONCURRENCY, readyMessages.length);
-      for (let i: number = offset; i < end; i++) {
-        tasks.push(svc.deleteMessage(readyMessages[i].id, null, server));
-      }
-      const results: string[] = await Promise.all(tasks);
-      for (let i: number = 0; i < results.length; i++) {
-        if (results[i].length > 0) {
-          failed++;
-        }
-      }
-    }
-    if (failed > 0) {
-      hilog.warn(DOMAIN, TAG, '远程迁移清理失败：server=%{public}s failed=%{public}d total=%{public}d',
-        server.name, failed, readyMessages.length);
-    }
-  }
-
-  /**
-   * "全部"视图模式：并行同步所有已注册服务器。
-   * 任一服务器有数据变化时，从本地缓存重新加载全部消息（跨服务器分组聚合）。
-   */
-  private async syncAllServers(expectedSeq: number): Promise<void> {
-    const servers: ServerEntry[] = this.getAllRegisteredServers();
-    if (servers.length === 0) {
-      this.messages = [];
-      this.groupTotals = new Map<string, number>();
-      return;
-    }
-
-    // 并行同步所有服务器
-    const tasks: Promise<boolean>[] = [];
-    for (let i = 0; i < servers.length; i++) {
-      tasks.push(this.syncSingleServer(servers[i], false, expectedSeq));
-    }
-    const results: boolean[] = await Promise.all(tasks);
-
-    // 代际失效：若列表已被清空（onChange 清空），需从缓存兜底回填，避免显示"暂无消息"
-    if (expectedSeq >= 0 && expectedSeq !== this.loadSeq) {
-      if (this.messages.length === 0) {
-        const deviceKeys: string[] = this.getAllDeviceKeys();
-        const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
-        this.messages = refreshed.messages;
-        this.groupTotals = refreshed.totals;
-      }
-      return;
-    }
-
-    // 全部模式：处理 per-server 错误
-    // 全部失败且无消息 → 阻塞式 errorMsg；部分失败 → 非阻塞 serverErrorBanner
-    {
-      let failedErrorParts: string = '';
-      let failedBannerParts: string = '';
-      let totalFailed: number = 0;
-      for (let i = 0; i < servers.length; i++) {
-        const err: string | undefined = this.syncErrors.get(servers[i].id);
-        if (err) {
-          totalFailed++;
-          const name: string = servers[i].name || servers[i].baseURL;
-          if (failedErrorParts.length > 0) {
-            failedErrorParts += '\n';
-            failedBannerParts += '\n';
-          }
-          failedErrorParts += name + '：' + err;
-          failedBannerParts += this.buildServerErrorBannerMessage(servers[i], err);
-        }
-      }
-      if (totalFailed > 0 && totalFailed === servers.length && this.messages.length === 0) {
-        // 所有 server 都失败且本地无缓存消息 → 阻塞式错误
-        this.errorMsg = failedErrorParts;
-        this.serverErrorBanner = '';
-      } else if (totalFailed > 0) {
-        // 部分 server 失败（或有缓存消息）→ 非阻塞提示
-        this.errorMsg = '';
-        this.serverErrorBanner = failedBannerParts;
-      } else {
-        this.errorMsg = '';
-        this.serverErrorBanner = '';
-      }
-    }
-
-    let anyChanged: boolean = false;
-    for (let i = 0; i < results.length; i++) {
-      if (results[i]) {
-        anyChanged = true;
-        break;
-      }
-    }
-
-    // 无变化且内存非空：不刷新，避免轮询空转闪烁
-    if (!anyChanged && this.messages.length > 0) {
-      return;
-    }
-
-    // 有变化或内存为空：从本地缓存重新加载所有服务器的消息
-    const deviceKeys: string[] = this.getAllDeviceKeys();
-    const refreshed = await MessageCacheStore.loadAllGroupedLatest(deviceKeys, 100);
-    this.messages = refreshed.messages;
-    this.groupTotals = refreshed.totals;
-  }
 
   /**
    * 组内"加载更多"：按时间、ID 和来源组成的全序加载更旧的 100 条。

@@ -14,3 +14,8 @@ export const KEY_NOTIFY_OPEN_REQUEST: string = 'notifyOpenRequest';
 
 /** AppStorage 键：主页页面可见状态（Index onPageShow/onPageHide 写入，NotifyView 监听以启停前台轮询） */
 export const KEY_INDEX_PAGE_VISIBLE: string = 'indexPageVisible';
+
+/** 应用级通知同步状态：任意页面均可观察进度，通知页按 revision 刷新本地列表。 */
+export const KEY_NOTIFY_SYNC_PROGRESS: string = 'notifySyncProgress';
+export const KEY_NOTIFY_SYNC_FEEDBACK: string = 'notifySyncFeedback';
+export const KEY_NOTIFY_SYNC_REVISION: string = 'notifySyncRevision';

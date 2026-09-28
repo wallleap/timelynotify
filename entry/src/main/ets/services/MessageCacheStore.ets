@@ -583,21 +583,32 @@ export class MessageCacheStore {
     if (!db) {
       return false;
     }
+    let transaction: relationalStore.Transaction | null = null;
     try {
+      // 整页原子落库：只有提交成功后调用方才可确认并删除远端副本。
+      transaction = await db.createTransaction();
       const now: number = Date.now();
       for (let i = 0; i < messages.length; i++) {
         const message: NotifyMessage = messages[i];
         if (!message.archive || message.isExpired(now)) {
           // 非归档或已过期消息可能已有旧缓存，必须同步移除以保证重解密后策略生效。
-          await db.executeSql(
+          await transaction.execute(
             `DELETE FROM ${TABLE_MSG} WHERE device_key=? AND id=?`, [deviceKey, message.id]);
           continue;
         }
         const bucket: relationalStore.ValuesBucket = toBucket(deviceKey, message);
-        await db.insert(TABLE_MSG, bucket, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
+        await transaction.insert(TABLE_MSG, bucket, relationalStore.ConflictResolution.ON_CONFLICT_REPLACE);
       }
+      await transaction.commit();
       return true;
     } catch (err) {
+      if (transaction) {
+        try {
+          await transaction.rollback();
+        } catch (rollbackErr) {
+          hilog.warn(DOMAIN, TAG, 'upsertMessages 回滚失败：%{public}s', formatError(rollbackErr));
+        }
+      }
       hilog.warn(DOMAIN, TAG, 'upsertMessages 失败：%{public}s', formatError(err));
       return false;
     }

@@ -7,7 +7,8 @@ import {
   SUPPORTS_IMMERSIVE_MATERIAL
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
-import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING } from '../common/Constant';
+import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING, KEY_NOTIFY_SYNC_PROGRESS } from '../common/Constant';
+import { NotifySyncService } from '../services/NotifySyncService';
 
 // 底部 Tab 项定义
 interface TabItem {
@@ -26,6 +27,7 @@ struct Index {
   @StorageLink(KEY_HOME_TAB_INDEX) @Watch('onTabRequested') currentIndex: number = 0;
   // 通知页多选编辑态（NotifyView 经 @StorageLink 写入）：onBackPress 据此拦截系统返回
   @StorageLink(KEY_NOTIFY_EDITING) notifyIsEditing: boolean = false;
+  @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgress: string = '';
   private hdsController: HdsTabsController = new HdsTabsController();
   private hdsSelectedIndex: number = 0;
   // Tab 数据
@@ -50,12 +52,22 @@ struct Index {
   @Builder
   tabBuilder(item: TabItem, index: number) {
     Column({ space: 4 }) {
-      Image(this.currentIndex === index ? item.iconActive : item.icon)
-        .width(24)
-        .height(24)
-        .fillColor(
-          this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
-        .draggable(false);
+      Stack({ alignContent: Alignment.TopEnd }) {
+        Image(this.currentIndex === index ? item.iconActive : item.icon)
+          .width(24)
+          .height(24)
+          .fillColor(
+            this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
+          .draggable(false);
+        if (index === 0 && this.syncProgress.length > 0) {
+          LoadingProgress()
+            .width(9)
+            .height(9)
+            .color($r('app.color.color_brand'));
+        }
+      }
+      .width(24)
+      .height(24);
       Text(item.title)
         .fontSize(12)
         .fontColor(
@@ -84,9 +96,13 @@ struct Index {
     .tabBar(this.tabBuilder(this.tabs[2], 2))
   }
 
+  aboutToAppear(): void {
+    NotifySyncService.getInstance().setTabIndex(this.currentIndex);
+  }
+
   // 页面显隐：router 跳转其它页面（如服务器设置页）/应用退后台时触发 onPageHide，
   // 返回/回前台时触发 onPageShow。Tab 内子组件感知不到页面级显隐（不会触发 aboutToDisappear），
-  // 经 AppStorage 同步给 NotifyView 用于停止/恢复前台轮询
+  // 经 AppStorage 同步给 NotifyView 用于刷新可见数据；同步本身由 Ability 生命周期管理。
   onPageShow(): void {
     AppStorage.setOrCreate(KEY_INDEX_PAGE_VISIBLE, true);
   }
@@ -97,6 +113,7 @@ struct Index {
 
   /** AppStorage 外部切换 Tab 时同步 HdsTabs 的控制器，降级 Tabs 则由 index 属性响应。 */
   private onTabRequested(): void {
+    NotifySyncService.getInstance().setTabIndex(this.currentIndex);
     if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.hdsSelectedIndex !== this.currentIndex) {
       this.hdsSelectedIndex = this.currentIndex;
       this.hdsController.changeIndex(this.currentIndex);
@@ -134,6 +151,7 @@ struct Index {
         .onChange((index: number) => {
           this.hdsSelectedIndex = index;
           this.currentIndex = index;
+          NotifySyncService.getInstance().setTabIndex(index);
         })
       }
       .width('100%')
@@ -152,7 +170,8 @@ struct Index {
         .barBackgroundBlurStyle(resolveBlurStyle('bar')!)
         .barBackgroundColor($r('app.color.color_bg_glass'))
         .onChange((index: number) => {
-          this.currentIndex = index
+          this.currentIndex = index;
+          NotifySyncService.getInstance().setTabIndex(index);
         })
       }
       .width('100%')

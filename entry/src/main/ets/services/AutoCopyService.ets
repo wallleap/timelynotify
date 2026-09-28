@@ -18,6 +18,16 @@ export class AutoCopySelection {
   identitiesToMark: string[] = [];
 }
 
+/** 一轮同步的有界状态；不持有整轮通知列表。 */
+export class AutoCopySyncRound {
+  firstSync: boolean = false;
+  latest: NotifyMessage | null = null;
+  count: number = 0;
+  changed: boolean = false;
+  // 首次历史可能远超已处理标识上限；按来源记录最大旧 ID，避免删除重试误触发自动复制。
+  firstSyncMaxIds: Map<string, number> = new Map<string, number>();
+}
+
 /**
  * 自动复制服务：客户端同步到 autoCopy=1 的新通知时，自动复制最新一条到剪贴板并 Toast 提示。
  *
@@ -35,6 +45,7 @@ export class AutoCopyService {
   private static readonly KEY_FIRST_SYNC_DONE: string = 'autocopy_first_sync_done';
   /** Preferences 键：已处理通知 id 列表（JSON 数组，元素为 `${deviceKey}:${id}`）。 */
   private static readonly KEY_PROCESSED_IDS: string = 'autocopy_processed_ids';
+  private static readonly KEY_FIRST_SYNC_MAX_IDS: string = 'autocopy_first_sync_max_ids';
   /** 通知产生后允许自动复制的时效窗口（毫秒）。 */
   private static readonly TIME_WINDOW_MS: number = 5 * 60 * 1000;
   /** 已处理 id 集合上限：超过则整体清空，避免无限增长；过期 id 受时效窗口保护不会被误复制。 */
@@ -43,70 +54,92 @@ export class AutoCopyService {
   private static readonly TOAST_TEXT_CAP: number = 20;
 
   private static processedIds: Set<string> = new Set<string>();
+  private static firstSyncMaxIds: Map<string, number> = new Map<string, number>();
   private static firstSyncDone: boolean = false;
   private static loaded: boolean = false;
   private static loadPromise: Promise<void> | null = null;
 
-  /**
-   * 处理一轮同步拉到的新消息。
-   *
-   * @param messages 本轮同步从服务端拉取并已解密完成的新消息（含跨服务器、跨分页聚合）
-   * @param uiContext 用于展示 Toast 的 UIContext；为 null 时仅复制不提示
-   */
-  static async handleSyncRound(messages: NotifyMessage[], uiContext: UIContext | null): Promise<void> {
-    if (messages.length === 0) {
-      // 空轮次也要确保首次同步标记被设置，避免后续轮次误判为首次历史同步。
-      await AutoCopyService.ensureLoaded();
-      if (!AutoCopyService.firstSyncDone) {
-        AutoCopyService.firstSyncDone = true;
-        await PreferencesUtil.putString(null, AutoCopyService.KEY_FIRST_SYNC_DONE, 'true');
-      }
-      return;
-    }
-
+  /** 开始一轮同步，固定首次同步语义；跨服务器分页可共用同一轮状态。 */
+  static async beginSyncRound(): Promise<AutoCopySyncRound> {
     await AutoCopyService.ensureLoaded();
+    const round: AutoCopySyncRound = new AutoCopySyncRound();
+    round.firstSync = !AutoCopyService.firstSyncDone;
+    return round;
+  }
 
-    // 首次历史同步：标记完成并把当前所有消息 id 记为已处理，后续刷新不再考虑这批积压。
-    if (!AutoCopyService.firstSyncDone) {
-      AutoCopyService.firstSyncDone = true;
-      AutoCopyService.trimIfNeeded();
-      for (let i = 0; i < messages.length; i++) {
-        AutoCopyService.processedIds.add(AutoCopyService.identity(messages[i]));
-      }
-      await AutoCopyService.persist();
-      await PreferencesUtil.putString(null, AutoCopyService.KEY_FIRST_SYNC_DONE, 'true');
-      hilog.info(DOMAIN, TAG, '首次历史同步完成，标记 %{public}d 条为已处理，不触发自动复制',
-        messages.length);
-      return;
-    }
-
+  /** 逐页归并：仅保留最新候选；已处理标识按上限淘汰，不累积消息对象。 */
+  static collectPage(round: AutoCopySyncRound, messages: NotifyMessage[]): void {
     const now: number = Date.now();
-    AutoCopyService.trimIfNeeded();
-
-    const selection: AutoCopySelection = AutoCopyService.selectCandidate(messages, AutoCopyService.processedIds, now);
-    if (selection.identitiesToMark.length > 0) {
-      for (let i = 0; i < selection.identitiesToMark.length; i++) {
-        AutoCopyService.processedIds.add(selection.identitiesToMark[i]);
+    round.count += messages.length;
+    for (let i = 0; i < messages.length; i++) {
+      const message: NotifyMessage = messages[i];
+      if (round.firstSync && message.id > (round.firstSyncMaxIds.get(message.deviceKey) ?? 0)) {
+        round.firstSyncMaxIds.set(message.deviceKey, message.id);
       }
+      if (!message.autoCopy) {
+        continue;
+      }
+      if (!round.firstSync && message.id <= (AutoCopyService.firstSyncMaxIds.get(message.deviceKey) ?? 0)) {
+        continue;
+      }
+      const identity: string = AutoCopyService.identity(message);
+      if (AutoCopyService.processedIds.has(identity)) {
+        continue;
+      }
+      const age: number = now - message.timestamp;
+      if (!round.firstSync && age >= 0 && age <= AutoCopyService.TIME_WINDOW_MS &&
+        (!round.latest || message.timestamp > round.latest.timestamp ||
+          (message.timestamp === round.latest.timestamp && message.id > round.latest.id))) {
+        round.latest = message;
+      }
+      AutoCopyService.processedIds.add(identity);
+      round.changed = true;
+      AutoCopyService.trimIfNeeded();
+    }
+  }
+
+  /** 完成一轮：首次历史同步只标记，不写剪贴板；后续只复制最新一条。 */
+  static async finishSyncRound(round: AutoCopySyncRound, uiContext: UIContext | null): Promise<void> {
+    if (round.changed) {
       await AutoCopyService.persist();
     }
-
-    if (selection.target === null || selection.text.length === 0) {
+    if (round.firstSync) {
+      round.firstSyncMaxIds.forEach((id: number, source: string) => {
+        const old: number = AutoCopyService.firstSyncMaxIds.get(source) ?? 0;
+        if (id > old) {
+          AutoCopyService.firstSyncMaxIds.set(source, id);
+        }
+      });
+      const watermark: Record<string, number> = {};
+      AutoCopyService.firstSyncMaxIds.forEach((id: number, source: string) => {
+        watermark[source] = id;
+      });
+      await PreferencesUtil.putString(null, AutoCopyService.KEY_FIRST_SYNC_MAX_IDS, JSON.stringify(watermark));
+      AutoCopyService.firstSyncDone = true;
+      await PreferencesUtil.putString(null, AutoCopyService.KEY_FIRST_SYNC_DONE, 'true');
+      hilog.info(DOMAIN, TAG, '首次历史同步完成，处理 %{public}d 条，不触发自动复制', round.count);
       return;
     }
-
-    const ok: boolean = await ClipboardService.copyText(selection.text);
+    if (!round.latest) {
+      return;
+    }
+    const selected: NotifyMessage = round.latest;
+    const selectedText: string = selected.copy.length > 0 ? selected.copy : selected.body;
+    if (selectedText.length === 0) {
+      return;
+    }
+    const ok: boolean = await ClipboardService.copyText(selectedText);
     if (!ok) {
-      hilog.warn(DOMAIN, TAG, '自动复制写入剪贴板失败：id=%{public}d', selection.target.id);
+      hilog.warn(DOMAIN, TAG, '自动复制写入剪贴板失败：id=%{public}d', selected.id);
       return;
     }
     if (uiContext) {
-      const display: string = selection.text.length > AutoCopyService.TOAST_TEXT_CAP
-        ? `${selection.text.substring(0, AutoCopyService.TOAST_TEXT_CAP)}…`
-        : selection.text;
+      const display: string = selectedText.length > AutoCopyService.TOAST_TEXT_CAP
+        ? `${selectedText.substring(0, AutoCopyService.TOAST_TEXT_CAP)}…`
+        : selectedText;
       showToast(uiContext, `已复制 ${display}`, 1500, TAG);
     }
-    hilog.info(DOMAIN, TAG, '自动复制成功：id=%{public}d len=%{public}d', selection.target.id, selection.text.length);
+    hilog.info(DOMAIN, TAG, '自动复制成功：id=%{public}d len=%{public}d', selected.id, selectedText.length);
   }
 
   /**
@@ -165,6 +198,7 @@ export class AutoCopyService {
   /** 重置内存状态（仅用于测试或重置场景；不影响已持久化的数据）。 */
   static resetState(): void {
     AutoCopyService.processedIds = new Set<string>();
+    AutoCopyService.firstSyncMaxIds = new Map<string, number>();
     AutoCopyService.firstSyncDone = false;
     AutoCopyService.loaded = false;
     AutoCopyService.loadPromise = null;
@@ -175,12 +209,14 @@ export class AutoCopyService {
     return `${message.deviceKey}:${message.id}`;
   }
 
-  /** 集合超过上限时整体清空；过期 id 受时效窗口保护，即便被重新评估也不会误复制。 */
+  /** 只淘汰最早标识，避免大批量同步时 Preferences 和内存无限增长。 */
   private static trimIfNeeded(): void {
-    if (AutoCopyService.processedIds.size >= AutoCopyService.PROCESSED_IDS_CAP) {
-      hilog.info(DOMAIN, TAG, '已处理 id 集合达到上限 %{public}d，清空重建',
-        AutoCopyService.PROCESSED_IDS_CAP);
-      AutoCopyService.processedIds = new Set<string>();
+    while (AutoCopyService.processedIds.size > AutoCopyService.PROCESSED_IDS_CAP) {
+      const first: IteratorResult<string> = AutoCopyService.processedIds.values().next();
+      if (first.done) {
+        break;
+      }
+      AutoCopyService.processedIds.delete(first.value);
     }
   }
 
@@ -224,6 +260,22 @@ export class AutoCopyService {
       hilog.warn(DOMAIN, TAG, '已处理 id 列表解析失败，重置为空：%{public}s', msg);
     }
     AutoCopyService.processedIds = set;
+    const watermarkJson: string = await PreferencesUtil.getString(null,
+      AutoCopyService.KEY_FIRST_SYNC_MAX_IDS, '{}');
+    try {
+      const parsed: Record<string, number> = JSON.parse(watermarkJson) as Record<string, number>;
+      const watermark: Map<string, number> = new Map<string, number>();
+      Object.keys(parsed).forEach((source: string) => {
+        const id: number = parsed[source];
+        if (Number.isSafeInteger(id) && id > 0) {
+          watermark.set(source, id);
+        }
+      });
+      AutoCopyService.firstSyncMaxIds = watermark;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, '首次同步水位解析失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+    }
     AutoCopyService.loaded = true;
   }
 
