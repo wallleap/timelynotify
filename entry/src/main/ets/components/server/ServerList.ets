@@ -296,7 +296,11 @@ export struct ServerList {
         .textOverflow({ overflow: TextOverflow.Ellipsis });
     }
     .width('100%')
-    .alignItems(HorizontalAlign.Start);
+    .alignItems(HorizontalAlign.Start)
+    .padding(16)
+    .backgroundColor(
+      this.useDetailSheetMaterial() ? $r('app.color.color_bg_surface_glass') : $r('app.color.color_bg_surface'))
+    .borderRadius(12);
   }
 
   @Builder
