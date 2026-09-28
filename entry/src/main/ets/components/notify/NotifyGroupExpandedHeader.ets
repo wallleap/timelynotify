@@ -43,7 +43,7 @@ export struct NotifyGroupExpandedHeader {
         Image($r('app.media.arrow_right')).width(20).height(20).fillColor($r('app.color.color_text_hint')).draggable(false)
           .rotate({ angle: -90 }).padding({ left: 4, top: 2, bottom: 2 });
       }.width('100%').padding(12).alignItems(VerticalAlign.Center);
-      Divider().color($r('app.color.color_border_subtle')).strokeWidth(0.5).margin({ left: 12 });
+      Divider().color($r('app.color.color_border_subtle')).strokeWidth(0.5).margin({ left: 14, right: 14 });
     }
     .width('100%').backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius({ topLeft: 12, topRight: 12, bottomLeft: 0, bottomRight: 0 })

@@ -126,7 +126,7 @@ export struct NotifyGroupMessageRow {
         }
       }.width('100%');
       if (!this.isLast) {
-        Divider().color($r('app.color.color_border_subtle')).strokeWidth(0.5).width('100%').margin({ left: 14 });
+        Divider().color($r('app.color.color_border_subtle')).strokeWidth(0.5).margin({ left: 14, right: 14 });
       }
     }
     .width('100%').backgroundColor($r('app.color.color_bg_surface'))
