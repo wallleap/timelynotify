@@ -206,6 +206,15 @@ ComponentName
 - 暗色主题色值：`resources/dark/element/color.json`
 - 新增色值时，必须在两套主题中都添加对应条目
 
+### 可滚动的长弹窗
+
+新增长内容的居中 `CustomDialog`，以 [`EncryptionSettingsDialog.ets`](entry/src/main/ets/components/EncryptionSettingsDialog.ets) 的加密设置弹窗为布局和沉浸光感基准；`bindSheet` 与全屏页面不直接套用此结构。
+
+- 弹窗背板由 `ImmersiveUtil.getDialogBackgroundOptions()` 提供，设置在 `CustomDialogController` 的 options 上；内容根节点保持透明，不在内部另铺一层模糊背景。亮暗主题都要检查。
+- API 26+ 且沉浸光感开关开启时，用 `HdsNavigation` 的 `MODAL` 标题栏固定标题；通过 `titleBar.enableComponentSafeArea` 安排初始内容位置，通过 `bindToScrollable` 绑定正文 `Scroller`，使用 HDS 默认的 `GRADIENT_BLUR` 滚动效果。不要手写标题栏高度占位，也不要默认叠加自定义 `blurRadius` 或同色遮罩。
+- 正文单独滚动，底部操作按钮放在滚动区外并固定；按钮区域保持透明，让弹窗背板材质连续，不额外形成一块颜色不同的底板。弹窗外层裁剪到圆角边界。
+- HDS 分支允许滚动内容进入标题栏背后以供渐变模糊采样；降级分支保留普通固定标题和常规滚动裁剪。此做法在快速上滑时可能让顶部表单文字短暂透入标题区域，新增弹窗必须分别检查初始、上滑、回弹、底部与亮暗主题，不能只凭构建通过认定效果正确。
+
 ---
 
 ## 关键工作流

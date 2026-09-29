@@ -1,12 +1,15 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import showToast from './showToast';
 import {
   getDialogMaterial,
-  getMenuMaterial
+  getMenuMaterial,
+  KEY_IMMERSIVE_LIGHT_ENABLED,
+  SUPPORTS_IMMERSIVE_MATERIAL
 } from '../utils/ImmersiveUtil';
 
 const TAG: string = 'EncryptionDlg';
@@ -30,6 +33,7 @@ export struct EncryptionSettingsDialog {
   private originalAlgorithm: string = 'AES128';
   private originalMode: string = 'CBC';
   private originalKeyText: string = '';
+  private formScroller: Scroller = new Scroller();
   getConfig: () => EncryptionConfig = () => new EncryptionConfig();
   getServerName: () => string = () => '';
   onSave: (config: EncryptionConfig) => void = (_config: EncryptionConfig) => {
@@ -50,158 +54,227 @@ export struct EncryptionSettingsDialog {
   }
 
   build() {
-    Scroll() {
-      Column({ space: 12 }) {
-        Text('加密设置')
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .width('100%')
-          .textAlign(TextAlign.Center);
-        Text(this.getServerName())
-          .fontSize(12)
-          .fontColor($r('app.color.color_text_hint'))
-          .width('100%')
-          .textAlign(TextAlign.Center)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+    if (this.useHdsNavigation()) {
+      Column() {
+        // Scroll 直接交给 HDS，底部操作区不参与标题栏滚动效果。
+        HdsNavigation() {
+          this.dialogFormScroll();
+        }
+        .titleBar({
+          // 居中 CustomDialog 没有 Sheet 的系统顶部占位，交给 HDS 为标题栏预留内容区域。
+          enableComponentSafeArea: true,
+          content: {
+            title: { mainTitle: '加密设置', subTitle: this.getServerName() }
+          },
+          style: {
+            scrollEffectOpts: {
+              enableScrollEffect: true,
+              scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+            },
+            systemMaterialEffect: {
+              materialType: hdsMaterial.MaterialType.ADAPTIVE,
+              materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+            }
+          }
+        })
+        .hideBackButton(true)
+        .titleMode(HdsNavigationTitleMode.MODAL)
+        .bindToScrollable([this.formScroller])
+        .layoutWeight(1)
+        .width('100%')
+        .backgroundColor(Color.Transparent);
 
-        Row() {
-          Column({ space: 2 }) {
-            Text('端到端解密').fontSize(15).fontColor($r('app.color.color_text_primary'));
-            Text('Key 仅保存在本机，服务器不会解密')
-              .fontSize(12)
+        this.dialogActions();
+      }
+      .width('100%')
+      .height('80%')
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14)
+      .clip(true);
+    } else {
+      Column() {
+        Column({ space: 4 }) {
+          Text('加密设置')
+            .fontSize(17)
+            .fontWeight(FontWeight.Bold)
+            .width('100%')
+            .textAlign(TextAlign.Center);
+          Text(this.getServerName())
+            .fontSize(12)
+            .fontColor($r('app.color.color_text_hint'))
+            .width('100%')
+            .textAlign(TextAlign.Center)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis });
+        }
+        .width('100%')
+        .padding({ left: 18, right: 18, top: 18, bottom: 12 });
+
+        this.dialogFormScroll();
+        this.dialogActions();
+      }
+      .width('100%')
+      .height('80%')
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14);
+    }
+  }
+
+  @Builder
+  private dialogFormScroll() {
+    Scroll(this.formScroller) {
+        Column({ space: 12 }) {
+          Row() {
+            Column({ space: 2 }) {
+              Text('端到端解密').fontSize(15).fontColor($r('app.color.color_text_primary'));
+              Text('Key 仅保存在本机，服务器不会解密')
+                .fontSize(12)
+                .fontColor($r('app.color.color_text_hint'));
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1);
+            Toggle({ type: ToggleType.Switch, isOn: this.isEncryptionEnabled })
+              .selectedColor($r('app.color.color_brand'))
+              .onChange((value: boolean) => {
+                this.isEncryptionEnabled = value;
+              });
+          }
+          .width('100%');
+
+          Text('算法').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
+          Row() {
+            Text(this.algorithm)
+              .fontSize(16)
+              .fontColor($r('app.color.color_text_primary'));
+            Blank();
+            SymbolGlyph($r('sys.symbol.chevron_down'))
+              .fontSize(16)
+              .fontColor([$r('app.color.color_text_primary')]);
+          }
+            .width('100%')
+            .height(46)
+            .padding({ left: 14, right: 14 })
+            .backgroundColor($r('app.color.color_bg_input_glass'))
+            .borderRadius(8)
+            .bindMenu(this.algorithmMenu(), this.glassMenuOptions());
+          Text('模式').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
+          Row() {
+            Text(this.mode)
+              .fontSize(16)
+              .fontColor($r('app.color.color_text_primary'));
+            Blank();
+            SymbolGlyph($r('sys.symbol.chevron_down'))
+              .fontSize(16)
+              .fontColor([$r('app.color.color_text_primary')]);
+          }
+            .width('100%')
+            .height(46)
+            .padding({ left: 14, right: 14 })
+            .backgroundColor($r('app.color.color_bg_input_glass'))
+            .borderRadius(8)
+            .bindMenu(this.modeMenu(), this.glassMenuOptions());
+          Text('Padding（由模式自动决定）')
+            .fontSize(13)
+            .fontColor($r('app.color.color_text_secondary'))
+            .width('100%');
+          Row() {
+            Text(this.paddingForMode())
+              .fontSize(16)
               .fontColor($r('app.color.color_text_hint'));
           }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1);
-          Toggle({ type: ToggleType.Switch, isOn: this.isEncryptionEnabled })
-            .selectedColor($r('app.color.color_brand'))
-            .onChange((value: boolean) => {
-              this.isEncryptionEnabled = value;
-            });
-        }
-        .width('100%');
-
-        Text('算法').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
-        Row() {
-          Text(this.algorithm)
-            .fontSize(16)
-            .fontColor($r('app.color.color_text_primary'));
-          Blank();
-          SymbolGlyph($r('sys.symbol.chevron_down'))
-            .fontSize(16)
-            .fontColor([$r('app.color.color_text_primary')]);
-        }
-          .width('100%')
-          .height(46)
-          .padding({ left: 14, right: 14 })
-          .backgroundColor($r('app.color.color_bg_input_glass'))
-          .borderRadius(8)
-          .bindMenu(this.algorithmMenu(), this.glassMenuOptions());
-        Text('模式').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
-        Row() {
-          Text(this.mode)
-            .fontSize(16)
-            .fontColor($r('app.color.color_text_primary'));
-          Blank();
-          SymbolGlyph($r('sys.symbol.chevron_down'))
-            .fontSize(16)
-            .fontColor([$r('app.color.color_text_primary')]);
-        }
-          .width('100%')
-          .height(46)
-          .padding({ left: 14, right: 14 })
-          .backgroundColor($r('app.color.color_bg_input_glass'))
-          .borderRadius(8)
-          .bindMenu(this.modeMenu(), this.glassMenuOptions());
-        Text('Padding（由模式自动决定）')
-          .fontSize(13)
-          .fontColor($r('app.color.color_text_secondary'))
-          .width('100%');
-        Row() {
-          Text(this.paddingForMode())
-            .fontSize(16)
-            .fontColor($r('app.color.color_text_hint'));
-        }
-          .width('100%')
-          .height(46)
-          .padding({ left: 14, right: 14 })
-          .backgroundColor($r('app.color.color_bg_input_glass'))
-          .borderRadius(8);
-
-        Text('Key').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
-        Row() {
-          TextInput({
-            placeholder: `请输入 ${EncryptionConfigService.expectedKeyBytes(this.algorithm)} 字节 Key`,
-            text: this.keyText,
-          })
-            .type(InputType.Normal)
-            .layoutWeight(1)
+            .width('100%')
             .height(46)
-            .backgroundColor(Color.Transparent)
-            .padding({ left: 12, right: 8 })
-            .onChange((value: string) => {
-              this.keyText = value;
-            });
+            .padding({ left: 14, right: 14 })
+            .backgroundColor($r('app.color.color_bg_input_glass'))
+            .borderRadius(8);
+
+          Text('Key').fontSize(13).fontColor($r('app.color.color_text_secondary')).width('100%');
           Row() {
-            Image($r('app.media.reset'))
-              .width(20)
-              .height(20)
-              .fillColor($r('app.color.color_text_secondary'))
-              .draggable(false);
+            TextInput({
+              placeholder: `请输入 ${EncryptionConfigService.expectedKeyBytes(this.algorithm)} 字节 Key`,
+              text: this.keyText,
+            })
+              .type(InputType.Normal)
+              .layoutWeight(1)
+              .height(46)
+              .backgroundColor(Color.Transparent)
+              .padding({ left: 12, right: 8 })
+              .onChange((value: string) => {
+                this.keyText = value;
+              });
+            Row() {
+              Image($r('app.media.reset'))
+                .width(20)
+                .height(20)
+                .fillColor($r('app.color.color_text_secondary'))
+                .draggable(false);
+            }
+              .width(42)
+              .height(46)
+              .justifyContent(FlexAlign.Center)
+              .onClick(() => this.generateKey());
           }
-            .width(42)
             .height(46)
-            .justifyContent(FlexAlign.Center)
-            .onClick(() => this.generateKey());
-        }
-          .height(46)
-          .width('100%')
-          .backgroundColor($r('app.color.color_bg_input_glass'))
-          .borderRadius(8);
-        Text('IV 不在此保存：CBC 由发送端携带 16 字节 IV，GCM 携带 12 字节 IV；ECB 无 IV。')
-          .fontSize(12)
-          .fontColor($r('app.color.color_text_hint'))
-          .width('100%');
+            .width('100%')
+            .backgroundColor($r('app.color.color_bg_input_glass'))
+            .borderRadius(8);
+          Text('IV 不在此保存：CBC 由发送端携带 16 字节 IV，GCM 携带 12 字节 IV；ECB 无 IV。')
+            .fontSize(12)
+            .fontColor($r('app.color.color_text_hint'))
+            .width('100%');
 
-        Text('清除加密配置')
-          .fontSize(13)
-          .fontColor($r('app.color.color_error'))
-          .padding(8)
-          .onClick(() => {
-            this.close();
-            this.onClear();
-          });
-
-        Row({ space: 8 }) {
-          Button('取消')
-            .layoutWeight(1)
-            .height(40)
-            .fontSize(14)
-            .backgroundColor(Color.Transparent)
-            .fontColor($r('app.color.color_text_secondary'))
-            .borderRadius(8)
+          Text('清除加密配置')
+            .fontSize(13)
+            .fontColor($r('app.color.color_error'))
+            .padding(8)
             .onClick(() => {
               this.close();
+              this.onClear();
             });
-          Button('保存')
-            .layoutWeight(1)
-            .height(40)
-            .fontSize(14)
-            .backgroundColor($r('app.color.color_brand'))
-            .borderRadius(8)
-            .onClick(() => this.save());
+
         }
-        .width('100%');
+        .width('100%')
+        .padding({ left: 18, right: 18, top: 12, bottom: 12 });
       }
+      .layoutWeight(1)
+      .scrollBar(BarState.Auto)
+      .edgeEffect(EdgeEffect.Spring)
+      // HDS 渐变模糊需要采样滚入标题栏背后的内容；降级标题仍保持普通裁剪。
+      .clip(!this.useHdsNavigation())
       .width('100%');
+
+  }
+
+  /** HDS 原生渐变标题栏只在 API 26+ 且用户开启沉浸光感时使用。 */
+  private useHdsNavigation(): boolean {
+    return SUPPORTS_IMMERSIVE_MATERIAL && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false;
+  }
+
+  @Builder
+  private dialogActions() {
+    Row({ space: 8 }) {
+      Button('取消')
+        .layoutWeight(1)
+        .height(40)
+        .fontSize(14)
+        .backgroundColor(Color.Transparent)
+        .fontColor($r('app.color.color_text_secondary'))
+        .borderRadius(8)
+        .onClick(() => {
+          this.close();
+        });
+      Button('保存')
+        .layoutWeight(1)
+        .height(40)
+        .fontSize(14)
+        .backgroundColor($r('app.color.color_brand'))
+        .borderRadius(8)
+        .onClick(() => this.save());
     }
-    .constraintSize({ maxHeight: '80%' })
-    .scrollBar(BarState.Auto)
-    .edgeEffect(EdgeEffect.Spring)
-    .padding(18)
+    .width('100%')
+    .padding({ left: 18, right: 18, top: 12, bottom: 18 })
     .backgroundColor(Color.Transparent)
-    .borderRadius(14);
+    .zIndex(1);
   }
 
   @Builder
