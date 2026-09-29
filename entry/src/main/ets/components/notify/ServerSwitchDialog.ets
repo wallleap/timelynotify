@@ -1,9 +1,9 @@
 import { TextModifier } from '@kit.ArkUI';
-import { HdsListItemCard, SuffixRadio } from '@kit.UIDesignKit';
+import { hdsMaterial, HdsListItemCard, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SuffixRadio } from '@kit.UIDesignKit';
 import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
 import { extractHost } from '../../utils/ServerUrlUtil';
-import { isImmersiveMaterialActive } from '../../utils/ImmersiveUtil';
+import { isImmersiveMaterialActive, KEY_IMMERSIVE_LIGHT_ENABLED, SUPPORTS_IMMERSIVE_MATERIAL } from '../../utils/ImmersiveUtil';
 
 // 空 builder 占位（controller 字段默认值，避免 SDK 注入前的空引用崩溃）
 @Builder
@@ -26,8 +26,8 @@ const LIST_MAX_HEIGHT: number = 280;
  * 避免与弹窗面板同基色 alpha 合成后糊在一起）/选中 color_bg_selected_glass，
  * 未选中行 color_border_default 描边，透出系统容器层的 COMPONENT_THICK 模糊（透明模糊背景）；
  * 降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
- * 结构对齐其它弹窗：Scroll 根（整体超高兜底滚动）+ 居中标题与右上角关闭图标 +
- * 定高 List（服务器多时内部滚动）。服务器的增删/Token/加密等管理在「服务」页。
+ * API 26+ 沉浸分支使用 HDS 固定标题栏、叠放的描边透明关闭按钮和绑定的滚动区；
+ * 降级分支保留普通固定标题与关闭图标。服务器的增删/Token/加密等管理在「服务」页。
  */
 @CustomDialog
 export struct ServerSwitchDialog {
@@ -43,6 +43,7 @@ export struct ServerSwitchDialog {
   @State viewAll: boolean = true;
   // 弹窗在点击标题时才构造：此时材质要么已 READY，要么本会话确认走降级，构造期判定一次即可
   private immersive: boolean = isImmersiveMaterialActive();
+  private listScroller: Scroller = new Scroller();
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
 
   aboutToAppear(): void {
@@ -104,6 +105,14 @@ export struct ServerSwitchDialog {
     } catch (_err) {
       // 关闭竞态时忽略
     }
+  }
+
+  private useHdsNavigation(): boolean {
+    return SUPPORTS_IMMERSIVE_MATERIAL && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false;
+  }
+
+  private dialogHeight(): number {
+    return 64 + Math.min((this.serverList.length + 1) * (CARD_HEIGHT + 8), LIST_MAX_HEIGHT) + 24;
   }
 
   // 「全部通知」行：沉浸分支用 HDS 默认卡片表面，降级分支用玻璃色+描边
@@ -222,63 +231,116 @@ export struct ServerSwitchDialog {
     }
   }
 
-  build() {
-    Scroll() {
-      Column({ space: 14 }) {
-        // 顶部：居中标题 + 右上角关闭图标（与其它弹窗一致）
-        Stack({ alignContent: Alignment.TopEnd }) {
-          Text('切换通知服务')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.color_text_primary'))
-            .width('100%')
-            .textAlign(TextAlign.Center)
-            .padding({ top: 6, bottom: 6 });
-
-          Image($r('app.media.close'))
-            .width(24)
-            .height(24)
-            .objectFit(ImageFit.Contain)
-            .fillColor($r('app.color.color_text_hint'))
-            .padding(4)
-            .draggable(false)
-            .onClick(() => {
-              this.close();
-            });
-        }
-        .width('100%')
-        // 关闭图标与卡片外缘对齐（HDS 卡片内置 16~20vp 内缩，取 20vp）
-        .padding({ left: CARD_SIDE_INSET, right: CARD_SIDE_INSET - 4 });
-
-        // 列表：服务器数量多时在定高区域内上下滚动
-        List({ space: 8 }) {
-          ListItem() {
-            this.allCard();
-          }
-          ForEach(this.serverList, (s: ServerEntry) => {
-            ListItem() {
-              this.serverCard(s);
-            }
-          }, (s: ServerEntry) => s.id)
-        }
-          .width('100%')
-          .constraintSize({ maxHeight: LIST_MAX_HEIGHT })
-          .scrollBar(BarState.Auto)
-          .edgeEffect(EdgeEffect.Spring);
+  @Builder
+  private serverListScroll() {
+    Scroll(this.listScroller) {
+      Column({ space: 8 }) {
+        this.allCard();
+        ForEach(this.serverList, (s: ServerEntry) => {
+          this.serverCard(s);
+        }, (s: ServerEntry) => s.id)
       }
-      .width('100%');
+      .width('100%')
+      // HdsListItemCard 自带水平内缩，不在容器上叠加左右 padding。
+      .padding({ top: 8, bottom: 16 });
     }
-    .constraintSize({ maxHeight: '80%' })
+    .width('100%')
+    .layoutWeight(1)
     .scrollBar(BarState.Auto)
     .edgeEffect(EdgeEffect.Spring)
-    // 水平方向不再加 padding：HdsListItemCard 自带 16/20vp（随系统版本）卡片内缩
-    .padding({ top: 16, bottom: 16, left: 0, right: 0 })
+    .clip(!this.useHdsNavigation());
+  }
+
+  @Builder
+  private fallbackTitle() {
+    Row() {
+      Text('切换通知服务')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.color_text_primary'))
+        .layoutWeight(1);
+      Image($r('app.media.close'))
+        .width(24)
+        .height(24)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_hint'))
+        .padding(4)
+        .draggable(false)
+        .onClick(() => this.close());
+    }
+    .width('100%')
+    .height(64)
+    .padding({ left: CARD_SIDE_INSET, right: CARD_SIDE_INSET - 4 });
+  }
+
+  @Builder
+  private glassCloseButton() {
+    Row() {
+      Image($r('app.media.close'))
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_primary'))
+        .draggable(false);
+    }
+    .width(38)
+    .height(38)
+    .borderRadius(38)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    // 弹窗背板已做模糊；按钮再叠白色模糊会在亮色下变成实心白圆。
     .backgroundColor(Color.Transparent)
-    .borderRadius(14)
-    // 仅降级分支：内容根填充仍恒透明（背板模糊只能挂 controller 容器），
-    // 深色下降级面板色与页面同为深炭、仅靠模糊边界难分辨，用 1px 细描边勾出圆角面板轮廓；
-    // 沉浸材质分支材质自带边缘，不画
-    .borderWidth(this.immersive ? 0 : 1)
-    .borderColor($r('app.color.color_border_subtle'));
+    .margin({ top: 12, right: 14 })
+    .onClick(() => this.close());
+  }
+
+  build() {
+    if (this.useHdsNavigation()) {
+      Stack({ alignContent: Alignment.TopEnd }) {
+        HdsNavigation() {
+          this.serverListScroll();
+        }
+        .titleBar({
+          enableComponentSafeArea: true,
+          content: { title: { mainTitle: '切换通知服务' } },
+          style: {
+            scrollEffectOpts: {
+              enableScrollEffect: true,
+              scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+            },
+            systemMaterialEffect: {
+              materialType: hdsMaterial.MaterialType.ADAPTIVE,
+              materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+            }
+          }
+        })
+        .hideBackButton(true)
+        .titleMode(HdsNavigationTitleMode.MODAL)
+        .bindToScrollable([this.listScroller])
+        .width('100%')
+        .height('100%')
+        .backgroundColor(Color.Transparent);
+
+        this.glassCloseButton();
+      }
+      .width('100%')
+      .height(this.dialogHeight())
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14)
+      .clip(true);
+    } else {
+      Column() {
+        this.fallbackTitle();
+        this.serverListScroll();
+      }
+      .width('100%')
+      .height(this.dialogHeight())
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14)
+      .clip(true)
+      .borderWidth(this.immersive ? 0 : 1)
+      .borderColor($r('app.color.color_border_subtle'));
+    }
   }
 }
