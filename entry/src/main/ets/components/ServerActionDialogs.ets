@@ -1,5 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
+import { KEY_IMMERSIVE_LIGHT_ENABLED, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
 
 const TAG: string = 'ServerActionDlg';
 
@@ -30,33 +32,60 @@ export struct ServerActionMenuDialog {
   };
   onDelete: () => void = () => {
   };
+  serverLabel: string = '';
+  private actionScroller: Scroller = new Scroller();
 
-  build() {
-    Scroll() {
-      Column() {
-      // 顶部：标题 + 右上角 close icon
-      Stack({ alignContent: Alignment.TopEnd }) {
-        Text('操作')
+  private useHdsNavigation(): boolean {
+    return SUPPORTS_IMMERSIVE_MATERIAL && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false;
+  }
+
+  @Builder
+  private glassCloseButton() {
+    Row() {
+      Image($r('app.media.close'))
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_primary'))
+        .draggable(false);
+    }
+    .width(38)
+    .height(38)
+    .borderRadius(38)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    .backgroundColor(Color.Transparent)
+    .onClick(() => this.close());
+  }
+
+  @Builder
+  private fallbackTitle() {
+    Row() {
+      Column({ space: 2 }) {
+        Text('服务器操作')
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
-          .width('100%')
-          .textAlign(TextAlign.Center)
-          .padding({ top: 6, bottom: 6 });
-
-        Image($r('app.media.close'))
-          .width(24)
-          .height(24)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.color_text_hint'))
-          .padding(4)
-          .draggable(false)
-          .onClick(() => {
-            this.close();
-          });
+          .fontColor($r('app.color.color_text_primary'));
+        Text(this.serverLabel)
+          .fontSize(12)
+          .fontColor($r('app.color.color_text_hint'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
       }
-      .padding({ bottom: 8 })
-      .width('100%');
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start);
+      this.glassCloseButton();
+    }
+    .width('100%')
+    .height(64)
+    .padding({ left: 16, right: 16 });
+  }
 
+  @Builder
+  private actionItemsScroll() {
+    Scroll(this.actionScroller) {
+      Column() {
       Divider().color($r('app.color.color_border_subtle'));
 
       Text('复制地址和 Key')
@@ -136,14 +165,66 @@ export struct ServerActionMenuDialog {
           this.onDelete();
         });
       }
-      .width('100%');
+      .width('100%')
+      .padding({ top: 8, bottom: 8, left: 16, right: 16 });
     }
-    .constraintSize({ maxHeight: '80%' })
+    .width('100%')
+    .layoutWeight(1)
     .scrollBar(BarState.Auto)
     .edgeEffect(EdgeEffect.Spring)
-    .padding({ top: 16, bottom: 8, left: 16, right: 16 })
-    .backgroundColor(Color.Transparent)
-    .borderRadius(14);
+    .clip(!this.useHdsNavigation());
+  }
+
+  build() {
+    if (this.useHdsNavigation()) {
+      Stack({ alignContent: Alignment.TopEnd }) {
+        HdsNavigation() {
+          this.actionItemsScroll();
+        }
+        .titleBar({
+          enableComponentSafeArea: true,
+          content: { title: { mainTitle: '服务器操作', subTitle: this.serverLabel } },
+          style: {
+            scrollEffectOpts: {
+              enableScrollEffect: true,
+              scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+            },
+            systemMaterialEffect: {
+              materialType: hdsMaterial.MaterialType.ADAPTIVE,
+              materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+            }
+          }
+        })
+        .hideBackButton(true)
+        .titleMode(HdsNavigationTitleMode.MODAL)
+        .bindToScrollable([this.actionScroller])
+        .width('100%')
+        .height('100%')
+        .backgroundColor(Color.Transparent);
+
+        Row() {
+          this.glassCloseButton();
+        }
+        .margin({ top: 12, right: 14 });
+      }
+      .width('100%')
+      .height(400)
+      .constraintSize({ maxHeight: '80%' })
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14)
+      .clip(true);
+    } else {
+      Column() {
+        this.fallbackTitle();
+        this.actionItemsScroll();
+      }
+      .width('100%')
+      .height(400)
+      .constraintSize({ maxHeight: '80%' })
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14)
+      .clip(true);
+    }
   }
 
   private close(): void {

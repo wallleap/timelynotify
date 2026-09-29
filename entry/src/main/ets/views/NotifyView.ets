@@ -9,6 +9,7 @@ import { NotifyMessageService } from '../services/NotifyMessageService';
 import { MessageCacheStore } from '../services/MessageCacheStore';
 import { DeviceIdPair } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
+import { extractHost } from '../utils/ServerUrlUtil';
 import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
 import { ServerKeyDialog, ServerActionMenuDialog, ServerRenameDialog } from '../components/ServerActionDialogs';
 import { ClientTokenDialog } from '../components/ClientTokenDialog';
@@ -421,8 +422,11 @@ export struct NotifyView {
   private openActionMenuFor(server: ServerEntry): void {
     try {
       const dialogBg = getDialogBackgroundOptions();
+      const host: string = extractHost(server.baseURL);
+      const name: string = server.name.trim();
       this.fixActionMenuController = new CustomDialogController({
         builder: ServerActionMenuDialog({
+          serverLabel: name.length > 0 && name !== host ? `${name} · ${host}` : host,
           onCopy: () => { this.handleCopyServer(server); },
           onResetKey: () => { this.openKeyDialogFor(server); },
           onClientToken: () => { this.openClientTokenDialogFor(server); },
