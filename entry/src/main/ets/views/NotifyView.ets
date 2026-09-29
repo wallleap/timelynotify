@@ -421,7 +421,8 @@ export struct NotifyView {
 
   private openActionMenuFor(server: ServerEntry): void {
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 与 Sheet 一致：API 26+ 且用户开启时传材质，不以设备 supported 结果拦截。
+      const dialogMaterial = this.useSheetSystemMaterial() ? getSystemMaterial('dialog') : undefined;
       const host: string = extractHost(server.baseURL);
       const name: string = server.name.trim();
       this.fixActionMenuController = new CustomDialogController({
@@ -438,9 +439,9 @@ export struct NotifyView {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.fixActionMenuController.open();
     } catch (err) {
@@ -1757,7 +1758,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1781,7 +1782,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1813,7 +1814,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1841,7 +1842,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 ULTRA_THICK 沉浸材质，旧系统缺省纯色
+      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -2143,7 +2144,7 @@ export struct NotifyView {
   private handleMoreClicked(): void {
     try {
       // 「切换通知服务」弹窗：仅单选视图范围（全部通知/某服务器）。
-      // 打开时构造：背板统一走 getDialogBackgroundOptions（真机 ULTRA_THICK 沉浸材质；
+      // 打开时构造：背板统一走 getDialogBackgroundOptions（真机 REGULAR 沉浸材质；
       // 模拟器/低算力为系统容器 COMPONENT_THICK 模糊），旧系统纯色降级
       const dialogBg = getDialogBackgroundOptions();
       this.dialogController = new CustomDialogController({

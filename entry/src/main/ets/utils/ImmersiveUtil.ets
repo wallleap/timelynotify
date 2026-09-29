@@ -92,13 +92,11 @@ export function ensureImmersiveMaterial(): Promise<void> {
           interactive: true,
           lightEffect: actionLightEffect
         });
-        // 详情 Sheet 面积较大且卡片保持实色，薄材质才能让下层页面明显透出。
-        materialCache['sheet'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THIN });
+        // Sheet 与弹窗背板统一试用 REGULAR，兼顾下层透出与正文可读性。
+        materialCache['sheet'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.REGULAR });
         materialCache['toast'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THICK });
-        // 弹窗（CustomDialog/系统对话框）：官方弹窗类默认样式为 ULTRA_THICK，
-        // 厚材质弱化下层干扰、保证表单与长文本可读性；枚举缺失时回退 THICK。
-        const dialogStyle: number = mod.ImmersiveStyle.ULTRA_THICK ?? mod.ImmersiveStyle.THICK;
-        materialCache['dialog'] = new mod.ImmersiveMaterial({ style: dialogStyle });
+        // 弹窗包含 CustomDialog 与系统确认框，和 Sheet 共用 REGULAR 厚度。
+        materialCache['dialog'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.REGULAR });
         // 菜单（bindMenu/Menu）：官方「菜单」类默认样式为 THICK（比弹窗薄一档），
         // 挂在 ContextMenuOptions.systemMaterial（MenuOptions 继承），不是 Menu 组件通用属性。
         materialCache['menu'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THICK });
@@ -183,7 +181,7 @@ export function getMenuMaterial(): uiMaterial.Material | undefined {
  * 上，低算力设备/模拟器才有真实高斯模糊；挂在 @CustomDialog 内容根节点上无效——
  * dialog 内容子树采样不到下层页面，只会看到 BlurStyle 自带的不透明 tint 白底。
  *
- * - 沉浸材质生效：ULTRA_THICK 材质背板 + 内容透明
+ * - 沉浸材质生效：REGULAR 材质背板 + 内容透明
  * - 降级（旧系统/低算力/模拟器/开关关）：系统容器 COMPONENT_THICK 模糊 + 80% 弹窗底色保证可读性
  */
 export interface DialogBackgroundOptions {
