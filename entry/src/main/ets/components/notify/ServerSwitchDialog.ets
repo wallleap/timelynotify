@@ -21,11 +21,12 @@ const LIST_MAX_HEIGHT: number = 280;
 /**
  * 「切换通知服务」弹窗（首页标题点击进入）。
  * 仅承载视图范围单选：首项「全部通知」=聚合所有服务器，其后为各服务器（选中=只看该服务器）。
- * 列表行使用 HDS HdsListItemCard：沉浸材质生效时保留 HDS 默认卡片表面；
- * 降级（旧系统/低算力/开关关）卡片用 color_bg_card_glass（深色为比面板亮一档的抬升色，
+ * 列表行使用 HDS HdsListItemCard：设备沉浸材质生效时保留 HDS 默认卡片表面；
+ * 其余情况（旧系统/低算力/开关关）卡片用 color_bg_card_glass（深色为比面板亮一档的抬升色，
  * 避免与弹窗面板同基色 alpha 合成后糊在一起）/选中 color_bg_selected_glass，
- * 未选中行 color_border_default 描边，透出系统容器层的 COMPONENT_THICK 模糊（透明模糊背景）；
- * 降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
+ * 未选中行 color_border_default 描边，透出弹窗背板；背板在 API 26+ 且开关开启时
+ * 与 Sheet 一样传入 REGULAR 材质，材质不支持的设备仍由系统容器提供半透明效果。
+ * 卡片降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
  * API 26+ 沉浸分支使用 HDS 固定标题栏、叠放的描边透明关闭按钮和绑定的滚动区；
  * 降级分支保留普通固定标题与关闭图标。服务器的增删/Token/加密等管理在「服务」页。
  */
@@ -41,7 +42,7 @@ export struct ServerSwitchDialog {
   @State serverList: ServerEntry[] = [];
   @State currentId: string = '';
   @State viewAll: boolean = true;
-  // 弹窗在点击标题时才构造：此时材质要么已 READY，要么本会话确认走降级，构造期判定一次即可
+  // 列表卡片独立判断材质是否真实生效；低算力设备虽传背板材质，卡片仍用玻璃色降级。
   private immersive: boolean = isImmersiveMaterialActive();
   private listScroller: Scroller = new Scroller();
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;

@@ -2144,18 +2144,18 @@ export struct NotifyView {
   private handleMoreClicked(): void {
     try {
       // 「切换通知服务」弹窗：仅单选视图范围（全部通知/某服务器）。
-      // 打开时构造：背板统一走 getDialogBackgroundOptions（真机 REGULAR 沉浸材质；
-      // 模拟器/低算力为系统容器 COMPONENT_THICK 模糊），旧系统纯色降级
-      const dialogBg = getDialogBackgroundOptions();
+      // 与详情 Sheet、服务器操作弹窗一致：API 26+ 且开关开启就传入 REGULAR 材质。
+      // 低算力设备即使材质 no-op，也保留系统弹窗的半透明背板；旧系统走轻量模糊。
+      const dialogMaterial = this.useSheetSystemMaterial() ? getSystemMaterial('dialog') : undefined;
       this.dialogController = new CustomDialogController({
         builder: ServerSwitchDialog(),
         alignment: DialogAlignment.Center,
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.dialogController.open();
     } catch (err) {
