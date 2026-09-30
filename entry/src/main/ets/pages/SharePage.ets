@@ -8,7 +8,7 @@ import { SOURCE_CODE_URL } from '../services/AppInfoService';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
@@ -229,7 +229,7 @@ struct SharePage {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
       HdsNavigation() {
         this.webBody();

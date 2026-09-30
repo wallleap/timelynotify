@@ -1,9 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
-  getDialogBackgroundOptions,
+  getDialogMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, IconStyleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { ServerList } from '../components/server/ServerList';
@@ -210,7 +210,7 @@ export struct ServerView {
         // 顶栏避让占位
         Row()
           .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 0 :
+          .height(shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 :
             (this.fallbackTitleBarBottom >= 0 && this.scrollTop >= 0
               ? Math.max(0, this.fallbackTitleBarBottom - this.scrollTop) : 0));
 
@@ -245,7 +245,7 @@ export struct ServerView {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       // ─── API 26+: HdsNavigation 原生沉浸光感 ───
       // 标题与 + 菜单均走系统槽位：图标材质由 HDS 按 systemMaterialEffect(ADAPTIVE) 自动渲染，
       // 不要在 @Builder 里手写 Button.systemMaterial() 链式调用（ArkTSCheck 无法对声明式链做版本守卫，必报警告）。
@@ -305,7 +305,9 @@ export struct ServerView {
   // 打开添加服务器弹窗
   private openAddServerDialog(): void {
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.addServerController = new CustomDialogController({
         builder: AddServerDialog({
           onAdded: () => {
@@ -316,9 +318,9 @@ export struct ServerView {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.addServerController.open();
     } catch (err) {

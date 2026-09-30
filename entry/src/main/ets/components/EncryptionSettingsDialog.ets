@@ -1,5 +1,4 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { deviceInfo } from '@kit.BasicServicesKit';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
 import { EncryptionConfig } from '../model/EncryptionConfig';
@@ -7,9 +6,8 @@ import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import showToast from './showToast';
 import {
   getDialogMaterial,
-  getMenuMaterial,
-  KEY_IMMERSIVE_LIGHT_ENABLED,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  shouldUseSystemMaterialPath,
+  withImmersiveMenuMaterial
 } from '../utils/ImmersiveUtil';
 
 const TAG: string = 'EncryptionDlg';
@@ -54,7 +52,7 @@ export struct EncryptionSettingsDialog {
   }
 
   build() {
-    if (this.useHdsNavigation()) {
+    if (shouldUseSystemMaterialPath()) {
       Column() {
         // Scroll 直接交给 HDS，底部操作区不参与标题栏滚动效果。
         HdsNavigation() {
@@ -240,14 +238,9 @@ export struct EncryptionSettingsDialog {
       .scrollBar(BarState.Auto)
       .edgeEffect(EdgeEffect.Spring)
       // HDS 渐变模糊需要采样滚入标题栏背后的内容；降级标题仍保持普通裁剪。
-      .clip(!this.useHdsNavigation())
+      .clip(!shouldUseSystemMaterialPath())
       .width('100%');
 
-  }
-
-  /** HDS 原生渐变标题栏只在 API 26+ 且用户开启沉浸光感时使用。 */
-  private useHdsNavigation(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false;
   }
 
   @Builder
@@ -290,20 +283,9 @@ export struct EncryptionSettingsDialog {
     }, (value: string) => value);
   }
 
-  /**
-   * bindMenu 的 options：沉浸光感走官方入口 ContextMenuOptions.systemMaterial（API 26，
-   * MenuOptions 继承）；Menu 组件自身统一保留 COMPONENT_THICK 模糊 + glass 色——
-   * 材质生效时官方规定材质优先于组件自身背景/模糊，低算力/旧系统则直接显示该降级背板。
-   */
+  /** bindMenu 的 API 版本与材质配置统一由 ImmersiveUtil 处理。 */
   private glassMenuOptions(): MenuOptions {
-    const options: MenuOptions = { placement: Placement.BottomLeft };
-    if (deviceInfo.apiAvailable('26.0.0')) {
-      const material = getMenuMaterial();
-      if (material) {
-        options.systemMaterial = material;
-      }
-    }
-    return options;
+    return withImmersiveMenuMaterial({ placement: Placement.BottomLeft, showInSubWindow: true });
   }
 
   @Builder
@@ -311,8 +293,6 @@ export struct EncryptionSettingsDialog {
     Menu() {
       this.algorithmMenuItems();
     }
-    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-    .backgroundColor($r('app.color.color_bg_dialog_glass'));
   }
 
   @Builder
@@ -333,8 +313,6 @@ export struct EncryptionSettingsDialog {
     Menu() {
       this.modeMenuItems();
     }
-    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-    .backgroundColor($r('app.color.color_bg_dialog_glass'));
   }
 
   private paddingForMode(): string {

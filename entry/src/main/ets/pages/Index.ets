@@ -4,7 +4,7 @@ import { ServerView } from '../views/ServerView';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
 import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING, KEY_NOTIFY_SYNC_PROGRESS } from '../common/Constant';
@@ -114,7 +114,7 @@ struct Index {
   /** AppStorage 外部切换 Tab 时同步 HdsTabs 的控制器，降级 Tabs 则由 index 属性响应。 */
   private onTabRequested(): void {
     NotifySyncService.getInstance().setTabIndex(this.currentIndex);
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.hdsSelectedIndex !== this.currentIndex) {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled) && this.hdsSelectedIndex !== this.currentIndex) {
       this.hdsSelectedIndex = this.currentIndex;
       this.hdsController.changeIndex(this.currentIndex);
     }
@@ -132,7 +132,7 @@ struct Index {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       // ─── API 26+: HdsTabs 悬浮胶囊 + systemMaterialEffect 沉浸光感 ───
       Column() {
         HdsTabs({ controller: this.hdsController }) {

@@ -3,7 +3,7 @@ import { ThemeService } from '../services/ThemeService';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { NotifySettingsSection } from '../components/minesections/NotifySettingsSection';
@@ -128,7 +128,7 @@ export struct MineView {
         // HDS 自动避让标题栏；自绘叠层按实测重叠距离占位，Column 的 space 提供视觉间距。
         Row()
           .width('100%')
-          .height(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 0 :
+          .height(shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 :
             (this.fallbackTitleBarBottom >= 0 && this.scrollTop >= 0
               ? Math.max(0, this.fallbackTitleBarBottom - this.scrollTop) : 0));
 
@@ -163,7 +163,7 @@ export struct MineView {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       // ─── API 26+: HdsNavigation 原生沉浸光感（titleBar 内置 systemMaterialEffect）───
       HdsNavigation() {
         this.scrollBody();

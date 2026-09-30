@@ -1,7 +1,7 @@
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { AppearanceSection } from '../components/minesections/AppearanceSection';
 import { ThemeService } from '../services/ThemeService';
@@ -70,7 +70,7 @@ struct PersonalizationSettings {
   @Builder
   settingsContent() {
     Column({ space: 16 }) {
-      if (!(SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled)) {
+      if (!shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
         // 降级标题栏覆盖在 Scroll 上方；按实测重叠高度占位，避免首个设置项被遮挡。
         Row()
           .width('100%')
@@ -161,7 +161,7 @@ struct PersonalizationSettings {
       .margin({ top: 8 });
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 16 : 0,
+    .padding({ left: 16, right: 16, top: shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 16 : 0,
       bottom: 16 });
   }
 
@@ -222,7 +222,7 @@ struct PersonalizationSettings {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       HdsNavigation() {
         this.settingsBody();
       }

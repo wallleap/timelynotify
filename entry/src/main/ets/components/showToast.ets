@@ -1,21 +1,21 @@
 import { DOMAIN } from '../common/Constant';
-import { getSystemMaterial, isImmersiveMaterialActive } from '../utils/ImmersiveUtil';
+import { getEnabledSystemMaterial } from '../utils/ImmersiveUtil';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /**
  * 全局 Toast 封装（基于 UIContext 的 PromptAction）。
- * API 26+ 且 uiMaterial 模块动态加载就绪时，附带沉浸光感材质；否则普通 Toast。
+ * 通过 ImmersiveUtil 统一判断材质是否可用；不可用时显示普通 Toast。
  * 注意：不在此处顶层静态导入 uiMaterial，避免 API 23 设备模块加载崩溃。
  */
 export default function showToast(ctx: UIContext, message: string, durationMs: number = 1500,
   tag: string = 'Toast'): void {
   try {
-    const materialReady: boolean = isImmersiveMaterialActive();
-    if (materialReady) {
+    const material = getEnabledSystemMaterial('toast');
+    if (material !== undefined) {
       ctx.getPromptAction().showToast({
         message: message,
         duration: durationMs,
-        systemMaterial: getSystemMaterial('toast')
+        systemMaterial: material
       });
     } else {
       ctx.getPromptAction().showToast({ message: message, duration: durationMs });

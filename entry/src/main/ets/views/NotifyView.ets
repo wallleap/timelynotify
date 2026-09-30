@@ -20,11 +20,12 @@ import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import {
   getDialogBackgroundOptions,
   getDialogMaterial,
-  getSystemMaterial,
+  getEnabledSystemMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
   KEY_MATERIAL_LOADED,
-  SUPPORTS_IMMERSIVE_MATERIAL,
-  resolveBlurStyle
+  resolveBlurStyle,
+  shouldUseLoadedMaterialStyle,
+  shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, IconStyleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
 import {
@@ -244,7 +245,7 @@ export struct NotifyView {
     // 降级布局的标题栏以 Stack 覆盖正文；Banner 使用标题栏实际底边避让，沉浸布局保持原位。
     .margin({
       left: this.serverErrorBannerCollapsed ? 16 : 0,
-      top: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled
+      top: shouldUseSystemMaterialPath(this.immersiveLightEnabled)
         ? 0 : Math.max(0, this.fallbackTitleBarBottom) +
           (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0)
     })
@@ -358,7 +359,9 @@ export struct NotifyView {
 
   private openClientTokenDialogFor(server: ServerEntry): void {
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixClientTokenController = new CustomDialogController({
         builder: ClientTokenDialog({
           getInitToken: (): string => server.clientToken,
@@ -374,9 +377,9 @@ export struct NotifyView {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.fixClientTokenController.open();
     } catch (err) {
@@ -386,7 +389,9 @@ export struct NotifyView {
 
   private openKeyDialogFor(server: ServerEntry): void {
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixKeyController = new CustomDialogController({
         builder: ServerKeyDialog({
           getCurrentKey: (): string => server.deviceKey,
@@ -398,9 +403,9 @@ export struct NotifyView {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.fixKeyController.open();
     } catch (err) {
@@ -422,7 +427,7 @@ export struct NotifyView {
   private openActionMenuFor(server: ServerEntry): void {
     try {
       // 与 Sheet 一致：API 26+ 且用户开启时传材质，不以设备 supported 结果拦截。
-      const dialogMaterial = this.useSheetSystemMaterial() ? getSystemMaterial('dialog') : undefined;
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       const host: string = extractHost(server.baseURL);
       const name: string = server.name.trim();
       this.fixActionMenuController = new CustomDialogController({
@@ -463,7 +468,8 @@ export struct NotifyView {
     }
     try {
       const config: EncryptionConfig = await EncryptionConfigService.get(null, target.id);
-      const dialogBg = getDialogBackgroundOptions();
+      // 与「设置服务器名称」共用系统弹窗背板，内容根节点保持透明。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixEncryptionController = new CustomDialogController({
         builder: EncryptionSettingsDialog({
           getConfig: (): EncryptionConfig => config,
@@ -477,10 +483,11 @@ export struct NotifyView {
         }),
         alignment: DialogAlignment.Center,
         autoCancel: true,
+        offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.fixEncryptionController.open();
     } catch (err) {
@@ -549,7 +556,9 @@ export struct NotifyView {
       return;
     }
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixRenameController = new CustomDialogController({
         builder: ServerRenameDialog({
           getInitName: (): string => this.findConfiguredServer(server.id)?.name ?? '',
@@ -561,9 +570,9 @@ export struct NotifyView {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.fixRenameController.open();
     } catch (err) {
@@ -853,7 +862,7 @@ export struct NotifyView {
   }
 
   build() {
-    if (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled) {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       HdsNavigation() {
         this.viewportBody();
       }
@@ -909,10 +918,13 @@ export struct NotifyView {
         showClose: false,
         enableFloatingDragBar: true,
         // 降级时减轻遮罩，让轻量模糊背板下的列表层次更可辨；正文 List 保持实色。
-        maskColor: this.useSheetSystemMaterial() ? undefined : '#33000000',
-        backgroundColor: this.useSheetSystemMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-        blurStyle: this.useSheetSystemMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-        systemMaterial: this.useSheetSystemMaterial() ? getSystemMaterial('sheet') : undefined,
+        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : '#33000000',
+        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -955,10 +967,13 @@ export struct NotifyView {
         showClose: false,
         enableFloatingDragBar: true,
         // 两种导航布局共用同一降级效果。
-        maskColor: this.useSheetSystemMaterial() ? undefined : '#33000000',
-        backgroundColor: this.useSheetSystemMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-        blurStyle: this.useSheetSystemMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-        systemMaterial: this.useSheetSystemMaterial() ? getSystemMaterial('sheet') : undefined,
+        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : '#33000000',
+        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -1077,7 +1092,7 @@ export struct NotifyView {
   detailContent() {
     NotifyMessageDetail({
       message: this.selectedMessage,
-      useImmersiveMaterial: this.useDetailSheetMaterial(),
+      useImmersiveMaterial: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded),
       detailScroller: this.detailScroller,
       onOpenUrl: (url: string) => { this.openUrl(url); },
       onCopyCode: (code: string) => { this.copyCode(code); },
@@ -1099,7 +1114,7 @@ export struct NotifyView {
    */
   @Builder
   detailBuilder() {
-    if (this.useDetailSheetMaterial()) {
+    if (shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)) {
       HdsNavigation() {
         this.detailContent();
       }
@@ -1172,26 +1187,6 @@ export struct NotifyView {
         .width('100%')
         .height('100%');
     }
-  }
-
-  /**
-   * 详情内容走材质样式分支：API 26+、用户启用且 uiMaterial 已加载即可，不要求设备 supported——
-   * supported=false 时 systemMaterial 虽 no-op，但透明 List + glass 卡片 + 按钮底色兜底
-   * 仍能透出 bindSheet 系统面板的半透明材质（否则内容层实色，只有标题栏透）。
-   */
-  private useDetailSheetMaterial(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.immersiveMaterialLoaded;
-  }
-
-  /**
-   * bindSheet 容器背板走「系统材质分支」的条件：API 26+ 且用户开关开即可，
-   * 不要求 isImmersiveMaterialSupported/材质就绪——supported=false 的设备（如 SMOOTH 模拟器）
-   * systemMaterial 虽 no-op，但 bindSheet 系统默认面板本身就是半透明材质，比
-   * blurStyle+灰底的降级分支更透；材质实例在能力闸门前已预创建，getSystemMaterial 可安全读取。
-   * 注意：仅用于 sheet options；详情内部标题栏的材质组件链仍用 useDetailSheetMaterial 闸门。
-   */
-  private useSheetSystemMaterial(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled;
   }
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
@@ -1758,7 +1753,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1782,7 +1777,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1814,7 +1809,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1842,7 +1837,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -2144,9 +2139,9 @@ export struct NotifyView {
   private handleMoreClicked(): void {
     try {
       // 「切换通知服务」弹窗：仅单选视图范围（全部通知/某服务器）。
-      // 与详情 Sheet、服务器操作弹窗一致：API 26+ 且开关开启就传入 REGULAR 材质。
+      // 与详情 Sheet、服务器操作弹窗一致：API 26+ 且开关开启就传入统一的 ULTRA_THIN 材质。
       // 低算力设备即使材质 no-op，也保留系统弹窗的半透明背板；旧系统走轻量模糊。
-      const dialogMaterial = this.useSheetSystemMaterial() ? getSystemMaterial('dialog') : undefined;
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.dialogController = new CustomDialogController({
         builder: ServerSwitchDialog(),
         alignment: DialogAlignment.Center,

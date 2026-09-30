@@ -175,7 +175,7 @@ export struct NotifySettingsSection {
       title: isOn ? '开启订阅' : '关闭订阅',
       message: isOn ? '是否要接收此订阅的通知栏推送？' : '是否要取消此订阅的通知栏推送？',
       buttons: isOn ? onButtons : offButtons,
-      // API 26+ 材质就绪时系统确认框走 REGULAR 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err) {

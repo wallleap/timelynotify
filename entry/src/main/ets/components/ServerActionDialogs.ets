@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
-import { KEY_IMMERSIVE_LIGHT_ENABLED, SUPPORTS_IMMERSIVE_MATERIAL } from '../utils/ImmersiveUtil';
+import { shouldUseSystemMaterialPath } from '../utils/ImmersiveUtil';
 
 const TAG: string = 'ServerActionDlg';
 
@@ -34,10 +34,6 @@ export struct ServerActionMenuDialog {
   };
   serverLabel: string = '';
   private actionScroller: Scroller = new Scroller();
-
-  private useHdsNavigation(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false;
-  }
 
   @Builder
   private glassCloseButton() {
@@ -172,11 +168,11 @@ export struct ServerActionMenuDialog {
     .layoutWeight(1)
     .scrollBar(BarState.Auto)
     .edgeEffect(EdgeEffect.Spring)
-    .clip(!this.useHdsNavigation());
+    .clip(!shouldUseSystemMaterialPath());
   }
 
   build() {
-    if (this.useHdsNavigation()) {
+    if (shouldUseSystemMaterialPath()) {
       Stack({ alignContent: Alignment.TopEnd }) {
         HdsNavigation() {
           this.actionItemsScroll();

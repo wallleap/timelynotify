@@ -1,4 +1,4 @@
-import { resolveBlurStyle, SUPPORTS_IMMERSIVE_MATERIAL } from '../../utils/ImmersiveUtil';
+import { resolveBlurStyle, shouldUseSystemMaterialPath } from '../../utils/ImmersiveUtil';
 
 /** 通知多选模式底部操作栏；选择状态与实际动作均由 NotifyView 管理。 */
 @Component
@@ -27,7 +27,7 @@ export struct NotifyEditActionBar {
         .onClick(() => this.onDelete());
     }
     .width('100%').padding({ left: 16, right: 16, top: 12,
-      bottom: SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? this.navBarHeight + 72 : this.navBarHeight + 64 })
+      bottom: shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? this.navBarHeight + 72 : this.navBarHeight + 64 })
     .backgroundBlurStyle(resolveBlurStyle('bar')!).backgroundColor($r('app.color.color_bg_glass'));
   }
 }

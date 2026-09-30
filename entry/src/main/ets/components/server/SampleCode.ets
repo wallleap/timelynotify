@@ -1,4 +1,3 @@
-import { deviceInfo } from '@kit.BasicServicesKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { CodeBlock } from '../../common/CodeBlock';
 import { ServerEntry } from '../../model/ServerEntry';
@@ -7,7 +6,7 @@ import { DeviceRegisterService } from '../../services/DeviceRegisterService';
 import { NotifyMessageService } from '../../services/NotifyMessageService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { buildTestGetCode, buildTestPostCode } from '../../utils/TestPushExample';
-import { getMenuMaterial } from '../../utils/ImmersiveUtil';
+import { withImmersiveMenuMaterial } from '../../utils/ImmersiveUtil';
 import { DOMAIN } from '../../common/Constant';
 import showToast from '../showToast';
 
@@ -303,14 +302,7 @@ export struct SampleCode {
 
   // 沉浸光感系统 Menu 与旧设备模糊降级沿用加密设置的菜单样式。
   private menuOptions(): MenuOptions {
-    const options: MenuOptions = { placement: Placement.BottomRight };
-    if (deviceInfo.apiAvailable('26.0.0')) {
-      const material = getMenuMaterial();
-      if (material) {
-        options.systemMaterial = material;
-      }
-    }
-    return options;
+    return withImmersiveMenuMaterial({ placement: Placement.BottomRight });
   }
 
   @Builder

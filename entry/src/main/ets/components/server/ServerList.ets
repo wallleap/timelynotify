@@ -14,10 +14,12 @@ import showToast from '../showToast';
 import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_REFRESH_SIGNAL } from '../../common/Constant';
 import {
   getDialogBackgroundOptions,
-  getSystemMaterial,
+  getDialogMaterial,
+  getEnabledSystemMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
   KEY_MATERIAL_LOADED,
-  SUPPORTS_IMMERSIVE_MATERIAL
+  shouldUseLoadedMaterialStyle,
+  shouldUseSystemMaterialPath
 } from '../../utils/ImmersiveUtil';
 
 const TAG: string = 'ServerList';
@@ -169,10 +171,13 @@ export struct ServerList {
       preferType: SheetType.BOTTOM,
       showClose: false,
       enableFloatingDragBar: true,
-      maskColor: this.useSheetSystemMaterial() ? undefined : '#33000000',
-      backgroundColor: this.useSheetSystemMaterial() ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-      blurStyle: this.useSheetSystemMaterial() ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-      systemMaterial: this.useSheetSystemMaterial() ? getSystemMaterial('sheet') : undefined,
+        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : '#33000000',
+        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
       onDisappear: () => {
         this.showDetail = false;
       }
@@ -256,7 +261,8 @@ export struct ServerList {
         }
         .width('100%')
         .backgroundColor(
-          this.useDetailSheetMaterial() ? $r('app.color.color_bg_surface_glass') : $r('app.color.color_bg_surface'))
+          shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+            ? $r('app.color.color_bg_surface_glass') : $r('app.color.color_bg_surface'))
         .borderRadius(12)
         .clip(true);
 
@@ -300,7 +306,8 @@ export struct ServerList {
     .alignItems(HorizontalAlign.Start)
     .padding(16)
     .backgroundColor(
-      this.useDetailSheetMaterial() ? $r('app.color.color_bg_surface_glass') : $r('app.color.color_bg_surface'))
+      shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+        ? $r('app.color.color_bg_surface_glass') : $r('app.color.color_bg_surface'))
     .borderRadius(12);
   }
 
@@ -395,16 +402,6 @@ export struct ServerList {
     this.showDetail = true;
   }
 
-  /** Sheet 容器是否走系统材质：API 26+ 且用户开启沉浸光感即可（不要求 material loaded） */
-  private useSheetSystemMaterial(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled;
-  }
-
-  /** Sheet 内容层是否走材质样式：需模块加载完成（容器系统材质 + 内容玻璃化） */
-  private useDetailSheetMaterial(): boolean {
-    return SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled && this.immersiveMaterialLoaded;
-  }
-
   private refresh(): void {
     const mgr: ServerManager = ServerManager.getInstance();
     const list: ServerEntry[] = mgr.getList();
@@ -444,7 +441,9 @@ export struct ServerList {
 
   private async openRenameDialog(): Promise<void> {
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.renameController = new CustomDialogController({
         builder: ServerRenameDialog({
           getInitName: (): string => this.targetName,
@@ -456,9 +455,9 @@ export struct ServerList {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.renameController.open();
     } catch (err) {
@@ -474,7 +473,9 @@ export struct ServerList {
       return;
     }
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.keyController = new CustomDialogController({
         builder: ServerKeyDialog({
           getCurrentKey: (): string => server.deviceKey,
@@ -486,9 +487,9 @@ export struct ServerList {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.keyController.open();
     } catch (err) {
@@ -504,7 +505,9 @@ export struct ServerList {
       return;
     }
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.clientTokenController = new CustomDialogController({
         builder: ClientTokenDialog({
           getInitToken: (): string => server.clientToken,
@@ -527,9 +530,9 @@ export struct ServerList {
         autoCancel: true,
         offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.clientTokenController.open();
     } catch (err) {
@@ -546,7 +549,8 @@ export struct ServerList {
     }
     this.currentEncryptionConfig = await EncryptionConfigService.get(null, server.id);
     try {
-      const dialogBg = getDialogBackgroundOptions();
+      // 与「设置服务器名称」共用系统弹窗背板，内容根节点保持透明。
+      const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.encryptionController = new CustomDialogController({
         builder: EncryptionSettingsDialog({
           getConfig: (): EncryptionConfig => this.currentEncryptionConfig,
@@ -560,10 +564,11 @@ export struct ServerList {
         }),
         alignment: DialogAlignment.Center,
         autoCancel: true,
+        offset: { dx: 0, dy: 0 },
         cornerRadius: 14,
-        systemMaterial: dialogBg.systemMaterial,
-        backgroundColor: dialogBg.backgroundColor,
-        backgroundBlurStyle: dialogBg.backgroundBlurStyle,
+        systemMaterial: dialogMaterial,
+        backgroundColor: dialogMaterial ? Color.Transparent : undefined,
+        backgroundBlurStyle: dialogMaterial ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       });
       this.encryptionController.open();
     } catch (_err) {

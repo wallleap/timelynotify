@@ -16,7 +16,7 @@ import {
   NotifyListDataSource,
   NotifyListRow
 } from './NotifyListDataSource';
-import { SUPPORTS_IMMERSIVE_MATERIAL } from '../../utils/ImmersiveUtil';
+import { shouldUseSystemMaterialPath } from '../../utils/ImmersiveUtil';
 
 // 「跳到底部」长距离穿越时，先无动画定位到距末项多少个 ListItem 的位置，再做这一小段平滑滚动。
 const SCROLL_TO_BOTTOM_SMOOTH_RANGE: number = 5;
@@ -236,7 +236,7 @@ export struct NotifyMessageList {
       ListItem() {
         Row()
           .width('100%')
-          .height(this.navBarHeight + (SUPPORTS_IMMERSIVE_MATERIAL && this.immersiveLightEnabled ? 72 : 64));
+          .height(this.navBarHeight + (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 72 : 64));
       }
     }
     .width('100%')
