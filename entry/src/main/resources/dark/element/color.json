@@ -129,6 +129,10 @@
       "value": "#26FFFFFF"
     },
     {
+      "name": "color_border_dialog_fallback",
+      "value": "#66FFFFFF"
+    },
+    {
       "name": "color_link",
       "value": "#8DBDFF"
     },
