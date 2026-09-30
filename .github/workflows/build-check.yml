@@ -19,7 +19,6 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - '.github/**'
   workflow_dispatch:
 
 concurrency:
@@ -50,6 +49,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: 检查沉浸光感工具边界
+        run: bash .github/scripts/check-immersive-boundary.sh
 
       - name: Setup JDK 17（self-hosted 兜底）
         if: vars.BUILD_CHECK_RUNNER == 'self-hosted'

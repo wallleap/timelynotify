@@ -210,10 +210,12 @@ ComponentName
 
 新增长内容的居中 `CustomDialog`，以 [`EncryptionSettingsDialog.ets`](entry/src/main/ets/components/EncryptionSettingsDialog.ets) 的加密设置弹窗为布局和沉浸光感基准；`bindSheet` 与全屏页面不直接套用此结构。
 
-- 弹窗背板由 `ImmersiveUtil.getDialogBackgroundOptions()` 提供，设置在 `CustomDialogController` 的 options 上；内容根节点保持透明，不在内部另铺一层模糊背景。亮暗主题都要检查。
+- 弹窗背板设置在 `CustomDialogController` 的 options 上：材质获取统一使用 `ImmersiveUtil.getDialogMaterial()`，API 26+、用户开关及实例加载判断只在 util 中实现；返回材质时设置 `backgroundColor(Color.Transparent)` 且不设 blurStyle，返回 `undefined` 时走原有 `backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THIN)` 降级。`bindSheet` 使用 `getEnabledSystemMaterial('sheet')`，Menu 使用 `withImmersiveMenuMaterial()`，组件不得自行判断 SDK/设备材质能力或直接创建 `ImmersiveMaterial`。内容根节点保持透明，不在内部另铺一层模糊背景，亮暗主题都要检查。`getDialogBackgroundOptions()` 用于 `promptAction.showDialog` 系统确认框。
+- 修改沉浸光感相关代码后，运行 `bash .github/scripts/check-immersive-boundary.sh`；构建检查工作流也会执行同一检查。新增入口应先扩展 `ImmersiveUtil.ets`，不要在组件中导入 `uiMaterial`、查询 SDK/设备材质能力或实例化材质。
 - API 26+ 且沉浸光感开关开启时，用 `HdsNavigation` 的 `MODAL` 标题栏固定标题；通过 `titleBar.enableComponentSafeArea` 安排初始内容位置，通过 `bindToScrollable` 绑定正文 `Scroller`，使用 HDS 默认的 `GRADIENT_BLUR` 滚动效果。不要手写标题栏高度占位，也不要默认叠加自定义 `blurRadius` 或同色遮罩。
 - 正文单独滚动，底部操作按钮放在滚动区外并固定；按钮区域保持透明，让弹窗背板材质连续，不额外形成一块颜色不同的底板。弹窗外层裁剪到圆角边界。
 - HDS 分支允许滚动内容进入标题栏背后以供渐变模糊采样；降级分支保留普通固定标题和常规滚动裁剪。此做法在快速上滑时可能让顶部表单文字短暂透入标题区域，新增弹窗必须分别检查初始、上滑、回弹、底部与亮暗主题，不能只凭构建通过认定效果正确。
+- 排查弹窗“发白/不透明”先换深色文字背景对照：弹窗叠在白色详情 Sheet 等浅色下层之上时，半透明背板也会显白，这是正常透视而非背板失效。实测加密弹窗在 Column（`Scroll.layoutWeight(1)` + 底部按钮 sibling）与 Stack（`HdsNavigation` 100% + 悬浮按钮）两种内容结构下背板同样半透明——透明与否只取决于上面的 controller options，不要因“发白”去改内容层结构。判定方法：与同背景的参照弹窗（如「切换通知服务」）并排，比较弹窗外遮罩与面板内像素；UI Inspector 中各节点背景均为 `#00000000` 却视觉偏白时，优先怀疑下层背景而非弹窗。
 
 ---
 
