@@ -19,7 +19,7 @@ TODO:
 - [ ] 等 PushKit API 完善点，实现更多推送参数
     - 鸿蒙 Push Kit 通知点击使用 `actionType=0` 携带定位数据：`action=alert`（默认）同步后打开对应详情，
       单服务器视图会切到来源服务；`none` 只回通知首页，`url` 优先。通知栏不提供复制等操作按钮。
-- [ ] 内容处理（例如整体复制、复制链接/验证码）
+- [ ] 内容处理（详情已支持复制全文、复制链接/验证码，后续能力待完善）
 
 ## 功能说明
 
@@ -144,7 +144,7 @@ TODO:
     └─ ttl 正整数秒 → 保存绝对过期时间，进入/刷新列表时清理到期记录
 
   用户删除：已迁移通知仅删本地；解密失败通知先删当前实例的远端副本，失败则保留本地
-    ├─ 单条/多选/清空均明确提示“删除后无法恢复”；详情 Sheet 底部固定「删除」按钮，API 26+ 使用 Button 系统材质、旧系统使用模糊降级，确认成功后关闭详情
+    ├─ 单条/多选/清空均明确提示“删除后无法恢复”；详情 Sheet 底部将普通「删除」胶囊按钮与品牌色主按钮「复制全文」并排固定，按钮行最大宽度 420vp、宽屏居中，上滑收起、下滑或回到顶部时显示，带渐隐和位移动画；卡片下方居中提示“点按标题或内容，可分别复制”，复制全文包含标题、副标题和展示中的正文，确认删除成功后关闭详情
     │  详情 Sheet 容器和内容统一由 ImmersiveUtil 判断：API 26+ 且开关开启时采用沉浸布局，材质实例预创建后经 getEnabledSystemMaterial('sheet') 提供系统背板；未加载时保留模糊降级。设备 supported 查询仅用于诊断，不再单独决定 Sheet、Dialog 或 Menu 的渲染分支。
     │  全部居中 CustomDialog 的材质由 ImmersiveUtil.getDialogMaterial() 统一获取，Menu 由 withImmersiveMenuMaterial() 构造 options，Toast 和 Sheet 由 getEnabledSystemMaterial() 获取；这些入口共用 API 版本、用户开关和实例加载判断。材质可用时透明背板、不叠 blur；不可用时使用原有模糊降级。「推送测试」的两个 Menu 也按此规则切换自身背景色与模糊。组件不直接查询 SDK 版本、设备 supported 状态或自行创建 ImmersiveMaterial。切换通知服务弹窗的 HDS 列表卡片样式由 shouldUseLoadedMaterialStyle() 决定。
     │  弹窗内部表面同步玻璃化（仅用于弹窗内部；背板效果取决于系统材质支持与降级路径）：TextInput/选择行用 color_bg_input_glass（85% 不透明，亮 #D9E4E8EE 加深灰蓝/暗 #D9141920 同色系深炭——内凹槽语义：亮背板压暗一档、暗背板再压深一档；暗色切忌比背板浅的偏蓝灰，会像浅蓝补丁显脏）、次级按钮（取消等）为透明幽灵按钮（Color.Transparent 无底，60% 玻璃灰叠白背板会显发白方块故弃用 color_bg_control_glass）、内嵌卡片/服务器行用 color_bg_surface_glass、选中态用 color_bg_selected_glass（20% 品牌橙，含算法/模式 Menu 选中行）；例外：「切换通知服务」弹窗 HDS 列表行在沉浸材质生效时保留 HDS 默认卡片表面，仅降级分支玻璃化；主 CTA（添加/保存）保持实色品牌橙不变

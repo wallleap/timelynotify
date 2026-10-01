@@ -1,5 +1,6 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
 import {
+  buildNotifyCopyText,
   formatNotifyTime,
   formatExpiryDescription,
   NOTIFY_SEGMENT_CODE,
@@ -12,10 +13,14 @@ import { NotifyEncryptionBadge } from './NotifyGroupVisuals';
 const DETAIL_EDGE_SPACING: number = 16;
 const DETAIL_BOTTOM_SPACING: number = 32;
 const DETAIL_DELETE_BUTTON_HEIGHT: number = 44;
+const DETAIL_ACTION_MAX_WIDTH: number = 420;
+const DETAIL_ACTION_SCROLL_THRESHOLD: number = 16;
 
 /** 通知详情半模态内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
 export struct NotifyMessageDetail {
+  @State private actionsVisible: boolean = true;
+  private actionScrollDistance: number = 0;
   // 与页面共用实测导航条高度，让滚动末尾的卡片避开底部手势区域。
   @StorageProp('navBarHeight') navBarHeight: number = 0;
   @Prop message: NotifyMessage | null = null;
@@ -31,6 +36,29 @@ export struct NotifyMessageDetail {
   onCopyContent: (text: string) => void = (_text: string) => {};
   // 删除动作交给列表页复用现有确认弹窗和本地删除流程。
   onDelete: () => void = () => {};
+
+  /** 只在用户明显改变滚动方向后切换按钮行，避免回弹和微小位移造成闪烁。 */
+  private handleDetailScroll(scrollOffset: number, scrollState: ScrollState): void {
+    if (scrollState === ScrollState.Idle) {
+      return;
+    }
+    if (this.detailScroller.currentOffset().yOffset <= 0) {
+      this.actionScrollDistance = 0;
+      this.actionsVisible = true;
+      return;
+    }
+    if (this.actionScrollDistance * scrollOffset < 0) {
+      this.actionScrollDistance = 0;
+    }
+    this.actionScrollDistance += scrollOffset;
+    if (this.actionScrollDistance >= DETAIL_ACTION_SCROLL_THRESHOLD && this.actionsVisible) {
+      this.actionsVisible = false;
+      this.actionScrollDistance = 0;
+    } else if (this.actionScrollDistance <= -DETAIL_ACTION_SCROLL_THRESHOLD && !this.actionsVisible) {
+      this.actionsVisible = true;
+      this.actionScrollDistance = 0;
+    }
+  }
 
   @Builder
   private textSpans(text: string) {
@@ -207,17 +235,35 @@ export struct NotifyMessageDetail {
     }
   }
 
-  /** 固定在 Sheet 底部的纯文字删除按钮（实色背板；Sheet 容器自身已挂材质，按钮不再挂链式材质）。 */
+  /** Sheet 底部固定操作区：删除保持普通按钮外观，复制全文使用品牌色主按钮。 */
   @Builder
-  private floatingDeleteButton() {
-    Button('删除')
-      .width(120).height(DETAIL_DELETE_BUTTON_HEIGHT)
-      // 必须显式 NORMAL：Button 默认 EMPHASIZED 会渲染蓝色强调样式。
-      .buttonStyle(ButtonStyleMode.NORMAL)
-      .backgroundColor($r('app.color.color_bg_action'))
-      .fontSize(16).fontColor($r('app.color.color_error'))
-      .margin({ bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
-      .onClick(() => this.onDelete());
+  private bottomActions() {
+    Row({ space: 12 }) {
+      Button('删除')
+        .layoutWeight(1).height(DETAIL_DELETE_BUTTON_HEIGHT)
+        .buttonStyle(ButtonStyleMode.NORMAL)
+        .backgroundColor($r('app.color.color_bg_action'))
+        .fontSize(16).fontColor($r('app.color.color_error'))
+        .borderRadius(DETAIL_DELETE_BUTTON_HEIGHT / 2)
+        .onClick(() => this.onDelete());
+      Button('复制全文')
+        .layoutWeight(1).height(DETAIL_DELETE_BUTTON_HEIGHT)
+        .backgroundColor($r('app.color.color_brand'))
+        .fontSize(16).fontColor(Color.White)
+        .borderRadius(DETAIL_DELETE_BUTTON_HEIGHT / 2)
+        .enabled(this.message ? buildNotifyCopyText(this.message).length > 0 : false)
+        .onClick(() => {
+          if (this.message) {
+            this.onCopyText(buildNotifyCopyText(this.message));
+          }
+        });
+    }
+    .width('100%')
+    .constraintSize({ maxWidth: DETAIL_ACTION_MAX_WIDTH })
+    .padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
+      bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 24 }))
+      .animation({ duration: 220, curve: Curve.EaseOut }));
   }
 
   build() {
@@ -299,9 +345,18 @@ export struct NotifyMessageDetail {
             .border({ width: 1, color: $r('app.color.color_border_subtle') });
           }
         }
-        // 底部额外留白随内容滚动，长通知滚到末尾时也能完整露出卡片边缘。
+        // 提示与卡片相邻；固定删除按钮所需的底部留白放在下一项。
         .width('100%').padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
-          top: DETAIL_EDGE_SPACING,
+          top: DETAIL_EDGE_SPACING });
+        ListItem() {
+          if (this.message) {
+            Text('点按标题或内容，可分别复制')
+              .width('100%').textAlign(TextAlign.Center)
+              .fontSize(12).fontColor($r('app.color.color_text_hint'));
+          }
+        }
+        // 长通知滚到末尾时，提示和卡片都能完整露出固定按钮上方。
+        .width('100%').padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING, top: 10,
           bottom: DETAIL_BOTTOM_SPACING + this.navBarHeight + DETAIL_DELETE_BUTTON_HEIGHT + DETAIL_EDGE_SPACING });
       }
       // Sheet 的系统材质绘制在内容后方；仅材质模式让外层透出。
@@ -309,12 +364,19 @@ export struct NotifyMessageDetail {
       // 不裁剪超出 List 边界的内容，使卡片上滚时穿入 MODAL 标题栏下方，供其动态模糊取色。
       .clip(false)
       .edgeEffect(EdgeEffect.Spring).scrollBar(BarState.Off)
+      .onDidScroll((scrollOffset: number, scrollState: ScrollState) => {
+        this.handleDetailScroll(scrollOffset, scrollState);
+      })
+      .onReachStart(() => {
+        this.actionScrollDistance = 0;
+        this.actionsVisible = true;
+      })
       // 内容区域只滚动自身；内容不足一屏时不将滑动手势交给 Sheet。
       .nestedScroll({ scrollForward: NestedScrollMode.SELF_ONLY, scrollBackward: NestedScrollMode.SELF_ONLY })
       .backgroundColor(this.useImmersiveMaterial ? Color.Transparent : $r('app.color.color_bg_page'));
 
-      if (this.message) {
-        this.floatingDeleteButton();
+      if (this.message && this.actionsVisible) {
+        this.bottomActions();
       }
     }
     .width('100%').height('100%');

@@ -7,7 +7,7 @@ import { ServerEntry } from '../main/ets/model/ServerEntry';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { retryDelayMs } from '../main/ets/services/NotifySyncService';
 import { AutoCopyService, AutoCopySelection, AutoCopySyncRound } from '../main/ets/services/AutoCopyService';
-import { formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
+import { buildNotifyCopyText, formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
 import { belongsToPushInstance, notifyIdentity, notifySourceKey, originalDeviceKey,
   resolveCurrentRemoteServer } from '../main/ets/utils/NotifyIdentity';
@@ -112,6 +112,21 @@ export default function localUnitTest() {
       // Defines a variety of assertion methods, which are used to declare expected boolean conditions.
       expect(a).assertContain(b);
       expect(a).assertEqual(a);
+    });
+    it('copiesVisibleNotificationText', 0, () => {
+      const message: NotifyMessage = new NotifyMessage();
+      message.title = '标题';
+      message.subtitle = '副标题';
+      message.body = '普通正文';
+      expect(buildNotifyCopyText(message)).assertEqual('标题\n副标题\n普通正文');
+      message.inboxContent = ['第一行', '第二行'];
+      expect(buildNotifyCopyText(message)).assertEqual('标题\n副标题\n第一行\n第二行');
+      message.title = '';
+      message.subtitle = '';
+      message.inboxContent = [];
+      expect(buildNotifyCopyText(message)).assertEqual('普通正文');
+      message.body = '';
+      expect(buildNotifyCopyText(message)).assertEqual('');
     });
     it('keepsGroupSelectionAndActionCountInSync', 0, () => {
       const first: NotifyMessage = new NotifyMessage();

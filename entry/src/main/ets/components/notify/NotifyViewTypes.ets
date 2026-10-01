@@ -210,6 +210,22 @@ export function formatNotifyTime(timestamp: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** 详情页「复制全文」只拼接实际展示的文字，收件箱内容优先于普通正文。 */
+export function buildNotifyCopyText(message: NotifyMessage): string {
+  const parts: string[] = [];
+  if (message.title.length > 0) {
+    parts.push(message.title);
+  }
+  if (message.subtitle.length > 0) {
+    parts.push(message.subtitle);
+  }
+  const content: string = message.inboxContent.length > 0 ? message.inboxContent.join('\n') : message.body;
+  if (content.length > 0) {
+    parts.push(content);
+  }
+  return parts.join('\n');
+}
+
 /** 列表只对一小时内即将到期的归档通知显示轻量提示。 */
 export function isExpiringSoon(expiresAt: number, now: number = Date.now()): boolean {
   const remaining: number = expiresAt - now;
