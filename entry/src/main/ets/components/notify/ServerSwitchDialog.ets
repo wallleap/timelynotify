@@ -26,7 +26,7 @@ const LIST_MAX_HEIGHT: number = 280;
  * 其余情况（旧系统/低算力/开关关）卡片用 color_bg_card_glass（深色为比面板亮一档的抬升色，
  * 避免与弹窗面板同基色 alpha 合成后糊在一起）/选中 color_bg_selected_glass，
  * 未选中行 color_border_default 描边，透出弹窗背板；背板在 API 26+ 且开关开启时
- * 与 Sheet 一样通过统一工具传入 ULTRA_THIN 材质，设备最终效果由系统决定。
+ * 与 Sheet 一样通过统一工具传入 THICK 材质，设备最终效果由系统决定。
  * 卡片降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
  * API 26+ 沉浸分支使用 HDS 固定标题栏、叠放的描边透明关闭按钮和绑定的滚动区；
  * 降级分支保留普通固定标题与关闭图标。服务器的增删/Token/加密等管理在「服务」页。

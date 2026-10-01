@@ -103,10 +103,10 @@ export function ensureImmersiveMaterial(): Promise<void> {
           lightEffect: actionLightEffect
         });
         // Sheet 与弹窗背板使用同一级别，兼顾下层透出与正文可读性。
-        materialCache['sheet'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
+        materialCache['sheet'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THICK });
         materialCache['toast'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
         // 弹窗包含 CustomDialog 与系统确认框，和 Sheet 共用材质等级。
-        materialCache['dialog'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
+        materialCache['dialog'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.THICK });
         // 菜单（bindMenu/Menu）：挂在 ContextMenuOptions.systemMaterial（MenuOptions 继承），
         // 不是 Menu 组件通用属性。
         materialCache['menu'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });

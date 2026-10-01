@@ -305,7 +305,7 @@ export struct ServerView {
   // 打开添加服务器弹窗
   private openAddServerDialog(): void {
     try {
-      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 THICK 材质，
       // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
       const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.addServerController = new CustomDialogController({

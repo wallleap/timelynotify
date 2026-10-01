@@ -359,7 +359,7 @@ export struct NotifyView {
 
   private openClientTokenDialogFor(server: ServerEntry): void {
     try {
-      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 THICK 材质，
       // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
       const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixClientTokenController = new CustomDialogController({
@@ -389,7 +389,7 @@ export struct NotifyView {
 
   private openKeyDialogFor(server: ServerEntry): void {
     try {
-      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 THICK 材质，
       // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
       const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixKeyController = new CustomDialogController({
@@ -565,7 +565,7 @@ export struct NotifyView {
       return;
     }
     try {
-      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
+      // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 THICK 材质，
       // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
       const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixRenameController = new CustomDialogController({
@@ -1763,7 +1763,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1787,7 +1787,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1819,7 +1819,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -1847,7 +1847,7 @@ export struct NotifyView {
         { text: '取消', color: $r('app.color.color_text_tertiary') },
         { text: '全部删除', color: $r('app.color.color_error') },
       ],
-      // API 26+ 且开关开启时系统确认框走统一的 ULTRA_THIN 沉浸材质，旧系统缺省纯色
+      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
     }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err || result.index !== 1) {
@@ -2149,7 +2149,7 @@ export struct NotifyView {
   private handleMoreClicked(): void {
     try {
       // 「切换通知服务」弹窗：仅单选视图范围（全部通知/某服务器）。
-      // 与详情 Sheet、服务器操作弹窗一致：API 26+ 且开关开启就传入统一的 ULTRA_THIN 材质。
+      // 与详情 Sheet、服务器操作弹窗一致：API 26+ 且开关开启就传入统一的 THICK 材质。
       // 低算力设备即使材质 no-op，也保留系统弹窗的半透明背板；旧系统走轻量模糊。
       const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.dialogController = new CustomDialogController({
