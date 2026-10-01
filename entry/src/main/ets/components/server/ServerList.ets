@@ -440,6 +440,11 @@ export struct ServerList {
   }
 
   private async openRenameDialog(): Promise<void> {
+    const target: ServerEntry | null = this.findTarget();
+    if (!target) {
+      showToast(this.getUIContext(), '服务器信息缺失');
+      return;
+    }
     try {
       // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 ULTRA_THIN 材质，
       // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
@@ -447,6 +452,7 @@ export struct ServerList {
       this.renameController = new CustomDialogController({
         builder: ServerRenameDialog({
           getInitName: (): string => this.targetName,
+          serverDomain: extractHost(target.baseURL),
           onConfirm: (newName: string): void => {
             this.handleRename(newName);
           },

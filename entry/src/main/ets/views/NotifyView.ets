@@ -559,7 +559,8 @@ export struct NotifyView {
   }
 
   private openRenameDialogFor(server: ServerEntry): void {
-    if (!this.findConfiguredServer(server.id)) {
+    const target: ServerEntry | null = this.findConfiguredServer(server.id);
+    if (!target) {
       showToast(this.getUIContext(), '服务器信息缺失');
       return;
     }
@@ -570,6 +571,7 @@ export struct NotifyView {
       this.fixRenameController = new CustomDialogController({
         builder: ServerRenameDialog({
           getInitName: (): string => this.findConfiguredServer(server.id)?.name ?? '',
+          serverDomain: extractHost(target.baseURL),
           onConfirm: (name: string): void => {
             this.renameServerFor(server.id, name);
           },

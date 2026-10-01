@@ -1,6 +1,7 @@
 import {
   IMMERSIVE_SELECT_MENU_MODIFIER,
   KEY_IMMERSIVE_LIGHT_ENABLED,
+  getDialogMaterial,
   resolveBlurStyle,
   shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
@@ -127,7 +128,7 @@ struct PersonalizationSettings {
 
         // 只影响后续新同步的加密通知是否补发，不修改消息的 isArchive 留存策略。
         SettingGroup() {
-          SettingCell({ title: '加密通知重发', description: '开启后归档加密通知也以明文重发，不影响历史保存' }) {
+          SettingCell({ title: '加密通知重发' }) {
             Toggle({ type: ToggleType.Switch, isOn: this.encryptedResendEnabled })
               .selectedColor($r('app.color.color_brand'))
               .enabled(this.encryptedResendLoaded && !this.encryptedResendSaving)
@@ -180,15 +181,31 @@ struct PersonalizationSettings {
     this.encryptedResendLoaded = true;
   }
 
-  /** 只有写盘成功才确认新状态；失败时回滚视觉状态并告知用户。 */
+  /** 切换前说明对应行为；仅确认且写盘成功后保留新状态，取消或失败时回滚。 */
   private async changeEncryptedResend(enabled: boolean): Promise<void> {
     if (!this.encryptedResendLoaded || this.encryptedResendSaving || enabled === this.encryptedResendEnabled) {
       return;
     }
     const previous: boolean = this.encryptedResendEnabled;
     this.encryptedResendSaving = true;
+    // Toggle 点击后先回显目标状态；取消或保存失败时恢复已持久化状态。
     this.encryptedResendEnabled = enabled;
     try {
+      const result = await this.getUIContext().getPromptAction().showDialog({
+        title: enabled ? '开启加密通知重发' : '关闭加密通知重发',
+        message: enabled
+          ? '开启后收到加密通知 打开 APP 将解密并重新发送一条解密后的通知'
+          : '关闭后收到加密通知仅解密保存 不再重新发送解密通知（isArchive为0 的加密通知为避免信息丢失仍会重新通知）',
+        buttons: [
+          { text: '取消', color: $r('app.color.color_text_tertiary') },
+          { text: '确定', color: $r('app.color.color_brand') }
+        ],
+        systemMaterial: getDialogMaterial(),
+      });
+      if (result.index !== 1) {
+        this.encryptedResendEnabled = previous;
+        return;
+      }
       if (!(await EncryptedNotificationResendService.setEnabled(enabled))) {
         this.encryptedResendEnabled = previous;
         showToast(this.getUIContext(), '保存失败，设置未生效');

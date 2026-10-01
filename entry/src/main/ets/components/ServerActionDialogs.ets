@@ -242,6 +242,8 @@ export struct ServerRenameDialog {
     offset: { dx: 0, dy: 0 },
   });
   @State inputName: string = '';
+  // 当前服务地址提取出的域名，仅用于留空名称时的展示说明。
+  serverDomain: string = '';
   // 通过回调拉取初始名（闭包捕获外层 this，open 时取最新值）
   getInitName: () => string = () => '';
   onConfirm: (newName: string) => void = (_n: string) => {
@@ -256,6 +258,12 @@ export struct ServerRenameDialog {
       Text('设置服务器名称')
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
+        .width('100%')
+        .textAlign(TextAlign.Center);
+
+      Text(`服务器名称仅用于界面展示，不设置/留空将显示服务器的域名（${this.serverDomain}）`)
+        .fontSize(12)
+        .fontColor($r('app.color.color_text_hint'))
         .width('100%')
         .textAlign(TextAlign.Center);
 
