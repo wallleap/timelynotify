@@ -148,10 +148,10 @@ TODO:
     │  详情 Sheet 容器和内容统一由 ImmersiveUtil 判断：API 26+ 且开关开启时采用沉浸布局，材质实例预创建后经 getEnabledSystemMaterial('sheet') 提供系统背板；未加载时保留模糊降级。设备 supported 查询仅用于诊断，不再单独决定 Sheet、Dialog 或 Menu 的渲染分支。
     │  全部居中 CustomDialog 的材质由 ImmersiveUtil.getDialogMaterial() 统一获取，Menu 由 withImmersiveMenuMaterial() 构造 options，Toast 和 Sheet 由 getEnabledSystemMaterial() 获取；这些入口共用 API 版本、用户开关和实例加载判断。材质可用时透明背板、不叠 blur；不可用时使用原有模糊降级。「推送测试」的两个 Menu 也按此规则切换自身背景色与模糊。组件不直接查询 SDK 版本、设备 supported 状态或自行创建 ImmersiveMaterial。切换通知服务弹窗的 HDS 列表卡片样式由 shouldUseLoadedMaterialStyle() 决定。
     │  弹窗内部表面同步玻璃化（仅用于弹窗内部；背板效果取决于系统材质支持与降级路径）：TextInput/选择行用 color_bg_input_glass（85% 不透明，亮 #D9E4E8EE 加深灰蓝/暗 #D9141920 同色系深炭——内凹槽语义：亮背板压暗一档、暗背板再压深一档；暗色切忌比背板浅的偏蓝灰，会像浅蓝补丁显脏）、次级按钮（取消等）为透明幽灵按钮（Color.Transparent 无底，60% 玻璃灰叠白背板会显发白方块故弃用 color_bg_control_glass）、内嵌卡片/服务器行用 color_bg_surface_glass、选中态用 color_bg_selected_glass（20% 品牌橙，含算法/模式 Menu 选中行）；例外：「切换通知服务」弹窗 HDS 列表行在沉浸材质生效时保留 HDS 默认卡片表面，仅降级分支玻璃化；主 CTA（添加/保存）保持实色品牌橙不变
-    │  「解密设置」由 DecryptionSettingsDialog.ets 实现，为居中的 CustomDialog：沉浸分支使用 HdsNavigation MODAL 标题栏并将表单 Scroll 绑定到 GRADIENT_BLUR，非沉浸分支保留普通标题；取消/保存按钮固定在滚动区外。背板由 getDialogMaterial() 统一提供 ULTRA_THIN 材质，未加载或开关关闭时走原有组件模糊降级；弹窗打开后读取配置，校验、生成 Key、保存和清除配置沿用 EncryptionConfigService。
+    │  「解密设置」由 DecryptionSettingsDialog.ets 实现，为居中的 CustomDialog：沉浸分支使用 HdsNavigation MODAL 标题栏并将表单 Scroll 绑定到 GRADIENT_BLUR，非沉浸分支保留普通标题；取消/保存按钮固定在滚动区外。背板由 getDialogMaterial() 统一提供 THICK 材质，未加载或开关关闭时走原有组件模糊降级；弹窗打开后读取配置，校验、生成 Key、保存和清除配置沿用 EncryptionConfigService。
     │  「切换通知服务」弹窗同样在 API 26+ 沉浸分支使用 HdsNavigation MODAL 左对齐固定标题、叠放的右上角描边透明关闭按钮，并将服务器卡片的单一 Scroll 绑定到 GRADIENT_BLUR；无底部操作区。关闭按钮沿用通知页玻璃描边色值，弹窗背板已有模糊，按钮自身不再叠加浅色模糊底以免亮色下成为实心白圆。降级分支保留左对齐普通固定标题与关闭图标，弹窗随列表项数增加至上限高度后内部滚动。
     │  通知页同步错误 Banner 遇到非 Token/设备类错误时打开的「服务器操作」弹窗，标题下显示当前目标服务器的名称与域名（无名称时只显示域名）；API 26+ 沉浸分支用 HdsNavigation MODAL 固定标题、绑定菜单 Scroll 呈现渐变模糊，降级分支也将普通标题固定在滚动区外。右上角关闭按钮使用透明背景、主题主文字色和 color_border_glass 描边；背板按 Sheet 的 API 26+ 与开关条件传材质参数，菜单行为不变。
-    │  服务器操作弹窗与切换通知服务弹窗最早采用上述统一背板路径，客户端 Token、重置/还原 Key、解密设置、重命名、添加服务器等弹窗已全部与之对齐：API 26+ 且沉浸光感开关开启时即传入 ULTRA_THIN 材质参数，不以设备 supported 结果拦截；设备不支持材质时实际视觉效果以系统渲染为准。旧系统或开关关闭时使用轻量组件模糊（COMPONENT_ULTRA_THIN），不叠加背景色。
+    │  服务器操作弹窗与切换通知服务弹窗最早采用上述统一背板路径，客户端 Token、重置/还原 Key、解密设置、重命名、添加服务器等弹窗已全部与之对齐：API 26+ 且沉浸光感开关开启时，Dialog 和 Sheet 传入 THICK 材质参数，其它表面仍使用 ULTRA_THIN；不以设备 supported 结果拦截，设备不支持材质时实际视觉效果以系统渲染为准。旧系统或开关关闭时使用轻量组件模糊（COMPONENT_ULTRA_THIN），不叠加背景色。
     ├─ 删除分组按 group_key 一次删除数据库中的全部通知（含未加载部分）
     └─ 展开的分组删到真实总数只剩 1 条时自动收起回普通卡片
        （仍有未加载历史时保留展开，避免看不到“加载更多”入口）
