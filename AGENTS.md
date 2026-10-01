@@ -213,6 +213,7 @@ ComponentName
 - 弹窗背板设置在 `CustomDialogController` 的 options 上：材质获取统一使用 `ImmersiveUtil.getDialogMaterial()`，API 26+、用户开关及实例加载判断只在 util 中实现；返回材质时设置 `backgroundColor(Color.Transparent)` 且不设 blurStyle，返回 `undefined` 时走原有 `backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THIN)` 降级。`bindSheet` 使用 `getEnabledSystemMaterial('sheet')`，Menu 使用 `withImmersiveMenuMaterial()`，组件不得自行判断 SDK/设备材质能力或直接创建 `ImmersiveMaterial`。内容根节点保持透明，不在内部另铺一层模糊背景，亮暗主题都要检查。`getDialogBackgroundOptions()` 用于 `promptAction.showDialog` 系统确认框。
 - 修改沉浸光感相关代码后，运行 `bash .github/scripts/check-immersive-boundary.sh`；构建检查工作流也会执行同一检查。新增入口应先扩展 `ImmersiveUtil.ets`，不要在组件中导入 `uiMaterial`、查询 SDK/设备材质能力或实例化材质。
 - 标题、正文与底部操作区分成三段，各自控制留白；仅正文滚动，标题和操作按钮固定。内容根节点及按钮区域保持透明，不额外铺同色遮罩或模糊背景。
+- 解密设置弹窗在沉浸分支使用 `HdsNavigation` 的 `MODAL` 标题栏，表单 `Scroller` 绑定 `GRADIENT_BLUR`；非沉浸分支保留普通标题。底部操作区仍在滚动区外，标题栏效果需经模拟器或设备实测，不能仅凭构建结果认定。
 - 解密设置弹窗先按统一 controller options 打开，再在内容 `onAppear` 后异步加载配置并更新内部 `@State`。模拟器中曾观察到打开前读取 Preferences 时背板变白，而打开后读取仍透；这是该弹窗的实测时序约束，不应推断成所有弹窗或 Preferences API 的通用规律。避免为传配置引入父组件 `@Link`：该方案曾导致运行时闪退。
 - 新增长弹窗须分别检查初始、滚动、回弹、底部及亮暗主题；构建通过不能替代模拟器/设备视觉验证。排查“发白/不透明”时要在同一背景下与参照弹窗对比，并同时核对材质 options、打开时序及内容背景，不要仅凭一张浅色背景截图下结论。
 

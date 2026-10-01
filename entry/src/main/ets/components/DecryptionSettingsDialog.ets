@@ -1,8 +1,9 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import { DOMAIN } from '../common/Constant';
-import { getDialogMaterial, withImmersiveMenuMaterial } from '../utils/ImmersiveUtil';
+import { getDialogMaterial, shouldUseSystemMaterialPath, withImmersiveMenuMaterial } from '../utils/ImmersiveUtil';
 import showToast from './showToast';
 
 const TAG: string = 'DecryptionDlg';
@@ -35,6 +36,7 @@ export struct DecryptionSettingsDialog {
   private originalAlgorithm: string = 'AES128';
   private originalMode: string = 'CBC';
   private originalKey: string = '';
+  private formScroller: Scroller = new Scroller();
 
   aboutToDisappear() {
     this.active = false;
@@ -59,26 +61,29 @@ export struct DecryptionSettingsDialog {
     }
   }
 
-  build() {
+  @Builder
+  private dialogContent(showFallbackTitle: boolean) {
     Column() {
-      Column({ space: 4 }) {
-        Text('解密设置')
-          .fontSize(17)
-          .fontWeight(FontWeight.Bold)
-          .width('100%')
-          .textAlign(TextAlign.Center);
-        Text(this.serverLabel)
-          .fontSize(12)
-          .fontColor($r('app.color.color_text_hint'))
-          .width('100%')
-          .textAlign(TextAlign.Center)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
+      if (showFallbackTitle) {
+        Column({ space: 4 }) {
+          Text('解密设置')
+            .fontSize(17)
+            .fontWeight(FontWeight.Bold)
+            .width('100%')
+            .textAlign(TextAlign.Center);
+          Text(this.serverLabel)
+            .fontSize(12)
+            .fontColor($r('app.color.color_text_hint'))
+            .width('100%')
+            .textAlign(TextAlign.Center)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis });
+        }
+        .width('100%')
+        .padding({ left: 18, right: 18, top: 18, bottom: 8 });
       }
-      .width('100%')
-      .padding({ left: 18, right: 18, top: 18, bottom: 8 });
 
-      Scroll() {
+      Scroll(this.formScroller) {
         Column({ space: 12 }) {
           Row() {
             Column({ space: 2 }) {
@@ -195,7 +200,8 @@ export struct DecryptionSettingsDialog {
       .width('100%')
       .layoutWeight(1)
       .scrollBar(BarState.Auto)
-      .edgeEffect(EdgeEffect.Spring);
+      .edgeEffect(EdgeEffect.Spring)
+      .clip(showFallbackTitle);
 
       Row({ space: 8 }) {
         Button('取消')
@@ -218,13 +224,51 @@ export struct DecryptionSettingsDialog {
       .padding({ left: 18, right: 18, top: 8, bottom: 18 });
     }
     .width('100%')
-    .constraintSize({ maxHeight: '80%' })
+    .height('100%')
     .backgroundColor(Color.Transparent)
-    .borderRadius(14)
     .onAppear(() => {
       this.active = true;
       this.loadConfigDisplay();
     });
+  }
+
+  build() {
+    if (shouldUseSystemMaterialPath()) {
+      HdsNavigation() {
+        this.dialogContent(false);
+      }
+      .titleBar({
+        enableComponentSafeArea: true,
+        content: { title: { mainTitle: '解密设置', subTitle: this.serverLabel } },
+        style: {
+          scrollEffectOpts: {
+            enableScrollEffect: true,
+            scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          }
+        }
+      })
+      .hideBackButton(true)
+      .titleMode(HdsNavigationTitleMode.MODAL)
+      .bindToScrollable([this.formScroller])
+      .width('100%')
+      .height('80%')
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14)
+      .clip(true);
+    } else {
+      Column() {
+        this.dialogContent(true);
+      }
+      .width('100%')
+      .height('80%')
+      .backgroundColor(Color.Transparent)
+      .borderRadius(14)
+      .clip(true);
+    }
   }
 
   @Builder
