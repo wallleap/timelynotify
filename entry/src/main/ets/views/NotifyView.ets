@@ -13,7 +13,7 @@ import { extractHost } from '../utils/ServerUrlUtil';
 import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
 import { ServerKeyDialog, ServerActionMenuDialog, ServerRenameDialog } from '../components/ServerActionDialogs';
 import { ClientTokenDialog } from '../components/ClientTokenDialog';
-import { EncryptionSettingsDialog } from '../components/EncryptionSettingsDialog';
+import { DecryptionSettingsDialog } from '../components/DecryptionSettingsDialog';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
@@ -467,19 +467,13 @@ export struct NotifyView {
       return;
     }
     try {
-      const config: EncryptionConfig = await EncryptionConfigService.get(null, target.id);
-      // 与「设置服务器名称」共用系统弹窗背板，内容根节点保持透明。
       const dialogMaterial = getDialogMaterial(this.immersiveLightEnabled);
       this.fixEncryptionController = new CustomDialogController({
-        builder: EncryptionSettingsDialog({
-          getConfig: (): EncryptionConfig => config,
-          getServerName: (): string => target.name || target.baseURL,
-          onSave: (updated: EncryptionConfig): void => {
-            this.saveEncryptionFor(target.id, updated);
-          },
-          onClear: (): void => {
-            this.clearEncryptionFor(target.id);
-          },
+        builder: DecryptionSettingsDialog({
+          serverLabel: target.name || target.baseURL,
+          loadConfig: (): Promise<EncryptionConfig> => EncryptionConfigService.get(null, target.id),
+          onSave: (config: EncryptionConfig): Promise<boolean> => this.saveEncryptionFor(target.id, config),
+          onClear: (): Promise<boolean> => this.clearEncryptionFor(target.id),
         }),
         alignment: DialogAlignment.Center,
         autoCancel: true,
@@ -497,11 +491,11 @@ export struct NotifyView {
     }
   }
 
-  private async saveEncryptionFor(serverId: string, config: EncryptionConfig): Promise<void> {
+  private async saveEncryptionFor(serverId: string, config: EncryptionConfig): Promise<boolean> {
     const server: ServerEntry | null = this.findConfiguredServer(serverId);
     if (!server) {
       showToast(this.getUIContext(), '服务器信息缺失');
-      return;
+      return false;
     }
     config.deviceKey = server.deviceKey;
     try {
@@ -513,22 +507,29 @@ export struct NotifyView {
           hilog.warn(DOMAIN, TAG, 'redecrypt cached messages 失败：%{public}s',
             err instanceof Error ? err.message : String(err));
         }
-        NotifySyncService.getInstance().retryServer(serverId);
-        this.loadMessages();
+        try {
+          NotifySyncService.getInstance().retryServer(serverId);
+          this.loadMessages();
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, '保存后刷新通知失败：%{public}s',
+            err instanceof Error ? err.message : String(err));
+        }
       }
-      showToast(this.getUIContext(), ok ? '加密设置已保存' : '保存失败');
+      showToast(this.getUIContext(), ok ? '解密设置已保存' : '保存失败');
+      return ok;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'save encryption 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
       showToast(this.getUIContext(), '保存失败');
+      return false;
     }
   }
 
-  private async clearEncryptionFor(serverId: string): Promise<void> {
+  private async clearEncryptionFor(serverId: string): Promise<boolean> {
     const server: ServerEntry | null = this.findConfiguredServer(serverId);
     if (!server) {
       showToast(this.getUIContext(), '服务器信息缺失');
-      return;
+      return false;
     }
     try {
       const ok: boolean = await EncryptionConfigService.remove(null, serverId);
@@ -539,14 +540,21 @@ export struct NotifyView {
           hilog.warn(DOMAIN, TAG, 'redecrypt cached messages 失败：%{public}s',
             err instanceof Error ? err.message : String(err));
         }
-        NotifySyncService.getInstance().retryServer(serverId);
-        this.loadMessages();
+        try {
+          NotifySyncService.getInstance().retryServer(serverId);
+          this.loadMessages();
+        } catch (err) {
+          hilog.warn(DOMAIN, TAG, '清除后刷新通知失败：%{public}s',
+            err instanceof Error ? err.message : String(err));
+        }
       }
-      showToast(this.getUIContext(), ok ? '加密设置已清除' : '清除失败');
+      showToast(this.getUIContext(), ok ? '解密设置已清除' : '清除失败');
+      return ok;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'clear encryption 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
       showToast(this.getUIContext(), '清除失败');
+      return false;
     }
   }
 

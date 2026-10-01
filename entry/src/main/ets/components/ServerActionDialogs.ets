@@ -124,7 +124,7 @@ export struct ServerActionMenuDialog {
 
       Divider().color($r('app.color.color_border_subtle'));
 
-      Text('加密设置')
+      Text('解密设置')
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .width('100%')
