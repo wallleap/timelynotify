@@ -6,7 +6,7 @@ import { DeviceRegisterService } from '../../services/DeviceRegisterService';
 import { NotifyMessageService } from '../../services/NotifyMessageService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { buildTestGetCode, buildTestPostCode } from '../../utils/TestPushExample';
-import { withImmersiveMenuMaterial } from '../../utils/ImmersiveUtil';
+import { getEnabledSystemMaterial, withImmersiveMenuMaterial } from '../../utils/ImmersiveUtil';
 import { DOMAIN } from '../../common/Constant';
 import showToast from '../showToast';
 
@@ -300,7 +300,7 @@ export struct SampleCode {
     this.updateCode();
   }
 
-  // 沉浸光感系统 Menu 与旧设备模糊降级沿用加密设置的菜单样式。
+  // 菜单材质由统一工具提供，未就绪时保留原有模糊降级。
   private menuOptions(): MenuOptions {
     return withImmersiveMenuMaterial({ placement: Placement.BottomRight });
   }
@@ -322,8 +322,9 @@ export struct SampleCode {
           });
       }, (server: ServerEntry) => server.id);
     }
-    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-    .backgroundColor($r('app.color.color_bg_dialog_glass'));
+    .backgroundBlurStyle(getEnabledSystemMaterial('menu') ? BlurStyle.NONE : BlurStyle.COMPONENT_THICK)
+    .backgroundColor(getEnabledSystemMaterial('menu') ? Color.Transparent :
+      $r('app.color.color_bg_dialog_glass'));
   }
 
   // 分段按钮右侧的菜单只操作卡片当前选中的服务器。
@@ -337,8 +338,9 @@ export struct SampleCode {
         this.copyAddressAndKey();
       });
     }
-    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-    .backgroundColor($r('app.color.color_bg_dialog_glass'));
+    .backgroundBlurStyle(getEnabledSystemMaterial('menu') ? BlurStyle.NONE : BlurStyle.COMPONENT_THICK)
+    .backgroundColor(getEnabledSystemMaterial('menu') ? Color.Transparent :
+      $r('app.color.color_bg_dialog_glass'));
   }
 
   // 复制当前展示模式的完整、可执行命令。

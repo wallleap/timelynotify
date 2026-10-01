@@ -182,6 +182,17 @@ export function withImmersiveMenuMaterial(options: MenuOptions): MenuOptions {
   return options;
 }
 
+/** Select 下拉菜单的 API 26 材质与降级模糊统一在此设置，避免页面直接调用高版本接口。 */
+export const IMMERSIVE_SELECT_MENU_MODIFIER: AttributeModifier<SelectAttribute> = {
+  applyNormalAttribute(instance: SelectAttribute): void {
+    const material = getMenuMaterial();
+    if (deviceInfo.apiAvailable('26.0.0')) {
+      instance.menuSystemMaterial(material);
+    }
+    instance.menuBackgroundBlurStyle(material ? BlurStyle.NONE : BlurStyle.COMPONENT_ULTRA_THICK);
+  }
+};
+
 /**
  * 自定义弹窗（@CustomDialog）背板配置：取出返回值的三个字段分别赋给
  * CustomDialogControllerOptions 的同名字段（ArkTS 禁用对象展开，不能 ...spread）。

@@ -1,4 +1,5 @@
 import {
+  IMMERSIVE_SELECT_MENU_MODIFIER,
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
   shouldUseSystemMaterialPath
@@ -103,6 +104,7 @@ struct PersonalizationSettings {
             .fontColor($r('app.color.color_text_primary'))
             .selectedOptionBgColor($r('app.color.color_bg_selected_glass'))
             .selectedOptionFontColor($r('app.color.color_brand'))
+            .attributeModifier(IMMERSIVE_SELECT_MENU_MODIFIER)
             .onSelect((index: number) => {
               if (index < 0 || index >= this.colorModeKeys.length) {
                 return;
