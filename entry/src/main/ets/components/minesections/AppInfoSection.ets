@@ -5,36 +5,25 @@ import { ExternalLinkService } from '../../services/ExternalLinkService';
 import { ClipboardService } from '../../services/ClipboardService';
 import showToast from '../showToast';
 import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
+import { SettingGroup } from '../settings/SettingGroup';
+import { SettingCell } from '../settings/SettingCell';
+import { SettingArrow } from '../settings/SettingArrow';
 
 /**
  * 「信息」板块：构建信息行（云端构建编号 / commit / 签名指纹尾串）+ 推送 Token 卡片。
- * 全自治：自身管理 versionName/versionCode/certFingerprintTail/deviceTokenDisplay，
+ * 全自治：自身管理 certFingerprintTail/deviceTokenDisplay，
  * 点击构建信息行打开云端构建记录页；点击推送 Token 卡片复制完整明文到剪贴板。
  */
 @Component
 export struct AppInfoSection {
-  // 版本号展示（读取自 BundleInfo；异常时使用兜底常量）
-  @State versionNameDisplay: string = '1.0.0';
-  @State versionCodeDisplay: number = 1000000;
   // 签名证书指纹尾 8 位（运行时读取；完整指纹发布在 README / GitHub Release 供比对）
   @State certFingerprintTail: string = '';
   // 推送 Token（Push 下发的 device_token；卡片展示用，点击复制完整明文）
   @State deviceTokenDisplay: string = '';
 
   aboutToAppear() {
-    this.refreshAppVersion();
     this.refreshCertFingerprint();
     this.refreshDeviceToken();
-  }
-
-  @Builder
-  arrowRightIcon() {
-    Image($r('app.media.arrow_right'))
-      .width(20)
-      .height(20)
-      .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.color_text_hint'))
-      .draggable(false);
   }
 
   build() {
@@ -47,32 +36,15 @@ export struct AppInfoSection {
 
       Column({ space: 10 }) {
         // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
-        Row() {
-          Column({ space: 4 }) {
-            Text('构建信息')
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.color_text_primary'));
-            Text(AppInfoService.buildInfoDisplay(this.certFingerprintTail))
-              .fontSize(12)
-              .fontColor($r('app.color.color_text_hint'))
-              .maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis });
-          }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-          // 云端构建才有对应记录页，本地构建不显示箭头
-          if (AppInfoService.hasCloudBuild()) {
-            this.arrowRightIcon();
+        SettingGroup() {
+          SettingCell({ title: '构建信息', description: AppInfoService.buildInfoDisplay(this.certFingerprintTail),
+            descriptionMaxLines: 1, clickable: true, onActivate: () => this.openBuildInfo() }) {
+            // 云端构建才有对应记录页，本地构建不显示箭头。
+            if (AppInfoService.hasCloudBuild()) {
+              SettingArrow();
+            }
           }
         }
-        .width('100%')
-        .padding(16)
-        .backgroundBlurStyle(resolveBlurStyle('bar')!)
-        .backgroundColor($r('app.color.color_bg_surface_glass'))
-        .borderRadius(12)
-        .onClick(() => {
-          this.openBuildInfo();
-        });
 
         // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
         Row({ space: 14 }) {
@@ -109,13 +81,6 @@ export struct AppInfoSection {
         });
       }.width('100%')
     }.width('100%');
-  }
-
-  // 读取自身应用版本号（Stage 模式官方接口，无需权限）
-  private async refreshAppVersion(): Promise<void> {
-    const info = await AppInfoService.fetchVersionInfo();
-    this.versionNameDisplay = info.name;
-    this.versionCodeDisplay = info.code;
   }
 
   // 运行时读取签名证书指纹尾 8 位（失败时留空，构建信息行降级为只显示 commit）

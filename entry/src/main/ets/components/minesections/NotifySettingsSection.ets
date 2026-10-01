@@ -7,8 +7,12 @@ import { PreferencesUtil } from '../../utils/PreferencesUtil';
 import { NotifyExportService } from '../../services/NotifyExportService';
 import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
-import { resolveBlurStyle, getDialogMaterial } from '../../utils/ImmersiveUtil';
+import { getDialogMaterial } from '../../utils/ImmersiveUtil';
 import { DOMAIN } from '../../common/Constant';
+import { SettingGroup } from '../settings/SettingGroup';
+import { SettingCell } from '../settings/SettingCell';
+import { SettingArrow } from '../settings/SettingArrow';
+import { SettingDivider } from '../settings/SettingDivider';
 
 const TAG: string = 'NotifySettingsSec';
 
@@ -27,112 +31,48 @@ export struct NotifySettingsSection {
     this.refreshNotifyEnabled();
   }
 
-  @Builder
-  arrowRightIcon() {
-    Image($r('app.media.arrow_right'))
-      .width(20)
-      .height(20)
-      .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.color_text_hint'))
-      .draggable(false);
-  }
-
   build() {
     Column({ space: 16 }) {
-      Column({ space: 0 }) {
+      SettingGroup() {
         // 开启应用订阅通知（开关）
-        Row() {
-          Column({ space: 4 }) {
-            Text('开启应用订阅通知')
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.color_text_primary'));
-            Text(this.notifyEnabled ? '已开启' : '已关闭')
-              .fontSize(12)
-              .fontColor(
-                this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
-          }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
+        SettingCell({ title: '开启应用订阅通知', description: this.notifyEnabled ? '已开启' : '已关闭',
+          descriptionColor: this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint') }) {
           Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
             .selectedColor($r('app.color.color_brand'))
             .onChange((isOn: boolean) => {
               this.onNotifyToggle(isOn);
             });
-        }.width('100%').padding(16);
+        }
 
-        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
+        SettingDivider();
 
         // 通知权限设置（点击拉起系统通知管理）
-        Row() {
-          Text('通知权限设置')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'))
-            .layoutWeight(1);
-
-          this.arrowRightIcon();
-        }.width('100%').padding(16).onClick(() => {
-          this.openNotifySettings();
-        });
-      }
-      .width('100%')
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.color_bg_surface_glass'))
-      .borderRadius(12);
-
-      // 独立的导出通知卡片（导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
-      Row() {
-        Column({ space: 4 }) {
-          Text('导出通知')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'));
-          Text(this.exporting ? '正在导出…' : '导出当前服务器本地保存的全部通知')
-            .fontSize(12)
-            .fontColor($r('app.color.color_text_hint'));
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-        // 导出中显示加载指示器，否则显示箭头
-        if (this.exporting) {
-          LoadingProgress()
-            .width(24)
-            .height(24)
-            .color($r('app.color.color_brand'));
-        } else {
-          this.arrowRightIcon();
+        SettingCell({ title: '通知权限设置', clickable: true, onActivate: () => this.openNotifySettings() }) {
+          SettingArrow();
         }
       }
-      .width('100%')
-      .padding(16)
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.color_bg_surface_glass'))
-      .borderRadius(12)
-      .onClick(() => {
-        this.exportMessages();
-      });
+
+      // 独立的导出通知卡片（导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
+      SettingGroup() {
+        SettingCell({ title: '导出通知',
+          description: this.exporting ? '正在导出…' : '导出当前服务器本地保存的全部通知',
+          clickable: true, onActivate: () => this.exportMessages() }) {
+          // 导出中显示加载指示器，否则显示箭头。
+          if (this.exporting) {
+            LoadingProgress().width(24).height(24).color($r('app.color.color_brand'));
+          } else {
+            SettingArrow();
+          }
+        }
+      }
 
       // 个性化设置入口紧随导出卡片，主题、通知重发与沉浸光感偏好集中在独立页面中管理。
-      Row() {
-        Column({ space: 4 }) {
-          Text('个性化设置')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'));
-          Text('主题模式、加密通知重发、沉浸光感')
-            .fontSize(12)
-            .fontColor($r('app.color.color_text_hint'));
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1);
-
-        this.arrowRightIcon();
+      SettingGroup() {
+        SettingCell({ title: '个性化设置', description: '主题模式、加密通知重发、沉浸光感',
+          clickable: true, onActivate: () => this.openPersonalizationSettings() }) {
+          SettingArrow();
+        }
       }
-      .width('100%')
-      .padding(16)
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.color_bg_surface_glass'))
-      .borderRadius(12)
-      .onClick(() => {
-        this.openPersonalizationSettings();
-      });
     }
     .width('100%');
   }

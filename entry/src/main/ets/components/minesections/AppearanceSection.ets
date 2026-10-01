@@ -2,7 +2,10 @@ import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
-import { resolveBlurStyle, KEY_IMMERSIVE_LIGHT_ENABLED, getDialogMaterial } from '../../utils/ImmersiveUtil';
+import { KEY_IMMERSIVE_LIGHT_ENABLED, getDialogMaterial } from '../../utils/ImmersiveUtil';
+import { SettingGroup } from '../settings/SettingGroup';
+import { SettingCell } from '../settings/SettingCell';
+import { SettingArrow } from '../settings/SettingArrow';
 
 /**
  * 「外观」板块（仅 API 26+ 显示）：沉浸光感入口行。
@@ -16,41 +19,19 @@ export struct AppearanceSection {
   // 入口行状态文本与各页面渲染分支均读此权威值；切换走 Dialog → 重启确认 → 重启应用生效
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
 
-  @Builder
-  arrowRightIcon() {
-    Image($r('app.media.arrow_right'))
-      .width(20)
-      .height(20)
-      .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.color_text_hint'))
-      .draggable(false);
-  }
-
   build() {
     // 由“个性化设置”页面承载；卡片本身仅保留标题与当前状态。
-    Row({ space: 14 }) {
-        Text('沉浸光感')
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.color_text_primary'))
-          .layoutWeight(1);
-
+    SettingGroup() {
+      SettingCell({ title: '沉浸光感', clickable: true, onActivate: () => this.onImmersiveRowClick() }) {
         Row() {
           Text(this.immersiveLightEnabled ? '已开启' : '已关闭')
             .fontSize(12)
             .fontColor(this.immersiveLightEnabled ? $r('app.color.color_brand') :
               $r('app.color.color_text_hint'));
-          this.arrowRightIcon();
+          SettingArrow();
         }
+      }
     }
-    .width('100%')
-    .padding(16)
-    .backgroundBlurStyle(resolveBlurStyle('bar')!)
-    .backgroundColor($r('app.color.color_bg_surface_glass'))
-    .borderRadius(12)
-    .onClick(() => {
-      this.onImmersiveRowClick();
-    });
   }
 
   // 沉浸光感入口行点击：直接弹居中确认对话框（效果说明 + 重启确认合并为一级）。

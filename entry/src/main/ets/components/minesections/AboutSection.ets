@@ -1,5 +1,4 @@
 import { common } from '@kit.AbilityKit';
-import { deviceInfo } from '@kit.BasicServicesKit';
 import { UIContext } from '@kit.ArkUI';
 import { AppInfoService, SOURCE_CODE_URL } from '../../services/AppInfoService';
 import { ExternalLinkService, PRIVACY_URL } from '../../services/ExternalLinkService';
@@ -7,14 +6,16 @@ import { FeedbackService } from '../../services/FeedbackService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
-import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
+import { SettingGroup } from '../settings/SettingGroup';
+import { SettingCell } from '../settings/SettingCell';
+import { SettingArrow } from '../settings/SettingArrow';
+import { SettingDivider } from '../settings/SettingDivider';
 
 /**
  * 「关于」板块：当前版本（点击复制）+ 开源代码 + 隐私协议 + 反馈问题。
  * 全自治：自身管理 versionName/versionCode/certFingerprintTail，业务下沉到各 Service。
  *
- * 注意：为保持与原 MineView 行为一致，本板块会自己 refresh 版本号 + 签名指纹
- * （即使 AppInfoSection 也会 refresh 一次，二者各自刷新互不干扰；读取是幂等的）
+ * 自身刷新版本号与签名指纹，用于版本展示、复制及反馈邮件。
  */
 @Component
 export struct AboutSection {
@@ -29,16 +30,6 @@ export struct AboutSection {
     this.refreshCertFingerprint();
   }
 
-  @Builder
-  arrowRightIcon() {
-    Image($r('app.media.arrow_right'))
-      .width(20)
-      .height(20)
-      .objectFit(ImageFit.Contain)
-      .fillColor($r('app.color.color_text_hint'))
-      .draggable(false);
-  }
-
   build() {
     Column({ space: 8 }) {
       Text('关于')
@@ -47,67 +38,35 @@ export struct AboutSection {
         .width('100%')
         .padding({ left: 12 });
 
-      Column({ space: 0 }) {
+      SettingGroup() {
         // 版本号行（整行点击复制版本信息）
-        Row() {
-          Text('当前版本')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'))
-            .layoutWeight(1);
+        SettingCell({ title: '当前版本', clickable: true, onActivate: () => this.copyVersionInfo() }) {
           Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
             .fontSize(14)
             .fontColor($r('app.color.color_text_tertiary'));
-        }.width('100%').padding(16).onClick(() => {
-          this.copyVersionInfo();
-        });
+        }
 
-        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
+        SettingDivider();
 
         // 开源代码行（点击跳转 GitHub）
-        Row() {
-          Text('开源代码')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'))
-            .layoutWeight(1);
-          this.arrowRightIcon();
-        }.width('100%').padding(16).onClick(() => {
-          this.openSourceLink();
-        });
+        SettingCell({ title: '开源代码', clickable: true, onActivate: () => this.openSourceLink() }) {
+          SettingArrow();
+        }
 
-        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
+        SettingDivider();
 
         // 隐私协议行
-        Row() {
-          Text('隐私协议')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'))
-            .layoutWeight(1);
-          this.arrowRightIcon();
-        }.width('100%').padding(16).onClick(() => {
-          this.openPrivacy();
-        });
+        SettingCell({ title: '隐私协议', clickable: true, onActivate: () => this.openPrivacy() }) {
+          SettingArrow();
+        }
 
-        Divider().color($r('app.color.color_border_subtle')).strokeWidth(1).margin({ left: 16, right: 16 });
+        SettingDivider();
 
         // 反馈问题行（发送邮件）
-        Row() {
-          Text('反馈问题')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'))
-            .layoutWeight(1);
-          this.arrowRightIcon();
-        }.width('100%').padding(16).onClick(() => {
-          this.sendFeedback();
-        });
+        SettingCell({ title: '反馈问题', clickable: true, onActivate: () => this.sendFeedback() }) {
+          SettingArrow();
+        }
       }
-      .width('100%')
-      .backgroundBlurStyle(resolveBlurStyle('bar')!)
-      .backgroundColor($r('app.color.color_bg_surface_glass'))
-      .borderRadius(12);
     }.width('100%');
   }
 

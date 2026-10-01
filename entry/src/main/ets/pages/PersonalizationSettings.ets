@@ -5,6 +5,8 @@ import {
   shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { AppearanceSection } from '../components/minesections/AppearanceSection';
+import { SettingGroup } from '../components/settings/SettingGroup';
+import { SettingCell } from '../components/settings/SettingCell';
 import { ThemeService } from '../services/ThemeService';
 import { EncryptedNotificationResendService } from '../services/EncryptedNotificationResendService';
 import showToast from '../components/showToast';
@@ -87,38 +89,29 @@ struct PersonalizationSettings {
           .width('100%')
           .padding({ left: 4 });
 
-        Row({ space: 12 }) {
-          Text('主题模式')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.color_text_primary'))
-            .layoutWeight(1);
-
-          Select([
-            { value: '跟随系统' },
-            { value: '浅色模式' },
-            { value: '深色模式' }
-          ])
-            .selected(this.selectedColorModeIndex())
-            .value(this.colorModeLabels[this.selectedColorModeIndex()])
-            .fontColor($r('app.color.color_text_primary'))
-            .selectedOptionBgColor($r('app.color.color_bg_selected_glass'))
-            .selectedOptionFontColor($r('app.color.color_brand'))
-            .attributeModifier(IMMERSIVE_SELECT_MENU_MODIFIER)
-            .onSelect((index: number) => {
-              if (index < 0 || index >= this.colorModeKeys.length) {
-                return;
-              }
-              const key: string = this.colorModeKeys[index];
-              this.colorModeKey = key;
-              ThemeService.applyColorMode(key, this.getUIContext());
-            });
+        SettingGroup() {
+          SettingCell({ title: '主题模式' }) {
+            Select([
+              { value: '跟随系统' },
+              { value: '浅色模式' },
+              { value: '深色模式' }
+            ])
+              .selected(this.selectedColorModeIndex())
+              .value(this.colorModeLabels[this.selectedColorModeIndex()])
+              .fontColor($r('app.color.color_text_primary'))
+              .selectedOptionBgColor($r('app.color.color_bg_selected_glass'))
+              .selectedOptionFontColor($r('app.color.color_brand'))
+              .attributeModifier(IMMERSIVE_SELECT_MENU_MODIFIER)
+              .onSelect((index: number) => {
+                if (index < 0 || index >= this.colorModeKeys.length) {
+                  return;
+                }
+                const key: string = this.colorModeKeys[index];
+                this.colorModeKey = key;
+                ThemeService.applyColorMode(key, this.getUIContext());
+              });
+          }
         }
-        .width('100%')
-        .padding(16)
-        .backgroundBlurStyle(resolveBlurStyle('bar')!)
-        .backgroundColor($r('app.color.color_bg_surface_glass'))
-        .borderRadius(12);
 
         AppearanceSection();
       }
@@ -133,31 +126,16 @@ struct PersonalizationSettings {
           .padding({ left: 4 });
 
         // 只影响后续新同步的加密通知是否补发，不修改消息的 isArchive 留存策略。
-        Row({ space: 12 }) {
-          Column({ space: 4 }) {
-            Text('加密通知重发')
-              .fontSize(16)
-              .fontWeight(FontWeight.Medium)
-              .fontColor($r('app.color.color_text_primary'));
-            Text('开启后归档加密通知也以明文重发，不影响历史保存')
-              .fontSize(12)
-              .fontColor($r('app.color.color_text_hint'));
+        SettingGroup() {
+          SettingCell({ title: '加密通知重发', description: '开启后归档加密通知也以明文重发，不影响历史保存' }) {
+            Toggle({ type: ToggleType.Switch, isOn: this.encryptedResendEnabled })
+              .selectedColor($r('app.color.color_brand'))
+              .enabled(this.encryptedResendLoaded && !this.encryptedResendSaving)
+              .onChange((isOn: boolean) => {
+                this.changeEncryptedResend(isOn);
+              });
           }
-          .alignItems(HorizontalAlign.Start)
-          .layoutWeight(1);
-
-          Toggle({ type: ToggleType.Switch, isOn: this.encryptedResendEnabled })
-            .selectedColor($r('app.color.color_brand'))
-            .enabled(this.encryptedResendLoaded && !this.encryptedResendSaving)
-            .onChange((isOn: boolean) => {
-              this.changeEncryptedResend(isOn);
-            });
         }
-        .width('100%')
-        .padding(16)
-        .backgroundBlurStyle(resolveBlurStyle('bar')!)
-        .backgroundColor($r('app.color.color_bg_surface_glass'))
-        .borderRadius(12);
       }
       .width('100%')
       .margin({ top: 8 });
