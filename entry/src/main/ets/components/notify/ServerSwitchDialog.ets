@@ -1,5 +1,4 @@
-import { TextModifier } from '@kit.ArkUI';
-import { hdsMaterial, HdsListItemCard, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SuffixRadio } from '@kit.UIDesignKit';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
 import { extractHost } from '../../utils/ServerUrlUtil';
@@ -11,23 +10,24 @@ import { KEY_IMMERSIVE_LIGHT_ENABLED, KEY_MATERIAL_LOADED, shouldUseLoadedMateri
 function emptySwitchDialogBuilder(): void {
 }
 
-// HdsListItemCard 内置左右内缩（卡片相对列表容器的标准外边距），弹窗左右边距直接沿用该值，
-// 不再在容器上叠加水平 padding，避免「容器 padding + 卡片内缩」双重缩进
-const CARD_SIDE_INSET: number = 20;
-// 双行卡片高度（默认自适应约 81vp 偏松，收紧到 68vp）
-const CARD_HEIGHT: number = 68;
+// 弹窗内容左右内边距：普通列表行不再自带内缩，由滚动容器统一叠加，标题左右边缘与列表行对齐
+const CONTENT_SIDE_INSET: number = 20;
+// 列表行内容左右内边距（文字与单选指示器到行边缘的距离）
+const ROW_CONTENT_PADDING: number = 16;
+// 双行行高（收紧到 68vp）
+const ROW_HEIGHT: number = 68;
 // 列表最大高度：超出后列表内部上下滚动（与服务器设置弹窗一致，约 4 行）
 const LIST_MAX_HEIGHT: number = 280;
 
 /**
  * 「切换通知服务」弹窗（首页标题点击进入）。
  * 仅承载视图范围单选：首项「全部通知」=聚合所有服务器，其后为各服务器（选中=只看该服务器）。
- * 列表行使用 HDS HdsListItemCard：设备沉浸材质生效时保留 HDS 默认卡片表面；
- * 其余情况（旧系统/低算力/开关关）卡片用 color_bg_card_glass（深色为比面板亮一档的抬升色，
- * 避免与弹窗面板同基色 alpha 合成后糊在一起）/选中 color_bg_selected_glass，
- * 未选中行 color_border_default 描边，透出弹窗背板；背板在 API 26+ 且开关开启时
- * 与 Sheet 一样通过统一工具传入 THICK 材质，设备最终效果由系统决定。
- * 卡片降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
+ * 列表行为普通 Row，不使用 HDS 卡片，所有分支统一降级样式：
+ * 未选中 color_bg_card_glass（深色为比面板亮一档的抬升色，避免与弹窗面板同基色 alpha 合成后
+ * 糊在一起）+ color_border_default 描边，选中 color_bg_selected_glass + 品牌色描边与主标题，
+ * 透出弹窗背板；单选指示为自绘圆环（选中=品牌色圆环+实心内点，未选中=描边圆环）。
+ * 背板在 API 26+ 且开关开启时与 Sheet 一样通过统一工具传入 THICK 材质，设备最终效果由系统决定。
+ * 降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
  * API 26+ 沉浸分支使用 HDS 固定标题栏、叠放的描边透明关闭按钮和绑定的滚动区；
  * 降级分支保留普通固定标题与关闭图标。服务器的增删/Token/加密等管理在「服务」页。
  */
@@ -110,137 +110,99 @@ export struct ServerSwitchDialog {
   }
 
   private dialogHeight(): number {
-    return 64 + Math.min((this.serverList.length + 1) * (CARD_HEIGHT + 8), LIST_MAX_HEIGHT) + 24;
+    return 64 + Math.min((this.serverList.length + 1) * (ROW_HEIGHT + 8), LIST_MAX_HEIGHT) + 24;
   }
 
-  // 「全部通知」行：沉浸分支用 HDS 默认卡片表面，降级分支用玻璃色+描边
+  // 单选指示器：选中=品牌色圆环+实心内点，未选中=描边圆环（仅展示，点击由整行 onClick 承接）
   @Builder
-  allCard(): void {
-    if (shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)) {
-      HdsListItemCard({
-        textItem: {
-          primaryText: { text: '全部通知' },
-          secondaryText: { text: '聚合展示所有服务器的通知' },
-        },
-        suffixItem: new SuffixRadio({
-          isCheck: this.isAllSelected(),
-          selectColor: $r('app.color.color_brand'),
-          onClick: (): void => {
-            this.selectAll();
-          },
-        }),
-        onClick: (): void => {
-          this.selectAll();
-        },
-        cardHeight: CARD_HEIGHT,
-        cardBorderRadius: 10,
-      })
-        .width('100%');
-    } else {
-      HdsListItemCard({
-        textItem: {
-          primaryText: {
-            text: '全部通知',
-            modifier: this.isAllSelected() ? new TextModifier().fontColor($r('app.color.color_brand')) : undefined,
-          },
-          secondaryText: { text: '聚合展示所有服务器的通知' },
-        },
-        suffixItem: new SuffixRadio({
-          isCheck: this.isAllSelected(),
-          selectColor: $r('app.color.color_brand'),
-          onClick: (): void => {
-            this.selectAll();
-          },
-        }),
-        onClick: (): void => {
-          this.selectAll();
-        },
-        cardHeight: CARD_HEIGHT,
-        // 深色下降级：未选中卡片用抬升玻璃（color_bg_card_glass，比面板亮一档，
-        // 不能与面板同基色——同基色仅透明度不同时两层 alpha 合成会收敛成一个色、糊在一起）
-        cardBackgroundColor: this.isAllSelected()
-          ? $r('app.color.color_bg_selected_glass') : $r('app.color.color_bg_card_glass'),
-        cardBorderRadius: 10,
-      })
-        .width('100%')
+  private radioIndicator(selected: boolean) {
+    Stack({ alignContent: Alignment.Center }) {
+      Row()
+        .width(20)
+        .height(20)
+        .borderRadius(10)
         .border({
-          width: 1,
-          // 深色下 color_border_subtle 与暗面板对比不足，未选中行用 default 勾边
-          color: this.isAllSelected() ? $r('app.color.color_brand') : $r('app.color.color_border_default'),
+          width: 2,
+          color: selected ? $r('app.color.color_brand') : $r('app.color.color_border_default')
         });
+      if (selected) {
+        Row()
+          .width(10)
+          .height(10)
+          .borderRadius(5)
+          .backgroundColor($r('app.color.color_brand'));
+      }
     }
+    .width(20)
+    .height(20);
+  }
+
+  // 通用选项行：所有分支统一降级玻璃样式（选中=选中玻璃+品牌描边/主标题，未选中=抬升玻璃+默认描边）
+  @Builder
+  private optionRow(primary: string, secondary: string, selected: boolean, onTap: () => void) {
+    Row({ space: 12 }) {
+      Column({ space: 4 }) {
+        Text(primary)
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(selected ? $r('app.color.color_brand') : $r('app.color.color_text_primary'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
+        Text(secondary)
+          .fontSize(13)
+          .fontColor($r('app.color.color_text_hint'))
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start);
+
+      this.radioIndicator(selected);
+    }
+    .width('100%')
+    .height(ROW_HEIGHT)
+    .padding({ left: ROW_CONTENT_PADDING, right: ROW_CONTENT_PADDING })
+    .backgroundColor(selected ? $r('app.color.color_bg_selected_glass') : $r('app.color.color_bg_card_glass'))
+    .borderRadius(10)
+    .border({
+      width: 1,
+      // 深色下 color_border_subtle 与暗面板对比不足，未选中行用 default 勾边
+      color: selected ? $r('app.color.color_brand') : $r('app.color.color_border_default')
+    })
+    .onClick(() => {
+      onTap();
+    });
+  }
+
+  // 「全部通知」行
+  @Builder
+  private allRow(): void {
+    this.optionRow('全部通知', '聚合展示所有服务器的通知', this.isAllSelected(), (): void => {
+      this.selectAll();
+    });
   }
 
   // 服务器行：主标题为名称（无名时取 host），副标题为 baseURL
   @Builder
-  serverCard(s: ServerEntry): void {
-    if (shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)) {
-      HdsListItemCard({
-        textItem: {
-          primaryText: { text: s.name && s.name.length > 0 ? s.name : extractHost(s.baseURL) },
-          secondaryText: { text: s.baseURL },
-        },
-        suffixItem: new SuffixRadio({
-          isCheck: this.isServerSelected(s.id),
-          selectColor: $r('app.color.color_brand'),
-          onClick: (): void => {
-            this.selectServer(s);
-          },
-        }),
-        onClick: (): void => {
-          this.selectServer(s);
-        },
-        cardHeight: CARD_HEIGHT,
-        cardBorderRadius: 10,
-      })
-        .width('100%');
-    } else {
-      HdsListItemCard({
-        textItem: {
-          primaryText: {
-            text: s.name && s.name.length > 0 ? s.name : extractHost(s.baseURL),
-            modifier: this.isServerSelected(s.id)
-              ? new TextModifier().fontColor($r('app.color.color_brand')) : undefined,
-          },
-          secondaryText: { text: s.baseURL },
-        },
-        suffixItem: new SuffixRadio({
-          isCheck: this.isServerSelected(s.id),
-          selectColor: $r('app.color.color_brand'),
-          onClick: (): void => {
-            this.selectServer(s);
-          },
-        }),
-        onClick: (): void => {
-          this.selectServer(s);
-        },
-        cardHeight: CARD_HEIGHT,
-        // 深色下降级：未选中卡片用抬升玻璃（比面板亮一档，避免与面板同基色 alpha 合成后糊色）
-        cardBackgroundColor: this.isServerSelected(s.id)
-          ? $r('app.color.color_bg_selected_glass') : $r('app.color.color_bg_card_glass'),
-        cardBorderRadius: 10,
-      })
-        .width('100%')
-        .border({
-          width: 1,
-          // 深色下 color_border_subtle 与暗面板对比不足，未选中行用 default 勾边
-          color: this.isServerSelected(s.id) ? $r('app.color.color_brand') : $r('app.color.color_border_default'),
-        });
-    }
+  private serverRow(s: ServerEntry): void {
+    this.optionRow(s.name && s.name.length > 0 ? s.name : extractHost(s.baseURL), s.baseURL,
+      this.isServerSelected(s.id), (): void => {
+        this.selectServer(s);
+      });
   }
 
   @Builder
   private serverListScroll() {
     Scroll(this.listScroller) {
       Column({ space: 8 }) {
-        this.allCard();
+        this.allRow();
         ForEach(this.serverList, (s: ServerEntry) => {
-          this.serverCard(s);
+          this.serverRow(s);
         }, (s: ServerEntry) => s.id)
       }
       .width('100%')
-      // HdsListItemCard 自带水平内缩，不在容器上叠加左右 padding。
-      .padding({ top: 8, bottom: 16 });
+      // 普通行不再自带水平内缩，容器统一叠加左右内边距，与标题左右边缘对齐
+      .padding({ left: CONTENT_SIDE_INSET, right: CONTENT_SIDE_INSET, top: 8, bottom: 16 });
     }
     .width('100%')
     .layoutWeight(1)
@@ -268,7 +230,7 @@ export struct ServerSwitchDialog {
     }
     .width('100%')
     .height(64)
-    .padding({ left: CARD_SIDE_INSET, right: CARD_SIDE_INSET - 4 });
+    .padding({ left: CONTENT_SIDE_INSET, right: CONTENT_SIDE_INSET - 4 });
   }
 
   @Builder
