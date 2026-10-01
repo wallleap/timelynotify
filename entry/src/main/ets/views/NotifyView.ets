@@ -130,7 +130,7 @@ export struct NotifyView {
   // 自绘标题栏底边与列表起点均使用窗口坐标；两者之差即实际遮挡距离。
   @State fallbackTitleBarBottom: number = -1;
   @State listTop: number = -1;
-  // 「跳到底部」浮动按钮显隐：上滑离开首屏时显示，下滑或在首屏时隐藏。
+  // 「跳到底部」浮动按钮显隐：上滑离开首屏时显示，下滑、在首屏或到达底部时隐藏。
   @State showScrollToBottom: boolean = false;
   // 「跳到底部」触发信号：每次自增传给列表，列表 Watch 后执行两段式定位滚动。
   @State scrollToBottomSignal: number = 0;
@@ -824,7 +824,7 @@ export struct NotifyView {
    * 处理列表滚动事件，控制「跳到底部」按钮显隐。
    * - scrollOffset > 0：列表向上滚动（手指上滑），离开首屏后显示按钮；
    * - scrollOffset < 0：列表向下滚动（手指下滑），隐藏按钮；
-   * - 在首屏（yOffset <= 0）：隐藏按钮。
+   * - 在首屏（yOffset <= 0）或已到达底部：隐藏按钮。
    * 忽略 Idle 状态，避免静止时重复触发。
    * 「跳到底部」程序滚动期间整体屏蔽，否则动画产生的正向滚动会让按钮中途重现闪烁。
    */
@@ -839,6 +839,12 @@ export struct NotifyView {
         this.showScrollToBottom = false;
       }
       this.setServerErrorBannerCollapsed(false);
+      return;
+    }
+    if (this.scroller.isAtEnd()) {
+      if (this.showScrollToBottom) {
+        this.showScrollToBottom = false;
+      }
       return;
     }
     if (scrollOffset > 0) {
@@ -1022,6 +1028,11 @@ export struct NotifyView {
           this.showScrollToBottom = false;
         }
         this.setServerErrorBannerCollapsed(false);
+      },
+      onListReachEnd: () => {
+        if (this.showScrollToBottom) {
+          this.showScrollToBottom = false;
+        }
       },
       onAutoScrollEnd: () => {
         this.handleAutoScrollEnd();

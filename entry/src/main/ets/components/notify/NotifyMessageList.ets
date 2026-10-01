@@ -102,6 +102,9 @@ export struct NotifyMessageList {
   // 通过 onReachStart 兜底确保「跳到底部」按钮隐藏。
   onListReachStart: () => void = () => {
   };
+  // 到达列表底部时通知页面隐藏「跳到底部」按钮，避免滚动停止后的回弹回调使其重现。
+  onListReachEnd: () => void = () => {
+  };
   // 一次自动定位滚动（含两段式的最终平滑段）真正结束时回调，供页面解除 isAutoScrolling 屏蔽。
   // 普通手指滚动停止同样会触发，页面侧仅幂等清标记，无副作用。
   onAutoScrollEnd: () => void = () => {
@@ -252,6 +255,9 @@ export struct NotifyMessageList {
     })
     .onReachStart(() => {
       this.onListReachStart();
+    })
+    .onReachEnd(() => {
+      this.onListReachEnd();
     })
     .onTouch((event: TouchEvent) => {
       // onScrollStart 也会在 Scroller 发起的带动画滚动开始时触发，不能识别用户输入；
