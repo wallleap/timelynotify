@@ -37,6 +37,7 @@ export struct NotifySettingsSection {
         // 开启应用订阅通知（开关）
         SettingCell({
           title: '开启应用订阅通知', description: this.notifyEnabled ? '已开启' : '已关闭',
+          icon: $r('app.media.bell_dot'),
           descriptionColor: this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint')
         }) {
           Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
@@ -49,7 +50,10 @@ export struct NotifySettingsSection {
         SettingDivider();
 
         // 通知权限设置（点击拉起系统通知管理）
-        SettingCell({ title: '通知权限设置', clickable: true, onActivate: () => this.openNotifySettings() }) {
+        SettingCell({
+          title: '通知权限设置', icon: $r('app.media.file_lock'),
+          clickable: true, onActivate: () => this.openNotifySettings()
+        }) {
           SettingArrow();
         }
       }
@@ -58,6 +62,7 @@ export struct NotifySettingsSection {
       SettingGroup() {
         SettingCell({
           title: '导出通知',
+          icon: $r('app.media.book_up'),
           description: this.exporting ? '正在导出…' : '导出本地保存的全部未过期通知',
           clickable: true,
           onActivate: () => this.exportMessages()
@@ -75,6 +80,7 @@ export struct NotifySettingsSection {
       SettingGroup() {
         SettingCell({
           title: '个性化设置',
+          icon: $r('app.media.paintbrush_vertical'),
           description: '主题模式、加密通知重发、沉浸光感',
           clickable: true,
           onActivate: () => this.openPersonalizationSettings()

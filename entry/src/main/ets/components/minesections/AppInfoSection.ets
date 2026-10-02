@@ -36,6 +36,7 @@ export struct AppInfoSection {
         SettingGroup() {
           SettingCell({
             title: '构建信息',
+            icon: $r('app.media.shield_keyhole'),
             description: AppInfoService.buildInfoDisplay(this.certFingerprintTail),
             descriptionMaxLines: 1,
             clickable: true,
@@ -50,6 +51,12 @@ export struct AppInfoSection {
 
         // 推送 Token 卡片（Device Token）；点击整行复制完整明文到剪贴板
         Row({ space: 14 }) {
+          Image($r('app.media.key_square'))
+            .width(24)
+            .height(24)
+            .objectFit(ImageFit.Contain)
+            .fillColor($r('app.color.color_text_tertiary'))
+            .draggable(false);
           Column({ space: 4 }) {
             Row() {
               Text('推送 Token')

@@ -37,7 +37,10 @@ export struct AboutSection {
 
       SettingGroup() {
         // 版本号行（整行点击复制版本信息）
-        SettingCell({ title: '当前版本', clickable: true, onActivate: () => this.copyVersionInfo() }) {
+        SettingCell({
+          title: '当前版本', icon: $r('app.media.badge_info'),
+          clickable: true, onActivate: () => this.copyVersionInfo()
+        }) {
           Text(`${this.versionNameDisplay} (${this.versionCodeDisplay})`)
             .fontSize(14)
             .fontColor($r('app.color.color_text_tertiary'));
@@ -46,21 +49,30 @@ export struct AboutSection {
         SettingDivider();
 
         // 开源代码行（点击跳转 GitHub）
-        SettingCell({ title: '开源代码', clickable: true, onActivate: () => this.openSourceLink() }) {
+        SettingCell({
+          title: '开源代码', icon: $r('app.media.message_circle_code'),
+          clickable: true, onActivate: () => this.openSourceLink()
+        }) {
           SettingArrow();
         }
 
         SettingDivider();
 
         // 隐私协议行
-        SettingCell({ title: '隐私协议', clickable: true, onActivate: () => this.openPrivacy() }) {
+        SettingCell({
+          title: '隐私协议', icon: $r('app.media.file_text'),
+          clickable: true, onActivate: () => this.openPrivacy()
+        }) {
           SettingArrow();
         }
 
         SettingDivider();
 
         // 反馈问题行（发送邮件）
-        SettingCell({ title: '反馈问题', clickable: true, onActivate: () => this.sendFeedback() }) {
+        SettingCell({
+          title: '反馈问题', icon: $r('app.media.mail_question_mark'),
+          clickable: true, onActivate: () => this.sendFeedback()
+        }) {
           SettingArrow();
         }
       }

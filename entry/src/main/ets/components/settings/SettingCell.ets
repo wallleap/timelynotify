@@ -2,6 +2,8 @@
 @Component
 export struct SettingCell {
   title: string = '';
+  // 仅需要图标的入口传入，普通设置行保持原有布局。
+  icon?: Resource;
   description?: string;
   // 保留已有状态描述的强调色；不在基础组件里判断业务状态。
   descriptionColor?: ResourceColor;
@@ -15,6 +17,14 @@ export struct SettingCell {
 
   build() {
     Row({ space: 12 }) {
+      if (this.icon !== undefined) {
+        Image(this.icon)
+          .width(24)
+          .height(24)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.color_text_tertiary'))
+          .draggable(false);
+      }
       if (this.description !== undefined) {
         Column({ space: 4 }) {
           Text(this.title)
