@@ -95,6 +95,8 @@ struct PersonalizationSettings {
             ])
               .selected(this.selectedColorModeIndex())
               .value(this.colorModeLabels[this.selectedColorModeIndex()])
+              // 仅缩小选择器外层选中值文字（12sp，与同行右侧状态小字一致）；下拉菜单项由 optionFont 独立控制不受影响
+              .font({ size: 12 })
               .fontColor($r('app.color.color_text_primary'))
               .selectedOptionBgColor($r('app.color.color_bg_selected_glass'))
               .selectedOptionFontColor($r('app.color.color_brand'))

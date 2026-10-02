@@ -9,6 +9,9 @@ export const NOTIFY_LIST_ROW_GROUP_HEADER: number = 2;
 export const NOTIFY_LIST_ROW_GROUP_MESSAGE: number = 3;
 export const NOTIFY_LIST_ROW_GROUP_MORE: number = 4;
 
+/** 主 List 卡片间的对外垂直间距：独立消息/折叠分组卡/展开组末行/加载更多后的统一留白。 */
+export const NOTIFY_LIST_ROW_GAP: number = 12;
+
 /** 可被 IDataSource 精确增删的通知列表行。 */
 export class NotifyListRow {
   key: string = '';
@@ -16,7 +19,7 @@ export class NotifyListRow {
   message: NotifyMessage | null = null;
   section: NotifySection | null = null;
   indexInGroup: number = 0;
-  // 主 List 统一 space=0；仅分组边界的末行保留 10vp 间距。
+  // 主 List 统一 space=0；仅分组边界的末行保留 NOTIFY_LIST_ROW_GAP 的对外间距。
   spaceAfter: number = 0;
 }
 
@@ -32,7 +35,7 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
       row.type = NOTIFY_LIST_ROW_MESSAGE;
       row.message = section.messages[0];
       row.section = section;
-      row.spaceAfter = 10;
+      row.spaceAfter = NOTIFY_LIST_ROW_GAP;
       rows.push(row);
       continue;
     }
@@ -42,7 +45,7 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
       row.key = `group-card:${section.groupKey}:${section.total}:${section.messages.length}`;
       row.type = NOTIFY_LIST_ROW_GROUP_CARD;
       row.section = section;
-      row.spaceAfter = 10;
+      row.spaceAfter = NOTIFY_LIST_ROW_GAP;
       rows.push(row);
       continue;
     }
@@ -62,7 +65,7 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
       row.message = section.messages[j];
       row.section = section;
       row.indexInGroup = j;
-      row.spaceAfter = isGroupTail ? 10 : 0;
+      row.spaceAfter = isGroupTail ? NOTIFY_LIST_ROW_GAP : 0;
       rows.push(row);
     }
     if (section.total > section.messages.length) {
@@ -70,7 +73,7 @@ export function buildNotifyListRows(sections: NotifySection[], expandedGroups: s
       row.key = `group-more:${section.groupKey}`;
       row.type = NOTIFY_LIST_ROW_GROUP_MORE;
       row.section = section;
-      row.spaceAfter = 10;
+      row.spaceAfter = NOTIFY_LIST_ROW_GAP;
       rows.push(row);
     }
   }
