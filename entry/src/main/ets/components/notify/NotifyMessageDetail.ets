@@ -31,7 +31,7 @@ export struct NotifyMessageDetail {
   onCopyCode: (code: string) => void = (_code: string) => {};
   onCopyUrl: (url: string) => void = (_url: string) => {};
   // 非链接、非验证码文本点击时复制对应原文，便于直接复用通知内容。
-  onCopyText: (text: string) => void = (_text: string) => {};
+  onCopyText: (text: string, label: string) => void = (_text: string, _label: string) => {};
   // 待复制文本（extras.copy）的专用复制回调；与验证码逻辑一致，文案由调用方决定。
   onCopyContent: (text: string) => void = (_text: string) => {};
   // 删除动作交给列表页复用现有确认弹窗和本地删除流程。
@@ -72,7 +72,7 @@ export struct NotifyMessageDetail {
       } else {
         // 普通文本可直接复制该连续片段；空白区域由外层 Text 复制整段内容。
         Span(segment.text).fontColor($r('app.color.color_text_secondary')).fontSize(15)
-          .onClick(() => this.onCopyText(segment.text));
+          .onClick(() => this.onCopyText(segment.text, '内容'));
       }
     }, (segment: NotifyTextSegment, index: number) => `${index}_${segment.type}_${segment.text}`)
   }
@@ -81,7 +81,7 @@ export struct NotifyMessageDetail {
   private body(text: string) {
     Text() { this.textSpans(text) }
       .width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
-      .onClick(() => this.onCopyText(text));
+      .onClick(() => this.onCopyText(text, '内容'));
   }
 
   @Builder
@@ -90,7 +90,7 @@ export struct NotifyMessageDetail {
       ForEach(items, (line: string, index: number) => {
         // 点击每一条收件箱内容的非识别区域时，复制该条完整文本。
         Text() { this.textSpans(line) }.width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
-          .onClick(() => this.onCopyText(line));
+          .onClick(() => this.onCopyText(line, '内容'));
       }, (line: string, index: number) => `${index}_${line}`)
     }.width('100%').alignItems(HorizontalAlign.Start);
   }
@@ -254,7 +254,7 @@ export struct NotifyMessageDetail {
         .enabled(this.message ? buildNotifyCopyText(this.message).length > 0 : false)
         .onClick(() => {
           if (this.message) {
-            this.onCopyText(buildNotifyCopyText(this.message));
+            this.onCopyText(buildNotifyCopyText(this.message), '全文');
           }
         });
     }
@@ -289,13 +289,13 @@ export struct NotifyMessageDetail {
                   if (this.message.title.length > 0) {
                     Text(this.message.title).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
                       .fontColor($r('app.color.color_text_primary')).width('100%').copyOption(CopyOptions.InApp)
-                      .onClick(() => this.onCopyText(this.message ? this.message.title : ''));
+                      .onClick(() => this.onCopyText(this.message ? this.message.title : '', '标题'));
                   }
                   if (this.message.subtitle.length > 0) {
                     Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.color_brand'))
                       .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                       .margin({ top: this.message.title.length > 0 ? 6 : 0 }).copyOption(CopyOptions.InApp)
-                      .onClick(() => this.onCopyText(this.message ? this.message.subtitle : ''));
+                      .onClick(() => this.onCopyText(this.message ? this.message.subtitle : '', '副标题'));
                   }
                 }
                 .layoutWeight(1).alignItems(HorizontalAlign.Start);

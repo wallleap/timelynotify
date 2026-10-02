@@ -1110,7 +1110,7 @@ export struct NotifyView {
       onOpenUrl: (url: string) => { this.openUrl(url); },
       onCopyCode: (code: string) => { this.copyCode(code); },
       onCopyUrl: (url: string) => { this.copyUrl(url); },
-      onCopyText: (text: string) => { this.copyText(text); },
+      onCopyText: (text: string, label: string) => { this.copyText(text, label); },
       onCopyContent: (text: string) => { this.copyContent(text); },
       onDelete: () => {
         if (this.selectedMessage) {
@@ -1266,8 +1266,8 @@ export struct NotifyView {
     }
   }
 
-  /** 复制普通通知文字，供详情页中非识别文本及其空白区域点击使用。 */
-  private async copyText(text: string): Promise<void> {
+  /** 复制详情文字，并按点击区域提示所复制的内容类型。 */
+  private async copyText(text: string, label: string): Promise<void> {
     if (text.length === 0) {
       return;
     }
@@ -1275,7 +1275,7 @@ export struct NotifyView {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
       const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
       await sys.setData(data);
-      showToast(this.getUIContext(), '内容已复制', 1500);
+      showToast(this.getUIContext(), `${label}已复制`, 1500);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制普通文本失败：%{public}s', msg);
