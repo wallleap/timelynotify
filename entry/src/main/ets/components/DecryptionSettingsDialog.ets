@@ -3,7 +3,8 @@ import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } 
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import { DOMAIN } from '../common/Constant';
-import { getDialogMaterial, shouldUseSystemMaterialPath, withImmersiveMenuMaterial } from '../utils/ImmersiveUtil';
+import { getDialogBackgroundOptions, shouldUseSystemMaterialPath, withImmersiveMenuMaterial } from '../utils/ImmersiveUtil';
+import { DangerConfirmDialog } from './DangerConfirmDialog';
 import showToast from './showToast';
 
 const TAG: string = 'DecryptionDlg';
@@ -368,19 +369,37 @@ export struct DecryptionSettingsDialog {
   }
 
   private async confirmConfigChange(): Promise<boolean> {
+    return this.confirmDanger('确认更换解密配置',
+      '请先备份当前 Key，并同步更新发送端。保存后，使用旧 Key 或旧算法加密的历史通知可能无法继续解密。',
+      '确认更换');
+  }
+
+  private async confirmDanger(title: string, message: string, confirmText: string): Promise<boolean> {
     try {
-      const result = await this.getUIContext().getPromptAction().showDialog({
-        title: '确认更换解密配置',
-        message: '请先备份当前 Key，并同步更新发送端。保存后，使用旧 Key 或旧算法加密的历史通知可能无法继续解密。',
-        buttons: [
-          { text: '取消', color: $r('app.color.color_text_tertiary') },
-          { text: '确认更换', color: $r('app.color.color_error') },
-        ],
-        systemMaterial: getDialogMaterial(),
+      const background = getDialogBackgroundOptions();
+      return await new Promise<boolean>((resolve: (confirmed: boolean) => void) => {
+        let controller: CustomDialogController | undefined;
+        controller = new CustomDialogController({
+          builder: DangerConfirmDialog({
+            title: title,
+            message: message,
+            confirmText: confirmText,
+            onResult: (confirmed: boolean): void => {
+              controller?.close();
+              resolve(confirmed);
+            },
+          }),
+          alignment: DialogAlignment.Center,
+          autoCancel: false,
+          cornerRadius: 14,
+          systemMaterial: background.systemMaterial,
+          backgroundColor: background.backgroundColor,
+          backgroundBlurStyle: background.backgroundBlurStyle,
+        });
+        controller.open();
       });
-      return result.index === 1;
     } catch (_err) {
-      hilog.warn(DOMAIN, TAG, '显示更换解密配置确认弹窗失败');
+      hilog.warn(DOMAIN, TAG, '显示危险操作确认弹窗失败');
       return false;
     }
   }
@@ -394,16 +413,9 @@ export struct DecryptionSettingsDialog {
       return;
     }
     try {
-      const result = await this.getUIContext().getPromptAction().showDialog({
-        title: '清除解密配置',
-        message: '清除后本机保存的 Key 将被删除，使用该 Key 加密的历史通知可能无法继续解密。请先备份 Key。',
-        buttons: [
-          { text: '取消', color: $r('app.color.color_text_tertiary') },
-          { text: '确认清除', color: $r('app.color.color_error') },
-        ],
-        systemMaterial: getDialogMaterial(),
-      });
-      if (result.index !== 1) {
+      if (!await this.confirmDanger('清除解密配置',
+        '清除后 Key 将无法恢复，使用该 Key 加密的历史通知可能无法继续解密。请先备份 Key。',
+        '确认清除')) {
         return;
       }
       this.saving = true;

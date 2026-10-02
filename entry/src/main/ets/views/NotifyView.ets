@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { promptAction, UIContext } from '@kit.ArkUI';
+import { UIContext } from '@kit.ArkUI';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { common, Want } from '@kit.AbilityKit';
 import { ServerEntry } from '../model/ServerEntry';
@@ -14,6 +14,7 @@ import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
 import { ServerKeyDialog, ServerActionMenuDialog, ServerRenameDialog } from '../components/ServerActionDialogs';
 import { ClientTokenDialog } from '../components/ClientTokenDialog';
 import { DecryptionSettingsDialog } from '../components/DecryptionSettingsDialog';
+import { DangerConfirmDialog } from '../components/DangerConfirmDialog';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { EncryptionConfigService } from '../services/EncryptionConfigService';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
@@ -618,16 +619,7 @@ export struct NotifyView {
       return;
     }
     try {
-      const result = await this.getUIContext().getPromptAction().showDialog({
-        title: '删除服务器',
-        message: `确定删除「${server.name || server.baseURL}」吗？`,
-        buttons: [
-          { text: '取消', color: $r('app.color.color_text_tertiary') },
-          { text: '确定', color: $r('app.color.color_error') },
-        ],
-        systemMaterial: getDialogBackgroundOptions().systemMaterial,
-      });
-      if (result.index !== 1) {
+      if (!await this.confirmDanger('删除服务器', `确定删除「${server.name || server.baseURL}」吗？`, '确定')) {
         return;
       }
     } catch (err) {
@@ -1637,6 +1629,37 @@ export struct NotifyView {
   }
 
   // ====== 删除确认与执行 ======
+
+  private async confirmDanger(title: string, message: string, confirmText: string): Promise<boolean> {
+    try {
+      const background = getDialogBackgroundOptions();
+      return await new Promise<boolean>((resolve: (confirmed: boolean) => void) => {
+        let controller: CustomDialogController | undefined;
+        controller = new CustomDialogController({
+          builder: DangerConfirmDialog({
+            title: title,
+            message: message,
+            confirmText: confirmText,
+            onResult: (confirmed: boolean): void => {
+              controller?.close();
+              resolve(confirmed);
+            },
+          }),
+          alignment: DialogAlignment.Center,
+          autoCancel: false,
+          cornerRadius: 14,
+          systemMaterial: background.systemMaterial,
+          backgroundColor: background.backgroundColor,
+          backgroundBlurStyle: background.backgroundBlurStyle,
+        });
+        controller.open();
+      });
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'danger dialog 失败：%{public}s',
+        err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }
   /** 解析本地身份；不把不同服务器的相同数字 id 合并。 */
   private parseDeletePairs(ids: string[]): DeviceIdPair[] {
     const pairs: DeviceIdPair[] = [];
@@ -1754,9 +1777,9 @@ export struct NotifyView {
       this.exitEditMode();
     }
     if (result.localFailed) {
-      showToast(uiCtx, '本地删除失败，请稍后重试');
+      showToast(uiCtx, '删除失败，请稍后重试');
     } else if (result.remoteFailed > 0) {
-      showToast(uiCtx, `已删除 ${result.deletedIds.length} 条，${result.remoteFailed} 条远端删除失败，已保留待重试`);
+      showToast(uiCtx, `已删除 ${result.deletedIds.length} 条，${result.remoteFailed} 条删除失败，已保留待重试`);
     } else {
       showToast(uiCtx, `已删除 ${result.deletedIds.length} 条`);
     }
@@ -1764,20 +1787,12 @@ export struct NotifyView {
 
   private confirmDeleteOne(m: NotifyMessage, closeDetailOnSuccess: boolean = false): void {
     const uiCtx: UIContext = this.getUIContext();
-    uiCtx.getPromptAction().showDialog({
-      title: m.isDecryptionFailed() ? '删除解密失败的通知' : '从本机删除通知',
-      message: `${m.isDecryptionFailed() ?
-        '此通知的密文仍在服务器。将先删除远程记录，再删除本地；远程删除失败时保留此通知以便重试。' :
-        '此通知已从服务器迁移到本机。删除后无法恢复。'}${m.title && m.title.length > 0 ?
-        '\n\n「' + m.title + '」' : ''}`,
-      buttons: [
-        { text: '取消', color: $r('app.color.color_text_tertiary') },
-        { text: '删除', color: $r('app.color.color_error') },
-      ],
-      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
-      systemMaterial: getDialogMaterial(),
-    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
-      if (err || result.index !== 1) {
+    this.confirmDanger(m.isDecryptionFailed() ? '删除解密失败的通知' : '删除通知',
+      `${m.isDecryptionFailed() ?
+        '删除后无法恢复；如果删除失败，此通知会保留以便重试。' :
+        '删除后无法恢复。'}${m.title && m.title.length > 0 ?
+        '\n\n「' + m.title + '」' : ''}`, '删除').then(async (confirmed: boolean) => {
+      if (!confirmed) {
         return;
       }
       const outcome: ManualDeleteResult = await this.deleteManualIds([notifyIdentity(m)]);
@@ -1791,20 +1806,13 @@ export struct NotifyView {
   private confirmDeleteGroup(section: NotifySection): void {
     const uiCtx: UIContext = this.getUIContext();
     const count: number = section.total;
-    uiCtx.getPromptAction().showDialog({
-      title: '删除整个分组',
-      message: `将删除该分组的全部 ${count} 条本地通知，包括尚未加载的历史通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。`,
-      buttons: [
-        { text: '取消', color: $r('app.color.color_text_tertiary') },
-        { text: '全部删除', color: $r('app.color.color_error') },
-      ],
-      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
-      systemMaterial: getDialogMaterial(),
-    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
-      if (err || result.index !== 1) {
+    this.confirmDanger('删除整个分组',
+      `将删除该分组的全部 ${count} 条通知，包括尚未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。`,
+      '全部删除').then(async (confirmed: boolean) => {
+      if (!confirmed) {
         return;
       }
-      showToast(uiCtx, `正在删除 ${count} 条本地通知…`);
+      showToast(uiCtx, `正在删除 ${count} 条通知…`);
       const outcome: ManualDeleteResult = await this.deleteManualIds(null, section.groupKey);
       await this.finishManualDeletion(outcome, uiCtx);
     });
@@ -1823,17 +1831,10 @@ export struct NotifyView {
   private confirmDeleteSelected(): void {
     const uiCtx: UIContext = this.getUIContext();
     const count: number = this.selectedIds.length;
-    uiCtx.getPromptAction().showDialog({
-      title: '删除选中通知',
-      message: `将删除选中的 ${count} 条通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。`,
-      buttons: [
-        { text: '取消', color: $r('app.color.color_text_tertiary') },
-        { text: '全部删除', color: $r('app.color.color_error') },
-      ],
-      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
-      systemMaterial: getDialogMaterial(),
-    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
-      if (err || result.index !== 1) {
+    this.confirmDanger('删除选中通知',
+      `将删除选中的 ${count} 条通知。删除后无法恢复；删除失败的通知会保留以便重试。`,
+      '全部删除').then(async (confirmed: boolean) => {
+      if (!confirmed) {
         return;
       }
       const ids: string[] = [...this.selectedIds];
@@ -1849,22 +1850,14 @@ export struct NotifyView {
       showToast(uiCtx, '暂无可删除的通知');
       return;
     }
-    uiCtx.getPromptAction().showDialog({
-      title: '清空全部通知',
-      message: this.viewAll
-        ? '将删除本机保存的所有服务器通知，包括未加载的历史通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。'
-        : '将删除本机保存的当前服务器全部通知，包括未加载的历史通知。解密失败的通知会先删除远程副本；远程删除失败的条目将保留。其余通知删除后无法恢复。',
-      buttons: [
-        { text: '取消', color: $r('app.color.color_text_tertiary') },
-        { text: '全部删除', color: $r('app.color.color_error') },
-      ],
-      // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
-      systemMaterial: getDialogMaterial(),
-    }, async (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
-      if (err || result.index !== 1) {
+    this.confirmDanger('清空全部通知', this.viewAll
+        ? '将删除所有服务器的通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。'
+        : '将删除当前服务器的全部通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。',
+      '全部删除').then(async (confirmed: boolean) => {
+      if (!confirmed) {
         return;
       }
-      showToast(uiCtx, `正在删除 ${this.totalCachedCount} 条本地通知…`);
+      showToast(uiCtx, `正在删除 ${this.totalCachedCount} 条通知…`);
       const outcome: ManualDeleteResult = await this.deleteManualIds(null);
       await this.finishManualDeletion(outcome, uiCtx);
     });

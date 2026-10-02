@@ -10,6 +10,7 @@ import { EncryptionConfigService } from '../../services/EncryptionConfigService'
 import { NotifyMessageService, toShortSyncError } from '../../services/NotifyMessageService';
 import { NotifySyncService } from '../../services/NotifySyncService';
 import { DecryptionSettingsDialog } from '../DecryptionSettingsDialog';
+import { DangerConfirmDialog } from '../DangerConfirmDialog';
 import showToast from '../showToast';
 import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_REFRESH_SIGNAL } from '../../common/Constant';
 import {
@@ -710,19 +711,30 @@ export struct ServerList {
 
   private async confirmDialog(title: string, message: string): Promise<boolean> {
     try {
-      const res = await this.getUIContext().getPromptAction().showDialog({
-        title: title,
-        message: message,
-        buttons: [
-          { text: '取消', color: $r('app.color.color_text_tertiary') },
-          { text: '确定', color: $r('app.color.color_error') },
-        ],
-        systemMaterial: getDialogBackgroundOptions().systemMaterial,
+      const background = getDialogBackgroundOptions();
+      return await new Promise<boolean>((resolve: (confirmed: boolean) => void) => {
+        let controller: CustomDialogController | undefined;
+        controller = new CustomDialogController({
+          builder: DangerConfirmDialog({
+            title: title,
+            message: message,
+            onResult: (confirmed: boolean): void => {
+              controller?.close();
+              resolve(confirmed);
+            },
+          }),
+          alignment: DialogAlignment.Center,
+          autoCancel: false,
+          cornerRadius: 14,
+          systemMaterial: background.systemMaterial,
+          backgroundColor: background.backgroundColor,
+          backgroundBlurStyle: background.backgroundBlurStyle,
+        });
+        controller.open();
       });
-      return res.index === 1;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, 'showDialog 失败：%{public}s', msg);
+      hilog.warn(DOMAIN, TAG, 'danger dialog 失败：%{public}s', msg);
       return false;
     }
   }

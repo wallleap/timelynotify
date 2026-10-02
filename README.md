@@ -144,6 +144,7 @@ TODO:
     └─ ttl 正整数秒 → 保存绝对过期时间，进入/刷新列表时清理到期记录
 
   用户删除：已迁移通知仅删本地；解密失败通知先删当前实例的远端副本，失败则保留本地
+    ├─ 删除服务器、删除通知、更换/清除解密配置和重置 Key 的危险确认统一使用带警示图标的弹窗；重置 Key 在输入留空时二次确认，填入 Key 的还原流程不变
     ├─ 单条/多选/清空均明确提示“删除后无法恢复”；详情 Sheet 底部将普通「删除」胶囊按钮与品牌色主按钮「复制全文」并排固定，按钮行最大宽度 420vp、宽屏居中，上滑收起、下滑或回到顶部时显示，带渐隐和位移动画；卡片下方居中提示“点按标题或内容，可分别复制”，复制全文包含标题、副标题和展示中的正文，确认删除成功后关闭详情
     │  详情 Sheet 容器和内容统一由 ImmersiveUtil 判断：API 26+ 且开关开启时采用沉浸布局，材质实例预创建后经 getEnabledSystemMaterial('sheet') 提供系统背板；未加载时保留模糊降级。设备 supported 查询仅用于诊断，不再单独决定 Sheet、Dialog 或 Menu 的渲染分支。
     │  全部居中 CustomDialog 的材质由 ImmersiveUtil.getDialogMaterial() 统一获取，Menu 由 withImmersiveMenuMaterial() 构造 options，Toast 和 Sheet 由 getEnabledSystemMaterial() 获取；这些入口共用 API 版本、用户开关和实例加载判断。材质可用时透明背板、不叠 blur；不可用时使用原有模糊降级。「推送测试」的两个 Menu 也按此规则切换自身背景色与模糊。组件不直接查询 SDK 版本、设备 supported 状态或自行创建 ImmersiveMaterial。

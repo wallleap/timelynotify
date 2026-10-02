@@ -1,7 +1,8 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
-import { shouldUseSystemMaterialPath } from '../utils/ImmersiveUtil';
+import { getDialogBackgroundOptions, shouldUseSystemMaterialPath } from '../utils/ImmersiveUtil';
+import { DangerConfirmDialog } from './DangerConfirmDialog';
 
 const TAG: string = 'ServerActionDlg';
 
@@ -345,6 +346,14 @@ export struct ServerKeyDialog {
 
   build() {
     Column({ space: 12 }) {
+      if (this.inputKey.trim().length === 0) {
+        Image($r('app.media.danger_colorful'))
+          .width(48)
+          .height(48)
+          .objectFit(ImageFit.Contain)
+          .draggable(false)
+          .alignSelf(ItemAlign.Center);
+      }
       Text('重置或还原 Key')
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
@@ -414,6 +423,32 @@ export struct ServerKeyDialog {
 
   private confirm(): void {
     const k: string = this.inputKey.trim();
+    if (k.length === 0) {
+      const background = getDialogBackgroundOptions();
+      let controller: CustomDialogController | undefined;
+      controller = new CustomDialogController({
+        builder: DangerConfirmDialog({
+          title: '确认重置 Key',
+          message: '留空将为此服务器生成新的 Key。请确认已备份当前 Key。',
+          confirmText: '确认重置',
+          onResult: (confirmed: boolean): void => {
+            controller?.close();
+            if (confirmed) {
+              this.close();
+              this.onConfirm('');
+            }
+          },
+        }),
+        alignment: DialogAlignment.Center,
+        autoCancel: false,
+        cornerRadius: 14,
+        systemMaterial: background.systemMaterial,
+        backgroundColor: background.backgroundColor,
+        backgroundBlurStyle: background.backgroundBlurStyle,
+      });
+      controller.open();
+      return;
+    }
     this.close();
     this.onConfirm(k);
   }
