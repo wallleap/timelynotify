@@ -6,6 +6,7 @@ import { ClipboardService } from '../../services/ClipboardService';
 import showToast from '../showToast';
 import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
 import { SettingGroup } from '../settings/SettingGroup';
+import { SettingGroupTitle } from '../settings/SettingGroupTitle';
 import { SettingCell } from '../settings/SettingCell';
 import { SettingArrow } from '../settings/SettingArrow';
 
@@ -28,12 +29,7 @@ export struct AppInfoSection {
 
   build() {
     Column({ space: 12 }) {
-      Text('信息')
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.color_text_hint'))
-        .width('100%')
-        .padding({ left: 8 });
+      SettingGroupTitle({ title: '信息' });
 
       Column({ space: 12 }) {
         // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）

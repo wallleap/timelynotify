@@ -7,6 +7,7 @@ import {
 } from '../utils/ImmersiveUtil';
 import { AppearanceSection } from '../components/minesections/AppearanceSection';
 import { SettingGroup } from '../components/settings/SettingGroup';
+import { SettingGroupTitle } from '../components/settings/SettingGroupTitle';
 import { SettingCell } from '../components/settings/SettingCell';
 import { ThemeService } from '../services/ThemeService';
 import { EncryptedNotificationResendService } from '../services/EncryptedNotificationResendService';
@@ -83,12 +84,7 @@ struct PersonalizationSettings {
       }
 
       Column({ space: 12 }) {
-        Text('外观')
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.color_text_hint'))
-          .width('100%')
-          .padding({ left: 8 });
+        SettingGroupTitle({ title: '外观' });
 
         SettingGroup() {
           SettingCell({ title: '主题模式' }) {
@@ -119,12 +115,7 @@ struct PersonalizationSettings {
       .width('100%');
 
       Column({ space: 12 }) {
-        Text('通知行为')
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.color_text_hint'))
-          .width('100%')
-          .padding({ left: 8 });
+        SettingGroupTitle({ title: '通知行为' });
 
         // 只影响后续新同步的加密通知是否补发，不修改消息的 isArchive 留存策略。
         SettingGroup() {

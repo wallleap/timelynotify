@@ -7,6 +7,7 @@ import { ClipboardService } from '../../services/ClipboardService';
 import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
 import { SettingGroup } from '../settings/SettingGroup';
+import { SettingGroupTitle } from '../settings/SettingGroupTitle';
 import { SettingCell } from '../settings/SettingCell';
 import { SettingArrow } from '../settings/SettingArrow';
 import { SettingDivider } from '../settings/SettingDivider';
@@ -32,12 +33,7 @@ export struct AboutSection {
 
   build() {
     Column({ space: 12 }) {
-      Text('关于')
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.color_text_hint'))
-        .width('100%')
-        .padding({ left: 8 });
+      SettingGroupTitle({ title: '关于' });
 
       SettingGroup() {
         // 版本号行（整行点击复制版本信息）
