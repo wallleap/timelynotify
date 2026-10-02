@@ -88,7 +88,7 @@ struct PersonalizationSettings {
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_hint'))
           .width('100%')
-          .padding({ left: 4 });
+          .padding({ left: 8 });
 
         SettingGroup() {
           SettingCell({ title: '主题模式' }) {
@@ -124,7 +124,7 @@ struct PersonalizationSettings {
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_hint'))
           .width('100%')
-          .padding({ left: 4 });
+          .padding({ left: 8 });
 
         // 只影响后续新同步的加密通知是否补发，不修改消息的 isArchive 留存策略。
         SettingGroup() {

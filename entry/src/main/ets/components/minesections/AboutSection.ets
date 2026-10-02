@@ -31,12 +31,13 @@ export struct AboutSection {
   }
 
   build() {
-    Column({ space: 8 }) {
+    Column({ space: 12 }) {
       Text('关于')
-        .fontSize(12)
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.color_text_hint'))
         .width('100%')
-        .padding({ left: 12 });
+        .padding({ left: 8 });
 
       SettingGroup() {
         // 版本号行（整行点击复制版本信息）

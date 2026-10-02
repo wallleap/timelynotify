@@ -32,11 +32,13 @@ export struct NotifySettingsSection {
   }
 
   build() {
-    Column({ space: 16 }) {
+    Column({ space: 12 }) {
       SettingGroup() {
         // 开启应用订阅通知（开关）
-        SettingCell({ title: '开启应用订阅通知', description: this.notifyEnabled ? '已开启' : '已关闭',
-          descriptionColor: this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint') }) {
+        SettingCell({
+          title: '开启应用订阅通知', description: this.notifyEnabled ? '已开启' : '已关闭',
+          descriptionColor: this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint')
+        }) {
           Toggle({ type: ToggleType.Switch, isOn: this.notifyEnabled })
             .selectedColor($r('app.color.color_brand'))
             .onChange((isOn: boolean) => {
@@ -54,9 +56,12 @@ export struct NotifySettingsSection {
 
       // 独立的导出通知卡片（导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
       SettingGroup() {
-        SettingCell({ title: '导出通知',
+        SettingCell({
+          title: '导出通知',
           description: this.exporting ? '正在导出…' : '导出当前服务器本地保存的全部通知',
-          clickable: true, onActivate: () => this.exportMessages() }) {
+          clickable: true,
+          onActivate: () => this.exportMessages()
+        }) {
           // 导出中显示加载指示器，否则显示箭头。
           if (this.exporting) {
             LoadingProgress().width(24).height(24).color($r('app.color.color_brand'));
@@ -68,8 +73,12 @@ export struct NotifySettingsSection {
 
       // 个性化设置入口紧随导出卡片，主题、通知重发与沉浸光感偏好集中在独立页面中管理。
       SettingGroup() {
-        SettingCell({ title: '个性化设置', description: '主题模式、加密通知重发、沉浸光感',
-          clickable: true, onActivate: () => this.openPersonalizationSettings() }) {
+        SettingCell({
+          title: '个性化设置',
+          description: '主题模式、加密通知重发、沉浸光感',
+          clickable: true,
+          onActivate: () => this.openPersonalizationSettings()
+        }) {
           SettingArrow();
         }
       }

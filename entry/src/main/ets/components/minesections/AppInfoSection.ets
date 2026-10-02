@@ -27,18 +27,24 @@ export struct AppInfoSection {
   }
 
   build() {
-    Column({ space: 8 }) {
+    Column({ space: 12 }) {
       Text('信息')
-        .fontSize(12)
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.color_text_hint'))
         .width('100%')
-        .padding({ left: 12 });
+        .padding({ left: 8 });
 
-      Column({ space: 10 }) {
+      Column({ space: 12 }) {
         // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
         SettingGroup() {
-          SettingCell({ title: '构建信息', description: AppInfoService.buildInfoDisplay(this.certFingerprintTail),
-            descriptionMaxLines: 1, clickable: true, onActivate: () => this.openBuildInfo() }) {
+          SettingCell({
+            title: '构建信息',
+            description: AppInfoService.buildInfoDisplay(this.certFingerprintTail),
+            descriptionMaxLines: 1,
+            clickable: true,
+            onActivate: () => this.openBuildInfo()
+          }) {
             // 云端构建才有对应记录页，本地构建不显示箭头。
             if (AppInfoService.hasCloudBuild()) {
               SettingArrow();
