@@ -252,7 +252,7 @@ export default function localUnitTest() {
       // 整组删光时移除展开状态。
       expect(retainExpandableGroups([], ['g1'], totals).length).assertEqual(0);
     });
-    it('exportsEveryLocalNotificationWithDecryptedFields', 0, () => {
+    it('exportsNotificationsFromDifferentLocalSourcesWithoutCurrentDeviceKey', 0, () => {
       const first: NotifyMessage = new NotifyMessage();
       first.id = 1;
       first.title = '第一条';
@@ -261,14 +261,16 @@ export default function localUnitTest() {
       first.image = 'https://example.com/image.png';
       first.encrypted = true;
       first.ciphertext = 'encrypted-data';
-      first.deviceKey = 'device-a';
+      first.deviceKey = notifySourceKey('instance-a', 'server-a', 'device-a');
       const second: NotifyMessage = new NotifyMessage();
-      second.id = 2;
+      second.id = 1;
       second.title = '第二条';
-      second.deviceKey = 'device-a';
-      const text: string = NotifyExportService.serializeMessages([first, second], 'device-a');
+      second.deviceKey = 'legacy-device-b';
+      const text: string = NotifyExportService.serializeMessages([first, second], '');
       const records: Object[] = JSON.parse(text) as Object[];
       expect(records.length).assertEqual(2);
+      expect(text).assertContain('"device_key": "device-a"');
+      expect(text).assertContain('"device_key": "legacy-device-b"');
       expect(text).assertContain('解密后的正文');
       expect(text).assertContain('https://example.com/icon.png');
       expect(text).assertContain('https://example.com/image.png');

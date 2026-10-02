@@ -54,11 +54,11 @@ export struct NotifySettingsSection {
         }
       }
 
-      // 独立的导出通知卡片（导出当前服务器本地保存的全部通知为 txt 文件，内容为 JSON 数组）
+      // 独立的导出通知卡片（导出所有来源的本地未过期通知为 txt 文件，内容为 JSON 数组）
       SettingGroup() {
         SettingCell({
           title: '导出通知',
-          description: this.exporting ? '正在导出…' : '导出当前服务器本地保存的全部通知',
+          description: this.exporting ? '正在导出…' : '导出本地保存的全部未过期通知',
           clickable: true,
           onActivate: () => this.exportMessages()
         }) {
@@ -160,7 +160,7 @@ export struct NotifySettingsSection {
     }
   }
 
-  // 导出当前服务器全部本地通知：调 NotifyExportService.exportAll（读取 + 保存 + 写文件）
+  // 导出所有来源的本地通知：调 NotifyExportService.exportAll（读取 + 保存 + 写文件）
   // 成功后展示条数；失败透出原因
   private async exportMessages(): Promise<void> {
     if (this.exporting) {

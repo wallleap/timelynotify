@@ -40,7 +40,7 @@ class NotifyExportMessage {
   extras: NotifyExportExtras = new NotifyExportExtras();
 }
 
-/** 全量导出结果：UI 层据此展示 Toast。 */
+/** 全部本地通知导出结果：UI 层据此展示 Toast。 */
 export class ExportAllResult {
   // 是否成功写入文件
   ok: boolean = false;
@@ -108,9 +108,9 @@ export class NotifyExportService {
   }
 
   /**
-   * 全量导出当前服务器本地保存的通知为 txt 文件（JSON 数组格式，2 空格缩进）。
+   * 导出本地数据库中所有来源的未过期通知为 txt 文件（JSON 数组格式，2 空格缩进）。
    * 完整流程：
-   *  1. 从本地数据库读取当前 device_key 全部未过期通知，不受列表分页限制
+   *  1. 从本地数据库读取全部未过期通知，不受当前服务器及列表分页限制
    *  2. DocumentViewPicker 拉起系统保存对话框（无需权限），用户选择位置后写入 txt
    *  3. 返回 ExportAllResult 供 UI 层展示 Toast
    *
@@ -120,29 +120,17 @@ export class NotifyExportService {
   static async exportAll(context: common.UIAbilityContext): Promise<ExportAllResult> {
     const result: ExportAllResult = new ExportAllResult();
     try {
-      await ServerManager.getInstance().ensureLoaded();
-      const deviceKey: string = await ServerManager.getInstance().getCurrentDeviceKey(null);
-      if (deviceKey.length === 0) {
-        result.errorMsg = '设备未注册，无法导出';
+      const messages: NotifyMessage[] | null = await MessageCacheStore.loadEveryStoredForExport();
+      if (messages === null) {
+        result.errorMsg = '读取本地通知失败';
         return result;
-      }
-      const server = ServerManager.getInstance().getCurrentServer();
-      const keys: string[] = server ? ServerManager.getInstance().getHistoryKeysForServer(server) : [];
-      const messages: NotifyMessage[] = [];
-      for (let i = 0; i < keys.length; i++) {
-        const portion: NotifyMessage[] | null = await MessageCacheStore.loadAllForExport(keys[i]);
-        if (portion === null) {
-          result.errorMsg = '读取本地通知失败';
-          return result;
-        }
-        messages.push(...portion);
       }
       messages.sort(compareNotifyOrder);
       if (messages.length === 0) {
         result.errorMsg = '暂无可导出的通知';
         return result;
       }
-      const text: string = NotifyExportService.serializeMessages(messages, deviceKey);
+      const text: string = NotifyExportService.serializeMessages(messages, '');
 
       // 系统保存对话框：预设文件名 + txt 过滤；Picker 保存无需申请权限
       const saveOptions = new picker.DocumentSaveOptions();
