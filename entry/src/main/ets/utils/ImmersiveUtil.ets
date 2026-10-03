@@ -48,6 +48,11 @@ const CURRENT_SDK_VERSION: number = deviceInfo.sdkApiVersion;
 /** 判断是否支持 ImmersiveMaterial（API 26+） */
 const SUPPORTS_IMMERSIVE_MATERIAL: boolean = CURRENT_SDK_VERSION >= 26;
 
+/** 沉浸光感设置入口是否可用；仅依据系统 API，和用户当前是否开启无关。 */
+export function supportsImmersiveMaterial(): boolean {
+  return SUPPORTS_IMMERSIVE_MATERIAL;
+}
+
 /** 判断是否支持 backgroundBlurStyle（API 10+） */
 const SUPPORTS_BACKGROUND_BLUR: boolean = CURRENT_SDK_VERSION >= 10;
 

@@ -3,7 +3,8 @@ import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   getDialogMaterial,
   resolveBlurStyle,
-  shouldUseSystemMaterialPath
+  shouldUseSystemMaterialPath,
+  supportsImmersiveMaterial
 } from '../utils/ImmersiveUtil';
 import { AppearanceSection } from '../components/minesections/AppearanceSection';
 import { SettingGroup } from '../components/settings/SettingGroup';
@@ -15,7 +16,7 @@ import showToast from '../components/showToast';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
 /**
- * 个性化设置页：承载主题、沉浸光感与加密通知重发偏好。
+ * 个性化设置页：承载主题、加密通知重发偏好，支持系统材质时额外显示沉浸光感。
  * 主题模式与 MineView 共用 color_mode 页面状态；沉浸光感的持久化和重启逻辑仍由 AppearanceSection 处理。
  */
 @Entry
@@ -112,7 +113,9 @@ struct PersonalizationSettings {
           }
         }
 
-        AppearanceSection();
+        if (supportsImmersiveMaterial()) {
+          AppearanceSection();
+        }
       }
       .width('100%');
 

@@ -76,12 +76,12 @@ export struct NotifySettingsSection {
         }
       }
 
-      // 个性化设置入口紧随导出卡片，主题、通知重发与沉浸光感偏好集中在独立页面中管理。
+      // 个性化设置入口紧随导出卡片；可用设置项随系统能力变化。
       SettingGroup() {
         SettingCell({
           title: '个性化设置',
           icon: $r('app.media.paintbrush_vertical'),
-          description: '主题模式、加密通知重发、沉浸光感',
+          description: '调整外观与通知偏好',
           clickable: true,
           onActivate: () => this.openPersonalizationSettings()
         }) {
@@ -92,7 +92,7 @@ export struct NotifySettingsSection {
     .width('100%');
   }
 
-  // 进入个性化设置页：主题模式、加密通知重发、沉浸光感等偏好集中管理。
+  // 进入个性化设置页；沉浸光感入口由页面按系统能力决定是否显示。
   private async openPersonalizationSettings(): Promise<void> {
     const uiCtx: UIContext = this.getUIContext();
     try {
