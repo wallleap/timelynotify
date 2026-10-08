@@ -138,7 +138,7 @@ export struct MineView {
         // 信息板块（构建信息 + 推送 Token）
         AppInfoSection();
 
-        // 关于板块（当前版本 / 开源代码 / 隐私协议 / 反馈问题）
+        // 关于板块（检测更新 / 开源代码 / 隐私协议 / 反馈问题）及底部版本、备案信息
         AboutSection();
 
         // 底部占位：随内容一起滚动，末尾卡片才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
