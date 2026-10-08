@@ -25,6 +25,8 @@ struct Index {
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   // 当前选中 Tab：经 @StorageLink 双向同步到 AppStorage，NotifyView 通过 @Watch 监听以在切走时退出多选模式
   @StorageLink(KEY_HOME_TAB_INDEX) @Watch('onTabRequested') currentIndex: number = 0;
+  // 底栏视觉选中态提前跟随 HdsTabs 动画；业务状态仍在切换完成后同步。
+  @State barSelectedIndex: number = 0;
   // 通知页多选编辑态（NotifyView 经 @StorageLink 写入）：onBackPress 据此拦截系统返回
   @StorageLink(KEY_NOTIFY_EDITING) notifyIsEditing: boolean = false;
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgress: string = '';
@@ -53,11 +55,11 @@ struct Index {
   tabBuilder(item: TabItem, index: number) {
     Column({ space: 4 }) {
       Stack({ alignContent: Alignment.TopEnd }) {
-        Image(this.currentIndex === index ? item.iconActive : item.icon)
+        Image(this.barSelectedIndex === index ? item.iconActive : item.icon)
           .width(24)
           .height(24)
           .fillColor(
-            this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
+            this.barSelectedIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
           .draggable(false);
         if (index === 0 && this.syncProgress.length > 0) {
           LoadingProgress()
@@ -71,7 +73,7 @@ struct Index {
       Text(item.title)
         .fontSize(12)
         .fontColor(
-          this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
+          this.barSelectedIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
     }
     .width('100%')
     .height('100%')
@@ -97,6 +99,7 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    this.barSelectedIndex = this.currentIndex;
     NotifySyncService.getInstance().setTabIndex(this.currentIndex);
   }
 
@@ -113,6 +116,7 @@ struct Index {
 
   /** AppStorage 外部切换 Tab 时同步 HdsTabs 的控制器，降级 Tabs 则由 index 属性响应。 */
   private onTabRequested(): void {
+    this.barSelectedIndex = this.currentIndex;
     NotifySyncService.getInstance().setTabIndex(this.currentIndex);
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled) && this.hdsSelectedIndex !== this.currentIndex) {
       this.hdsSelectedIndex = this.currentIndex;
@@ -148,8 +152,13 @@ struct Index {
             materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
           }
         })
+        .onSelected((index: number) => {
+          // 手势确定目标后即更新底栏；不提前触发通知同步等业务状态切换。
+          this.barSelectedIndex = index;
+        })
         .onChange((index: number) => {
           this.hdsSelectedIndex = index;
+          this.barSelectedIndex = index;
           this.currentIndex = index;
           NotifySyncService.getInstance().setTabIndex(index);
         })
@@ -170,6 +179,7 @@ struct Index {
         .barBackgroundBlurStyle(resolveBlurStyle('bar')!)
         .barBackgroundColor($r('app.color.color_bg_glass'))
         .onChange((index: number) => {
+          this.barSelectedIndex = index;
           this.currentIndex = index;
           NotifySyncService.getInstance().setTabIndex(index);
         })
