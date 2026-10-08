@@ -1,5 +1,5 @@
 import { common } from '@kit.AbilityKit';
-import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
@@ -8,7 +8,8 @@ import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../common/Co
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
-  shouldUseSystemMaterialPath
+  shouldUseSystemMaterialPath,
+  supportsImmersiveMaterial
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { NotifySettingsSection } from '../components/minesections/NotifySettingsSection';
@@ -347,7 +348,8 @@ export struct MineView {
     }
     this.notificationSettingsOpening = true;
     try {
-      if (deviceInfo.apiAvailable('26.0.0')) {
+      // supportsImmersiveMaterial 仅判断 API 26+，不受用户光感开关或材质加载状态影响。
+      if (supportsImmersiveMaterial()) {
         await notificationManager.openNotificationSettingsWithResult(ctx);
       } else {
         // 旧系统保留原有设置入口；页面恢复可见时仍会再次刷新状态。
