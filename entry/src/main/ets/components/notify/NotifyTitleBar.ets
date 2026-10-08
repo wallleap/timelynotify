@@ -68,7 +68,7 @@ export struct NotifyTitleBar {
   @Builder
   private deletePill() {
     Row() {
-      Image($r('app.media.trash1'))
+      Image($r('app.media.trash'))
         .width(24)
         .height(24)
         .objectFit(ImageFit.Contain)

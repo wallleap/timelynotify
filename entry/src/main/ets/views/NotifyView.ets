@@ -87,6 +87,8 @@ interface ManualDeleteResult {
 
 // 收缩错误胶囊与标题栏之间保留的呼吸间距。
 const COMPACT_BANNER_TOP_GAP: number = 8;
+// 平铺态先读取最近 500 条，触底后每次再从本地缓存读取 500 条。
+const FLAT_PAGE_SIZE: number = 500;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -124,6 +126,8 @@ export struct NotifyView {
   @State totalCachedCount: number = 0;
   // 组内加载更多进行中的 group_key 集合，用于按钮显示 loading 态
   @State groupLoadingMore: Set<string> = new Set<string>();
+  // 平铺态分页状态由页面持有，列表组件只负责触底和底部提示。
+  @State flatLoadingMore: boolean = false;
   // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
   @State groupEnabled: boolean = true;
   // 视图模式：true=显示所有服务器的通知，false=只显示当前服务器
@@ -150,6 +154,8 @@ export struct NotifyView {
   private dialogController: CustomDialogController | null = null;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   private loadSeq: number = 0;
+  // 刷新时保持已浏览的平铺历史深度，避免同步新消息后把旧页截掉。
+  private flatLoadedLimit: number = FLAT_PAGE_SIZE;
   private loadQueued: boolean = false;
   private forceRefreshQueued: boolean = false;
   // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
@@ -182,7 +188,13 @@ export struct NotifyView {
     // 读取分组显示开关（默认开启分组）
     PreferencesUtil.getString(null, PreferencesUtil.KEY_GROUP_ENABLED, 'true')
       .then((value: string) => {
-        this.groupEnabled = value === 'true';
+        const enabled: boolean = value === 'true';
+        if (enabled !== this.groupEnabled) {
+          this.groupEnabled = enabled;
+          this.flatLoadedLimit = FLAT_PAGE_SIZE;
+          this.messages = [];
+          this.refreshVisibleAfterSyncPage(-1);
+        }
       });
     this.loadExpandedGroups();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
@@ -197,10 +209,12 @@ export struct NotifyView {
       this.refresh();
       // 视图模式变化、单服务器切换或 device_key 变更时，清空内存中的旧数据后重建。
       if (viewModeChanged || !this.viewAll || deviceKeysChanged) {
+        this.flatLoadedLimit = FLAT_PAGE_SIZE;
         this.messages = [];
         this.expandedGroups = [];
         this.groupCardHeights = new Map<string, number>();
         this.groupTotals = new Map<string, number>();
+        this.totalCachedCount = 0;
         this.groupLoadingMore = new Set<string>();
       }
       this.loadSeq++;
@@ -371,7 +385,7 @@ export struct NotifyView {
               },
               {
                 content: {
-                  icon: $r('app.media.trash1'),
+                  icon: $r('app.media.trash'),
                   action: (): void => {
                     this.handleDeletePillClicked();
                   }
@@ -487,6 +501,8 @@ export struct NotifyView {
       selectedGroupCounts: this.selectedGroupCounts,
       groupLoadingMore: this.groupLoadingMore,
       groupEnabled: this.groupEnabled,
+      flatHasMore: !this.groupEnabled && this.totalCachedCount > this.messages.length,
+      flatLoadingMore: this.flatLoadingMore,
       statusBarHeight: this.statusBarHeight,
       navBarHeight: this.navBarHeight,
       topInset: this.getListTopInset(),
@@ -516,6 +532,7 @@ export struct NotifyView {
         this.handleAutoScrollEnd();
       },
       onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
+      onLoadMoreFlat: () => this.loadMoreFlat(),
       onToggleSelect: (id: string) => this.toggleSelect(id),
       onSetSelected: (id: string, selected: boolean) => this.setSelected(id, selected),
       onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
@@ -1599,6 +1616,9 @@ export struct NotifyView {
    */
   private toggleGroupEnabled(): void {
     this.groupEnabled = !this.groupEnabled;
+    this.flatLoadedLimit = FLAT_PAGE_SIZE;
+    // 两种模式的首屏取数方式不同，先移除旧模式快照，避免其尾项被当作平铺态游标。
+    this.messages = [];
     this.expandedGroups = [];
     PreferencesUtil.putString(null, PreferencesUtil.KEY_GROUP_ENABLED,
       this.groupEnabled ? 'true' : 'false');
@@ -1606,6 +1626,7 @@ export struct NotifyView {
     if (this.groupEnabled) {
       this.restoreVisibleExpandedGroups();
     }
+    this.refreshVisibleAfterSyncPage(-1);
   }
 
   /** 从 Preferences 恢复全局展开记录；异常或旧格式均安全降级为空数组。 */
@@ -2014,18 +2035,87 @@ export struct NotifyView {
         if (expectedSeq >= 0 && expectedSeq !== seq) {
           return;
         }
-        const keys: string[] = this.viewAll ? this.getAllDeviceKeys() : this.getCurrentHistoryKeys();
-        // 本地缓存加载上限：提高到 500，使更多已缓存消息可被全选/分组选中（网络同步 PAGE_SIZE 仍为 100）
-        const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 500);
-        if (seq === this.loadSeq) {
-          this.messages = refreshed.messages;
-          this.groupTotals = refreshed.totals;
-          // 统计所有可见 device_keys 的缓存消息总数，供"全选"计数使用
+        const keys: string[] = this.getVisibleHistoryKeys();
+        const grouped: boolean = this.groupEnabled;
+        let totals: Map<string, number>;
+        let messages: NotifyMessage[];
+        let requestedFlatLimit: number = this.flatLoadedLimit;
+        if (grouped) {
+          // 先取每组最新 500 条，再补回用户已加载的组内历史深度；同步刷新不能把追加的页抹掉。
+          const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 500);
+          totals = refreshed.totals;
+          messages = refreshed.messages;
+          const loadedCounts: Map<string, number> = new Map<string, number>();
+          for (let i = 0; i < this.messages.length; i++) {
+            const groupKey: string = this.messages[i].group;
+            loadedCounts.set(groupKey, (loadedCounts.get(groupKey) ?? 0) + 1);
+          }
+          const latestCounts: Map<string, number> = new Map<string, number>();
+          const oldestByGroup: Map<string, NotifyMessage> = new Map<string, NotifyMessage>();
+          for (let i = 0; i < messages.length; i++) {
+            const message: NotifyMessage = messages[i];
+            latestCounts.set(message.group, (latestCounts.get(message.group) ?? 0) + 1);
+            const oldest: NotifyMessage | undefined = oldestByGroup.get(message.group);
+            if (!oldest || compareNotifyOrder(oldest, message) < 0) {
+              oldestByGroup.set(message.group, message);
+            }
+          }
+          const loadedKeys: string[] = [];
+          loadedCounts.forEach((_count: number, groupKey: string) => loadedKeys.push(groupKey));
+          for (let i = 0; i < loadedKeys.length; i++) {
+            const groupKey: string = loadedKeys[i];
+            const oldest: NotifyMessage | undefined = oldestByGroup.get(groupKey);
+            if (!oldest) {
+              continue;
+            }
+            const total: number = totals.get(groupKey) ?? 0;
+            const previousTotal: number = this.groupTotals.get(groupKey) ?? total;
+            const targetCount: number = Math.min(total,
+              (loadedCounts.get(groupKey) ?? 0) + Math.max(0, total - previousTotal));
+            const extraCount: number = targetCount - (latestCounts.get(groupKey) ?? 0);
+            if (extraCount > 0) {
+              const older: NotifyMessage[] =
+                await MessageCacheStore.loadAllGroupOlder(keys, groupKey, oldest, extraCount);
+              messages = messages.concat(older);
+            }
+          }
+          messages.sort(compareNotifyOrder);
+        } else {
+          totals = await MessageCacheStore.getAllGroupTotals(keys);
+          let latestTotal: number = 0;
+          totals.forEach((count: number) => latestTotal += count);
+          // 新同步的通知位于顶部；增大读取深度以保住用户已经翻到的历史页。
+          requestedFlatLimit = this.flatLoadedLimit + (this.messages.length > 0
+            ? Math.max(0, latestTotal - this.totalCachedCount) : 0);
+          const flatMessages: NotifyMessage[] | null =
+            await MessageCacheStore.loadAllFlatLatest(keys, requestedFlatLimit);
+          if (flatMessages === null) {
+            return;
+          }
+          messages = flatMessages;
+        }
+        // 加载更多在查询期间提交了新页时，跳过这份旧快照并按最新深度重查，避免列表闪回。
+        if (this.pageRefreshPending) {
+          continue;
+        }
+        if (seq === this.loadSeq && grouped === this.groupEnabled) {
+          this.messages = messages;
+          this.groupTotals = totals;
+          // 统计所有可见 device_keys 的缓存消息总数，供"全选"计数使用。
           let total: number = 0;
-          refreshed.totals.forEach((count: number) => {
+          totals.forEach((count: number) => {
             total += count;
           });
           this.totalCachedCount = total;
+          if (!grouped) {
+            // 若加载更多与刷新重叠，下一轮以较深的分页限额重新读取，防止旧快照覆盖新页。
+            if (this.flatLoadedLimit > requestedFlatLimit) {
+              this.pageRefreshPending = true;
+            }
+            this.flatLoadedLimit = Math.max(this.flatLoadedLimit, requestedFlatLimit);
+          }
+        } else if (seq === this.loadSeq && grouped !== this.groupEnabled) {
+          this.pageRefreshPending = true;
         }
       } while (this.pageRefreshPending);
     } finally {
@@ -2187,9 +2277,11 @@ export struct NotifyView {
    * append 到 this.messages 末尾，buildNotifySections 会自动聚合到已有 section。
    */
   private async loadMoreInGroup(groupKey: string): Promise<void> {
-    if (this.groupLoadingMore.has(groupKey)) {
+    if (!this.groupEnabled || this.groupLoadingMore.has(groupKey)) {
       return;
     }
+    const seq: number = this.loadSeq;
+    const keys: string[] = this.getVisibleHistoryKeys();
     let oldest: NotifyMessage | null = null;
     for (let i = 0; i < this.messages.length; i++) {
       const message: NotifyMessage = this.messages[i];
@@ -2203,8 +2295,10 @@ export struct NotifyView {
     this.groupLoadingMore = new Set<string>(this.groupLoadingMore).add(groupKey);
     try {
       const PAGE_SIZE: number = 500;
-      const keys: string[] = this.getVisibleHistoryKeys();
       const older: NotifyMessage[] = await MessageCacheStore.loadAllGroupOlder(keys, groupKey, oldest, PAGE_SIZE);
+      if (seq !== this.loadSeq || !this.groupEnabled || keys.join('|') !== this.getVisibleHistoryKeys().join('|')) {
+        return;
+      }
       if (older.length > 0) {
         // 去重后 append
         const existingIds: Set<string> = new Set<string>();
@@ -2221,6 +2315,10 @@ export struct NotifyView {
         }
         if (deduped.length > 0) {
           this.messages = this.messages.concat(deduped);
+          // 若同步刷新正在查询，补读一次，避免旧快照覆盖刚追加的组内页。
+          if (this.pageRefreshInFlight) {
+            this.pageRefreshPending = true;
+          }
         }
       }
     } catch (err) {
@@ -2230,6 +2328,49 @@ export struct NotifyView {
       const next = new Set<string>(this.groupLoadingMore);
       next.delete(groupKey);
       this.groupLoadingMore = next;
+    }
+  }
+
+  /** 平铺态触底时按全局时间顺序读取下一批本地历史；不触发网络同步。 */
+  private async loadMoreFlat(): Promise<void> {
+    if (this.groupEnabled || this.flatLoadingMore || this.messages.length === 0 ||
+      this.messages.length >= this.totalCachedCount) {
+      return;
+    }
+    const seq: number = this.loadSeq;
+    const keys: string[] = this.getVisibleHistoryKeys();
+    const oldest: NotifyMessage = this.messages[this.messages.length - 1];
+    this.flatLoadingMore = true;
+    try {
+      const older: NotifyMessage[] | null =
+        await MessageCacheStore.loadAllFlatOlder(keys, oldest, FLAT_PAGE_SIZE);
+      if (seq !== this.loadSeq || this.groupEnabled || keys.join('|') !== this.getVisibleHistoryKeys().join('|')) {
+        return;
+      }
+      if (older === null) {
+        showToast(this.getUIContext(), '加载失败，请重试');
+        return;
+      }
+      if (older.length > 0) {
+        const existing: Set<string> = new Set<string>(this.messages.map((message: NotifyMessage) =>
+          notifyIdentity(message)));
+        const deduped: NotifyMessage[] = older.filter((message: NotifyMessage) =>
+          !existing.has(notifyIdentity(message)));
+        if (deduped.length > 0) {
+          this.messages = this.messages.concat(deduped);
+          this.flatLoadedLimit = Math.max(this.flatLoadedLimit, this.messages.length);
+          if (this.pageRefreshInFlight) {
+            this.pageRefreshPending = true;
+          }
+        }
+      } else {
+        // 总数与列表不一致时重新查询真实缓存数量，避免错误显示“加载更多”。
+        this.refreshVisibleAfterSyncPage(-1);
+      }
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadMoreFlat 异常：%{public}s', err instanceof Error ? err.message : String(err));
+    } finally {
+      this.flatLoadingMore = false;
     }
   }
 

@@ -43,6 +43,9 @@ export struct NotifyMessageList {
   @Prop groupLoadingMore: Set<string> = new Set<string>();
   // 是否启用分组显示（false 时所有消息平铺）
   @Prop @Watch('reloadDataSource') groupEnabled: boolean = true;
+  // 平铺态的本地历史分页状态；分组态继续使用组内「加载更多」。
+  @Prop flatHasMore: boolean = false;
+  @Prop flatLoadingMore: boolean = false;
   @Prop statusBarHeight: number = 0;
   @Prop navBarHeight: number = 0;
   @Prop topInset: number = 0;
@@ -65,6 +68,8 @@ export struct NotifyMessageList {
   };
 
   onLoadMoreInGroup: (groupKey: string) => void = (_groupKey: string) => {
+  };
+  onLoadMoreFlat: () => void = () => {
   };
   onToggleSelect: (id: string) => void = (_id: string) => {
   };
@@ -232,9 +237,20 @@ export struct NotifyMessageList {
       }, (row: NotifyListRow) => row.key);
       ListItem() {
         Row() {
-          Text('没有更多了').fontSize(13).fontColor($r('app.color.color_text_hint'));
+          if (!this.groupEnabled && this.flatLoadingMore) {
+            LoadingProgress().width(16).height(16).color($r('app.color.color_brand'));
+            Text('加载中...').fontSize(13).fontColor($r('app.color.color_text_hint')).margin({ left: 6 });
+          } else if (!this.groupEnabled && this.flatHasMore) {
+            Text('加载更多').fontSize(13).fontColor($r('app.color.color_brand'));
+          } else {
+            Text('没有更多了').fontSize(13).fontColor($r('app.color.color_text_hint'));
+          }
         }.width('100%').height(40).justifyContent(FlexAlign.Center);
-      }
+      }.onClick(() => {
+        if (!this.groupEnabled && this.flatHasMore && !this.flatLoadingMore) {
+          this.onLoadMoreFlat();
+        }
+      });
 
       ListItem() {
         Row()
@@ -258,6 +274,9 @@ export struct NotifyMessageList {
     })
     .onReachEnd(() => {
       this.onListReachEnd();
+      if (!this.groupEnabled && this.flatHasMore && !this.flatLoadingMore) {
+        this.onLoadMoreFlat();
+      }
     })
     .onTouch((event: TouchEvent) => {
       // onScrollStart 也会在 Scroller 发起的带动画滚动开始时触发，不能识别用户输入；

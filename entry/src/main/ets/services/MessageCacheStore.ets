@@ -1016,6 +1016,76 @@ export class MessageCacheStore {
     return totals;
   }
 
+  /** 平铺态首屏：跨所有可见来源按同一全序取最新消息，避免「每组 500 条」造成分页跳项。 */
+  static async loadAllFlatLatest(deviceKeys: string[], limit: number): Promise<NotifyMessage[] | null> {
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return null;
+    }
+    if (deviceKeys.length === 0) {
+      return [];
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const args: Array<string | number> = deviceKeys.slice();
+      args.push(limit);
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) ` +
+        `ORDER BY timestamp DESC, id DESC, device_key DESC LIMIT ?`, args);
+      const messages: NotifyMessage[] = [];
+      try {
+        if (rs.goToFirstRow()) {
+          do {
+            messages.push(rowToMessage(rs));
+          } while (rs.goToNextRow());
+        }
+      } finally {
+        rs.close();
+      }
+      return messages;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadAllFlatLatest 失败：%{public}s', formatError(err));
+      return null;
+    }
+  }
+
+  /** 平铺态下一页：用时间、ID、来源键组成游标，避免跨服务器同时间/ID 时遗漏通知。 */
+  static async loadAllFlatOlder(deviceKeys: string[], before: NotifyMessage,
+    limit: number): Promise<NotifyMessage[] | null> {
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return null;
+    }
+    if (deviceKeys.length === 0) {
+      return [];
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      const args: Array<string | number> = deviceKeys.slice();
+      args.push(before.timestamp, before.timestamp, before.id,
+        before.timestamp, before.id, before.deviceKey, limit);
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) AND ` +
+        `(timestamp < ? OR (timestamp = ? AND id < ?) OR ` +
+        `(timestamp = ? AND id = ? AND device_key < ?)) ` +
+        `ORDER BY timestamp DESC, id DESC, device_key DESC LIMIT ?`, args);
+      const messages: NotifyMessage[] = [];
+      try {
+        if (rs.goToFirstRow()) {
+          do {
+            messages.push(rowToMessage(rs));
+          } while (rs.goToNextRow());
+        }
+      } finally {
+        rs.close();
+      }
+      return messages;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'loadAllFlatOlder 失败：%{public}s', formatError(err));
+      return null;
+    }
+  }
+
   /**
    * 获取指定 device_keys 下所有消息的身份字符串（JSON.stringify([deviceKey, id])）。
    * 用于"全选"时选中全部本地缓存消息，不受列表分页加载数量限制。
