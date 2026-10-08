@@ -26,6 +26,8 @@ export struct AboutSection {
   // 已上架应用的市场详情页；检测到新版本后才打开。
   private readonly appGalleryUrl: string =
     'https://appgallery.huawei.com/app/detail?id=cn.oicode.timelynotify';
+  // 点击备案号时打开工信部备案管理系统。
+  private readonly icpRecordUrl: string = 'https://beian.miit.gov.cn/';
   // 版本号展示（读取自 BundleInfo；异常时使用兜底常量）
   @State versionNameDisplay: string = '1.0.0';
   @State versionCodeDisplay: number = 1000000;
@@ -91,7 +93,8 @@ export struct AboutSection {
           .onClick(() => this.copyVersionInfo());
         Text('赣ICP备20000895号-3A')
           .fontSize(12)
-          .fontColor($r('app.color.color_text_tertiary'));
+          .fontColor($r('app.color.color_text_tertiary'))
+          .onClick(() => this.openIcpRecord());
       }
       .width('100%')
       .alignItems(HorizontalAlign.Center)
@@ -164,6 +167,23 @@ export struct AboutSection {
   // 点击隐私协议行：进入内嵌 WebView 页面
   private async openPrivacy(): Promise<void> {
     await ExternalLinkService.openSharePage(this.getUIContext(), PRIVACY_URL, '隐私协议');
+  }
+
+  // 点击备案号：使用系统链接入口打开工信部备案管理系统。
+  private async openIcpRecord(): Promise<void> {
+    const uiCtx: UIContext = this.getUIContext();
+    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
+    if (!ctx) {
+      showToast(uiCtx, '无法打开备案网站');
+      return;
+    }
+    try {
+      await ctx.openLink(this.icpRecordUrl, { appLinkingOnly: false });
+    } catch (err) {
+      const msg: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, 'AboutSection', '打开备案网站失败：%{public}s', msg);
+      showToast(uiCtx, '无法打开备案网站');
+    }
   }
 
   // 点击反馈问题行：通过 startAbilityByType 拉起系统邮件应用，自动附带设备信息
