@@ -6,12 +6,11 @@ import { ServerEntry } from '../model/ServerEntry';
 import { ServerManager } from '../services/ServerManager';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { NotifyMessageService } from '../services/NotifyMessageService';
-import { MessageCacheStore } from '../services/MessageCacheStore';
-import { DeviceIdPair } from '../services/MessageCacheStore';
+import { DeviceIdPair, MessageCacheStore } from '../services/MessageCacheStore';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { extractHost } from '../utils/ServerUrlUtil';
 import { ServerSwitchDialog } from '../components/notify/ServerSwitchDialog';
-import { ServerKeyDialog, ServerActionMenuDialog, ServerRenameDialog } from '../components/ServerActionDialogs';
+import { ServerActionMenuDialog, ServerKeyDialog, ServerRenameDialog } from '../components/ServerActionDialogs';
 import { ClientTokenDialog } from '../components/ClientTokenDialog';
 import { DecryptionSettingsDialog } from '../components/DecryptionSettingsDialog';
 import { DangerConfirmDialog } from '../components/DangerConfirmDialog';
@@ -28,7 +27,14 @@ import {
   shouldUseLoadedMaterialStyle,
   shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
-import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, IconStyleMode, ScrollEffectType, TextStyleMode } from '@kit.UIDesignKit';
+import {
+  hdsMaterial,
+  HdsNavigation,
+  HdsNavigationTitleMode,
+  IconStyleMode,
+  ScrollEffectType,
+  TextStyleMode
+} from '@kit.UIDesignKit';
 import {
   DOMAIN,
   KEY_HOME_TAB_INDEX,
@@ -58,7 +64,12 @@ import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 import { NotifyExportService } from '../services/NotifyExportService';
-import { belongsToPushInstance, compareNotifyOrder, notifyIdentity, resolveCurrentRemoteServer } from '../utils/NotifyIdentity';
+import {
+  belongsToPushInstance,
+  compareNotifyOrder,
+  notifyIdentity,
+  resolveCurrentRemoteServer
+} from '../utils/NotifyIdentity';
 
 const TAG: string = 'NotifyView';
 
@@ -207,9 +218,14 @@ export struct NotifyView {
 
   @Builder
   fallbackTitleBar() {
-    NotifyTitleBar({ title: this.title, isEditing: this.isEditing, statusBarHeight: this.statusBarHeight,
-      onOpenSettings: () => this.handleMoreClicked(), onToggleSelection: () => this.handleMultiSelectClicked(),
-      onDelete: () => this.handleDeletePillClicked() })
+    NotifyTitleBar({
+      title: this.title,
+      isEditing: this.isEditing,
+      statusBarHeight: this.statusBarHeight,
+      onOpenSettings: () => this.handleMoreClicked(),
+      onToggleSelection: () => this.handleMultiSelectClicked(),
+      onDelete: () => this.handleDeletePillClicked()
+    })
       .onAreaChange((_old: Area, area: Area) => {
         const bottom: number = (area.globalPosition.y as number) + (area.height as number);
         if (bottom >= 0 && bottom !== this.fallbackTitleBarBottom) {
@@ -220,8 +236,12 @@ export struct NotifyView {
 
   @Builder
   customTitleContent() {
-    NotifyTitleBar({ title: this.title, isEditing: this.isEditing, useHdsLayout: true,
-      onOpenSettings: () => this.handleMoreClicked() });
+    NotifyTitleBar({
+      title: this.title,
+      isEditing: this.isEditing,
+      useHdsLayout: true,
+      onOpenSettings: () => this.handleMoreClicked()
+    });
   }
 
   // 单服务或全部模式下 per-server 错误的非阻塞提示条（点击打开对应修复入口）
@@ -239,8 +259,18 @@ export struct NotifyView {
     .width(this.serverErrorBannerCollapsed ? 'auto' : '100%')
     .constraintSize({ maxWidth: '100%' })
     .padding(this.serverErrorBannerCollapsed
-      ? { left: 12, right: 12, top: 7, bottom: 7 }
-      : { left: 16, right: 16, top: 6, bottom: 6 })
+      ? {
+        left: 12,
+        right: 12,
+        top: 7,
+        bottom: 7
+      }
+      : {
+        left: 16,
+        right: 16,
+        top: 6,
+        bottom: 6
+      })
     .backgroundColor($r('app.color.color_bg_warning'))
     .borderRadius(this.serverErrorBannerCollapsed ? 20 : 0)
     // 降级布局的标题栏以 Stack 覆盖正文；Banner 使用标题栏实际底边避让，沉浸布局保持原位。
@@ -259,6 +289,385 @@ export struct NotifyView {
     .onClick(() => {
       this.openFixDialogForFirstError();
     })
+  }
+
+  @Builder
+  refreshContentBody() {
+    // 沉浸光感与降级模式统一使用 Stack 覆盖布局：Banner 浮于列表上层，
+    // 避免正常流布局把列表往下推、或滚动内容覆盖 Banner。
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column() {
+        if (this.syncProgressText.length > 0 || this.syncFeedbackText.length > 0) {
+          this.syncProgressView();
+        }
+        this.refreshListContent();
+      }
+      .width('100%')
+      .height('100%');
+
+      if (this.serverErrorBanner.length > 0) {
+        this.serverErrorBannerView();
+      }
+    }
+    .width('100%')
+    .height('100%');
+  }
+
+  @Builder
+  viewportBody() {
+    Column() {
+      Stack({ alignContent: Alignment.BottomEnd }) {
+        Column() {
+          this.refreshContentBody();
+        }
+        .width('100%')
+        .layoutWeight(1);
+
+        // 右下角"跳到底部"浮动按钮：上滑离开首屏时出现，位于分组按钮上方
+        if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
+          this.scrollToBottomFab();
+        }
+
+        // 右下角"分组/平铺"模式切换浮动按钮
+        // 仅在非编辑模式、有消息时显示
+        if (!this.isEditing && this.messages.length > 0) {
+          this.groupModeToggleFab();
+        }
+      }
+      .width('100%')
+      .layoutWeight(1);
+
+      // 多选模式底部操作栏
+      if (this.isEditing && this.messages.length > 0) {
+        this.editActionBar();
+      }
+    }
+    .width('100%')
+    .height('100%');
+  }
+
+  build() {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
+      HdsNavigation() {
+        this.viewportBody();
+      }
+      .titleBar({
+        enableComponentSafeArea: true,
+        avoidLayoutSafeArea: true,
+        content: {
+          stackBuilder: (): void => {
+            this.customTitleContent();
+          },
+          menu: {
+            value: [
+              {
+                content: {
+                  label: this.isEditing ? '取消' : '多选',
+                  type: TextStyleMode.NORMAL,
+                  action: (): void => {
+                    this.handleMultiSelectClicked();
+                  }
+                }
+              },
+              {
+                content: {
+                  icon: $r('app.media.trash1'),
+                  action: (): void => {
+                    this.handleDeletePillClicked();
+                  }
+                }
+              }
+            ]
+          },
+        },
+        style: {
+          scrollEffectOpts: {
+            enableScrollEffect: true,
+            scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          },
+        }
+      })
+      .hideBackButton(true)
+      .titleMode(HdsNavigationTitleMode.MINI)
+      .bindToScrollable([this.scroller])
+      .width('100%')
+      .height('100%')
+      .bindSheet(this.showDetail, this.detailBuilder(), {
+        height: SheetSize.LARGE,
+        preferType: SheetType.BOTTOM,
+        // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
+        showClose: false,
+        enableFloatingDragBar: true,
+        // 降级时减轻遮罩，让轻量模糊背板下的列表层次更可辨；正文 List 保持实色。
+        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : '#33000000',
+        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
+        onDisappear: () => {
+          this.showDetail = false;
+        }
+      })
+      .backgroundColor($r('app.color.color_bg_page'));
+    } else {
+      Column() {
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          Stack({ alignContent: Alignment.Top }) {
+            this.refreshContentBody();
+            this.fallbackTitleBar();
+          }
+          .width('100%')
+          .height('100%')
+
+          // 非沉浸式分支的右下角「跳到底部」按钮
+          if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
+            this.scrollToBottomFab();
+          }
+
+          // 非沉浸式分支的右下角分组模式切换按钮
+          if (!this.isEditing && this.messages.length > 0) {
+            this.groupModeToggleFab();
+          }
+        }
+        .width('100%')
+        .layoutWeight(1);
+
+        // 多选模式底部操作栏
+        if (this.isEditing && this.messages.length > 0) {
+          this.editActionBar();
+        }
+      }
+      .width('100%')
+      .height('100%')
+      .bindSheet(this.showDetail, this.detailBuilder(), {
+        height: SheetSize.LARGE,
+        preferType: SheetType.BOTTOM,
+        // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
+        showClose: false,
+        enableFloatingDragBar: true,
+        // 两种导航布局共用同一降级效果。
+        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : '#33000000',
+        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
+        onDisappear: () => {
+          this.showDetail = false;
+        }
+      })
+      .backgroundColor($r('app.color.color_bg_page'));
+    }
+  }
+
+  @Builder
+  refreshHeaderBuilder() {
+    NotifyRefreshHeader({
+      refreshState: this.refreshState,
+      topInset: this.getListTopInset()
+    });
+  }
+
+  @Builder
+  listView() {
+    NotifyMessageList({
+      messages: this.messages,
+      isEditing: this.isEditing,
+      selectedIds: this.selectedIds,
+      expandedGroups: this.expandedGroups,
+      groupCardHeights: this.groupCardHeights,
+      groupTotals: this.groupTotals,
+      selectedGroupCounts: this.selectedGroupCounts,
+      groupLoadingMore: this.groupLoadingMore,
+      groupEnabled: this.groupEnabled,
+      statusBarHeight: this.statusBarHeight,
+      navBarHeight: this.navBarHeight,
+      topInset: this.getListTopInset(),
+      immersiveLightEnabled: this.immersiveLightEnabled,
+      listScroller: this.scroller,
+      scrollToBottomSignal: this.scrollToBottomSignal,
+      onListTopChange: (top: number) => {
+        // 下拉刷新会暂时移动列表；只记录静止时的布局起点，避免占位随手势抖动。
+        if (!this.refreshing && this.refreshState === RefreshStatus.Inactive && top !== this.listTop) {
+          this.listTop = top;
+        }
+      },
+      onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
+      this.handleListScroll(scrollOffset, scrollState),
+      onListReachStart: () => {
+        if (this.showScrollToBottom) {
+          this.showScrollToBottom = false;
+        }
+        this.setServerErrorBannerCollapsed(false);
+      },
+      onListReachEnd: () => {
+        if (this.showScrollToBottom) {
+          this.showScrollToBottom = false;
+        }
+      },
+      onAutoScrollEnd: () => {
+        this.handleAutoScrollEnd();
+      },
+      onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
+      onToggleSelect: (id: string) => this.toggleSelect(id),
+      onSetSelected: (id: string, selected: boolean) => this.setSelected(id, selected),
+      onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
+      onSetGroupSelection: (messages: NotifyMessage[], selected: boolean) => this.setGroupSelection(messages, selected),
+      onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
+      onOpenMessage: (message: NotifyMessage) => this.openMessageDetail(message),
+      onOpenGroup: (section: NotifySection) => this.handleGroupHeaderClick(section),
+      onHeightChange: (groupKey: string, height: number) => this.updateGroupCardHeight(groupKey, height),
+      onDeleteOne: (message: NotifyMessage) => this.confirmDeleteOne(message),
+      onDeleteGroup: (section: NotifySection) => this.confirmDeleteGroup(section),
+      onOpenUrl: (url: string) => this.openUrl(url),
+      onCopyCode: (code: string) => this.copyCode(code),
+      onCopyUrl: (url: string) => this.copyUrl(url)
+    });
+  }
+
+  // 多选模式底部操作栏（需要加在 Refresh 外面）
+  @Builder
+  editActionBar() {
+    NotifyEditActionBar({
+      selectedCount: this.selectedIds.length,
+      messageCount: this.totalCachedCount,
+      exporting: this.exportingSelected,
+      navBarHeight: this.navBarHeight,
+      immersiveLightEnabled: this.immersiveLightEnabled,
+      onCancel: () => this.exitEditMode(),
+      onToggleAll: () => this.toggleAllSelection(),
+      onExport: () => this.handleExportSelected(),
+      onDelete: () => this.handleDeleteSelected()
+    });
+  }
+
+  /** 详情正文；沉浸/降级两种 MODAL 标题栏样式共用同一内容。 */
+  @Builder
+  detailContent() {
+    NotifyMessageDetail({
+      message: this.selectedMessage,
+      useImmersiveMaterial: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded),
+      detailScroller: this.detailScroller,
+      onOpenUrl: (url: string) => {
+        this.openUrl(url);
+      },
+      onCopyCode: (code: string) => {
+        this.copyCode(code);
+      },
+      onCopyUrl: (url: string) => {
+        this.copyUrl(url);
+      },
+      onCopyText: (text: string, label: string) => {
+        this.copyText(text, label);
+      },
+      onCopyContent: (text: string) => {
+        this.copyContent(text);
+      },
+      onDelete: () => {
+        if (this.selectedMessage) {
+          this.confirmDeleteOne(this.selectedMessage, true);
+        }
+      }
+    });
+  }
+
+  // ====== 各弹窗打开方法（复用组件，指定目标服务器） ======
+
+  /**
+   * 详情 Sheet 内容：HdsNavigation 使用 MODAL（半模态）标题栏承载标题与关闭按钮，
+   * bindToScrollable 绑定内部 List 后，内容上滚穿入标题栏区域即呈现动态模糊。
+   * 沉浸分支：渐变模糊 + 自适应系统材质；降级分支：通用模糊背板。
+   */
+  @Builder
+  detailBuilder() {
+    if (shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)) {
+      HdsNavigation() {
+        this.detailContent();
+      }
+      .titleBar({
+        enableComponentSafeArea: true,
+        content: {
+          title: { mainTitle: '通知详情' },
+          menu: {
+            value: [
+              {
+                content: {
+                  icon: $r('sys.symbol.xmark'),
+                  type: IconStyleMode.SMALL,
+                  action: (): void => {
+                    this.showDetail = false;
+                  }
+                }
+              }
+            ]
+          }
+        },
+        style: {
+          scrollEffectOpts: {
+            enableScrollEffect: true,
+            scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          }
+        }
+      })
+      .hideBackButton(true)
+      .titleMode(HdsNavigationTitleMode.MODAL)
+      .bindToScrollable([this.detailScroller])
+      .width('100%')
+      .height('100%');
+    } else {
+      HdsNavigation() {
+        this.detailContent();
+      }
+      .titleBar({
+        enableComponentSafeArea: true,
+        content: {
+          title: { mainTitle: '通知详情' },
+          menu: {
+            value: [
+              {
+                content: {
+                  icon: $r('sys.symbol.xmark'),
+                  type: IconStyleMode.SMALL,
+                  action: (): void => {
+                    this.showDetail = false;
+                  }
+                }
+              }
+            ]
+          }
+        },
+        style: {
+          scrollEffectOpts: {
+            enableScrollEffect: true,
+            scrollEffectType: ScrollEffectType.COMMON_BLUR
+          }
+        }
+      })
+      .hideBackButton(true)
+      .titleMode(HdsNavigationTitleMode.MODAL)
+      .bindToScrollable([this.detailScroller])
+      .width('100%')
+      .height('100%');
+    }
+  }
+
+  /**
+   * 切换视图模式（全部 / 单服务器）。
+   * 通过 ServerManager 统一管理，onChange 回调会处理列表刷新。
+   */
+  setViewAll(viewAll: boolean): void {
+    ServerManager.getInstance().setViewAllMode(viewAll);
   }
 
   /**
@@ -356,8 +765,6 @@ export struct NotifyView {
     }
   }
 
-  // ====== 各弹窗打开方法（复用组件，指定目标服务器） ======
-
   private openClientTokenDialogFor(server: ServerEntry): void {
     try {
       // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 THICK 材质，
@@ -434,12 +841,24 @@ export struct NotifyView {
       this.fixActionMenuController = new CustomDialogController({
         builder: ServerActionMenuDialog({
           serverLabel: name.length > 0 && name !== host ? `${name} · ${host}` : host,
-          onCopy: () => { this.handleCopyServer(server); },
-          onResetKey: () => { this.openKeyDialogFor(server); },
-          onClientToken: () => { this.openClientTokenDialogFor(server); },
-          onEncryption: () => { this.openEncryptionDialogFor(server); },
-          onRename: () => { this.openRenameDialogFor(server); },
-          onDelete: () => { this.confirmDeleteServer(server); },
+          onCopy: () => {
+            this.handleCopyServer(server);
+          },
+          onResetKey: () => {
+            this.openKeyDialogFor(server);
+          },
+          onClientToken: () => {
+            this.openClientTokenDialogFor(server);
+          },
+          onEncryption: () => {
+            this.openEncryptionDialogFor(server);
+          },
+          onRename: () => {
+            this.openRenameDialogFor(server);
+          },
+          onDelete: () => {
+            this.confirmDeleteServer(server);
+          },
         }),
         alignment: DialogAlignment.Center,
         autoCancel: true,
@@ -667,35 +1086,18 @@ export struct NotifyView {
     }
   }
 
-  @Builder
-  refreshContentBody() {
-    // 沉浸光感与降级模式统一使用 Stack 覆盖布局：Banner 浮于列表上层，
-    // 避免正常流布局把列表往下推、或滚动内容覆盖 Banner。
-    Stack({ alignContent: Alignment.TopStart }) {
-      Column() {
-        if (this.syncProgressText.length > 0 || this.syncFeedbackText.length > 0) {
-          this.syncProgressView();
-        }
-        this.refreshListContent();
-      }
-      .width('100%')
-      .height('100%');
-
-      if (this.serverErrorBanner.length > 0) {
-        this.serverErrorBannerView();
-      }
-    }
-    .width('100%')
-    .height('100%');
-  }
-
   /** 大批量历史迁移时给出已处理数量，不宣称总数或删除成功数。 */
   @Builder
   private syncProgressView() {
     Text(this.syncProgressText.length > 0 ? this.syncProgressText : this.syncFeedbackText)
       .fontSize(12)
       .fontColor($r('app.color.color_text_secondary'))
-      .padding({ left: 16, right: 16, top: 6, bottom: 6 })
+      .padding({
+        left: 16,
+        right: 16,
+        top: 6,
+        bottom: 6
+      })
       .width('100%');
   }
 
@@ -728,39 +1130,6 @@ export struct NotifyView {
     });
   }
 
-  @Builder
-  viewportBody() {
-    Column() {
-      Stack({ alignContent: Alignment.BottomEnd }) {
-        Column() {
-          this.refreshContentBody();
-        }
-        .width('100%')
-        .layoutWeight(1);
-
-        // 右下角"跳到底部"浮动按钮：上滑离开首屏时出现，位于分组按钮上方
-        if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
-          this.scrollToBottomFab();
-        }
-
-        // 右下角"分组/平铺"模式切换浮动按钮
-        // 仅在非编辑模式、有消息时显示
-        if (!this.isEditing && this.messages.length > 0) {
-          this.groupModeToggleFab();
-        }
-      }
-      .width('100%')
-      .layoutWeight(1);
-
-      // 多选模式底部操作栏
-      if (this.isEditing && this.messages.length > 0) {
-        this.editActionBar();
-      }
-    }
-    .width('100%')
-    .height('100%');
-  }
-
   /**
    * 右下角分组模式切换按钮：
    * - 当前分组模式：显示 group_expand 图标，点击切为平铺
@@ -770,12 +1139,17 @@ export struct NotifyView {
   private groupModeToggleFab() {
     Row() {
       Image(this.groupEnabled ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
-        .width(20).height(20).objectFit(ImageFit.Contain)
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
         .fillColor($r('app.color.color_text_primary'))
         .draggable(false);
     }
-    .width(44).height(44).borderRadius(22)
-    .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+    .width(44)
+    .height(44)
+    .borderRadius(22)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
     .backgroundColor($r('app.color.color_bg_glass_control'))
     .backgroundBlurStyle(resolveBlurStyle('card')!)
     .border({ width: 1, color: $r('app.color.color_border_glass') })
@@ -794,12 +1168,17 @@ export struct NotifyView {
   private scrollToBottomFab() {
     Row() {
       Image($r('app.media.select_more'))
-        .width(20).height(20).objectFit(ImageFit.Contain)
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
         .fillColor($r('app.color.color_text_primary'))
         .draggable(false);
     }
-    .width(44).height(44).borderRadius(22)
-    .justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+    .width(44)
+    .height(44)
+    .borderRadius(22)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
     .backgroundColor($r('app.color.color_bg_glass_control'))
     .backgroundBlurStyle(resolveBlurStyle('card')!)
     .border({ width: 1, color: $r('app.color.color_border_glass') })
@@ -869,181 +1248,6 @@ export struct NotifyView {
     this.isAutoScrolling = false;
   }
 
-  build() {
-    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
-      HdsNavigation() {
-        this.viewportBody();
-      }
-      .titleBar({
-        enableComponentSafeArea: true,
-        avoidLayoutSafeArea: true,
-        content: {
-          stackBuilder: (): void => {
-            this.customTitleContent();
-          },
-          menu: {
-            value: [
-              {
-                content: {
-                  label: this.isEditing ? '取消' : '多选',
-                  type: TextStyleMode.NORMAL,
-                  action: (): void => {
-                    this.handleMultiSelectClicked();
-                  }
-                }
-              },
-              {
-                content: {
-                  icon: $r('app.media.delete'),
-                  action: (): void => {
-                    this.handleDeletePillClicked();
-                  }
-                }
-              }
-            ]
-          },
-        },
-        style: {
-          scrollEffectOpts: {
-            enableScrollEffect: true,
-            scrollEffectType: ScrollEffectType.GRADIENT_BLUR
-          },
-          systemMaterialEffect: {
-            materialType: hdsMaterial.MaterialType.ADAPTIVE,
-            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-          },
-        }
-      })
-      .hideBackButton(true)
-      .titleMode(HdsNavigationTitleMode.MINI)
-      .bindToScrollable([this.scroller])
-      .width('100%')
-      .height('100%')
-      .bindSheet(this.showDetail, this.detailBuilder(), {
-        height: SheetSize.LARGE,
-        preferType: SheetType.BOTTOM,
-        // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
-        showClose: false,
-        enableFloatingDragBar: true,
-        // 降级时减轻遮罩，让轻量模糊背板下的列表层次更可辨；正文 List 保持实色。
-        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? undefined : '#33000000',
-        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
-        onDisappear: () => {
-          this.showDetail = false;
-        }
-      })
-      .backgroundColor($r('app.color.color_bg_page'));
-    } else {
-      Column() {
-        Stack({ alignContent: Alignment.BottomEnd }) {
-          Stack({ alignContent: Alignment.Top }) {
-            this.refreshContentBody();
-            this.fallbackTitleBar();
-          }
-          .width('100%')
-          .height('100%')
-
-          // 非沉浸式分支的右下角「跳到底部」按钮
-          if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
-            this.scrollToBottomFab();
-          }
-
-          // 非沉浸式分支的右下角分组模式切换按钮
-          if (!this.isEditing && this.messages.length > 0) {
-            this.groupModeToggleFab();
-          }
-        }
-        .width('100%')
-        .layoutWeight(1);
-
-        // 多选模式底部操作栏
-        if (this.isEditing && this.messages.length > 0) {
-          this.editActionBar();
-        }
-      }
-      .width('100%')
-      .height('100%')
-      .bindSheet(this.showDetail, this.detailBuilder(), {
-        height: SheetSize.LARGE,
-        preferType: SheetType.BOTTOM,
-        // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
-        showClose: false,
-        enableFloatingDragBar: true,
-        // 两种导航布局共用同一降级效果。
-        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? undefined : '#33000000',
-        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
-        onDisappear: () => {
-          this.showDetail = false;
-        }
-      })
-      .backgroundColor($r('app.color.color_bg_page'));
-    }
-  }
-
-  @Builder
-  refreshHeaderBuilder() {
-    NotifyRefreshHeader({ refreshState: this.refreshState,
-      topInset: this.getListTopInset() });
-  }
-
-  @Builder
-  listView() {
-    NotifyMessageList({ messages: this.messages, isEditing: this.isEditing, selectedIds: this.selectedIds,
-      expandedGroups: this.expandedGroups, groupCardHeights: this.groupCardHeights,
-      groupTotals: this.groupTotals, selectedGroupCounts: this.selectedGroupCounts,
-      groupLoadingMore: this.groupLoadingMore,
-      groupEnabled: this.groupEnabled,
-      statusBarHeight: this.statusBarHeight, navBarHeight: this.navBarHeight,
-      topInset: this.getListTopInset(),
-      immersiveLightEnabled: this.immersiveLightEnabled, listScroller: this.scroller,
-      scrollToBottomSignal: this.scrollToBottomSignal,
-      onListTopChange: (top: number) => {
-        // 下拉刷新会暂时移动列表；只记录静止时的布局起点，避免占位随手势抖动。
-        if (!this.refreshing && this.refreshState === RefreshStatus.Inactive && top !== this.listTop) {
-          this.listTop = top;
-        }
-      },
-      onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
-        this.handleListScroll(scrollOffset, scrollState),
-      onListReachStart: () => {
-        if (this.showScrollToBottom) {
-          this.showScrollToBottom = false;
-        }
-        this.setServerErrorBannerCollapsed(false);
-      },
-      onListReachEnd: () => {
-        if (this.showScrollToBottom) {
-          this.showScrollToBottom = false;
-        }
-      },
-      onAutoScrollEnd: () => {
-        this.handleAutoScrollEnd();
-      },
-      onLoadMoreInGroup: (groupKey: string) => this.loadMoreInGroup(groupKey),
-      onToggleSelect: (id: string) => this.toggleSelect(id),
-      onSetSelected: (id: string, selected: boolean) => this.setSelected(id, selected),
-      onToggleGroupSelection: (messages: NotifyMessage[]) => this.toggleGroupSelection(messages),
-      onSetGroupSelection: (messages: NotifyMessage[], selected: boolean) => this.setGroupSelection(messages, selected),
-      onToggleGroupExpanded: (groupKey: string) => this.toggleGroupExpanded(groupKey),
-      onOpenMessage: (message: NotifyMessage) => this.openMessageDetail(message),
-      onOpenGroup: (section: NotifySection) => this.handleGroupHeaderClick(section),
-      onHeightChange: (groupKey: string, height: number) => this.updateGroupCardHeight(groupKey, height),
-      onDeleteOne: (message: NotifyMessage) => this.confirmDeleteOne(message),
-      onDeleteGroup: (section: NotifySection) => this.confirmDeleteGroup(section),
-      onOpenUrl: (url: string) => this.openUrl(url), onCopyCode: (code: string) => this.copyCode(code),
-      onCopyUrl: (url: string) => this.copyUrl(url) });
-  }
-
   /** 打开消息详情，供列表卡片统一回调。 */
   private openMessageDetail(message: NotifyMessage): void {
     this.selectedMessage = message;
@@ -1052,18 +1256,6 @@ export struct NotifyView {
     setTimeout(() => {
       this.detailScroller.scrollEdge(Edge.Top);
     }, 50);
-  }
-
-  // 多选模式底部操作栏（需要加在 Refresh 外面）
-  @Builder
-  editActionBar() {
-    NotifyEditActionBar({ selectedCount: this.selectedIds.length, messageCount: this.totalCachedCount,
-      exporting: this.exportingSelected, navBarHeight: this.navBarHeight,
-      immersiveLightEnabled: this.immersiveLightEnabled,
-      onCancel: () => this.exitEditMode(),
-      onToggleAll: () => this.toggleAllSelection(),
-      onExport: () => this.handleExportSelected(),
-      onDelete: () => this.handleDeleteSelected() });
   }
 
   /** 切换当前列表的全选状态，供多选底栏回调使用。全选覆盖所有本地缓存消息，不受内存加载数量限制。 */
@@ -1098,108 +1290,6 @@ export struct NotifyView {
       return;
     }
     this.confirmDeleteSelected();
-  }
-
-  /** 详情正文；沉浸/降级两种 MODAL 标题栏样式共用同一内容。 */
-  @Builder
-  detailContent() {
-    NotifyMessageDetail({
-      message: this.selectedMessage,
-      useImmersiveMaterial: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded),
-      detailScroller: this.detailScroller,
-      onOpenUrl: (url: string) => { this.openUrl(url); },
-      onCopyCode: (code: string) => { this.copyCode(code); },
-      onCopyUrl: (url: string) => { this.copyUrl(url); },
-      onCopyText: (text: string, label: string) => { this.copyText(text, label); },
-      onCopyContent: (text: string) => { this.copyContent(text); },
-      onDelete: () => {
-        if (this.selectedMessage) {
-          this.confirmDeleteOne(this.selectedMessage, true);
-        }
-      }
-    });
-  }
-
-  /**
-   * 详情 Sheet 内容：HdsNavigation 使用 MODAL（半模态）标题栏承载标题与关闭按钮，
-   * bindToScrollable 绑定内部 List 后，内容上滚穿入标题栏区域即呈现动态模糊。
-   * 沉浸分支：渐变模糊 + 自适应系统材质；降级分支：通用模糊背板。
-   */
-  @Builder
-  detailBuilder() {
-    if (shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)) {
-      HdsNavigation() {
-        this.detailContent();
-      }
-        .titleBar({
-          enableComponentSafeArea: true,
-          content: {
-            title: { mainTitle: '通知详情' },
-            menu: {
-              value: [
-                {
-                  content: {
-                    icon: $r('sys.symbol.xmark'),
-                    type: IconStyleMode.SMALL,
-                    action: (): void => {
-                      this.showDetail = false;
-                    }
-                  }
-                }
-              ]
-            }
-          },
-          style: {
-            scrollEffectOpts: {
-              enableScrollEffect: true,
-              scrollEffectType: ScrollEffectType.GRADIENT_BLUR
-            },
-            systemMaterialEffect: {
-              materialType: hdsMaterial.MaterialType.ADAPTIVE,
-              materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-            }
-          }
-        })
-        .hideBackButton(true)
-        .titleMode(HdsNavigationTitleMode.MODAL)
-        .bindToScrollable([this.detailScroller])
-        .width('100%')
-        .height('100%');
-    } else {
-      HdsNavigation() {
-        this.detailContent();
-      }
-        .titleBar({
-          enableComponentSafeArea: true,
-          content: {
-            title: { mainTitle: '通知详情' },
-            menu: {
-              value: [
-                {
-                  content: {
-                    icon: $r('sys.symbol.xmark'),
-                    type: IconStyleMode.SMALL,
-                    action: (): void => {
-                      this.showDetail = false;
-                    }
-                  }
-                }
-              ]
-            }
-          },
-          style: {
-            scrollEffectOpts: {
-              enableScrollEffect: true,
-              scrollEffectType: ScrollEffectType.COMMON_BLUR
-            }
-          }
-        })
-        .hideBackButton(true)
-        .titleMode(HdsNavigationTitleMode.MODAL)
-        .bindToScrollable([this.detailScroller])
-        .width('100%')
-        .height('100%');
-    }
   }
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
@@ -1402,8 +1492,6 @@ export struct NotifyView {
     }
   }
 
-
-
   private onIsEditingChanged(): void {
     if (!this.isEditing && this.selectedIds.length > 0) {
       this.selectedIds = [];
@@ -1466,6 +1554,8 @@ export struct NotifyView {
     this.selectedIds = toggleSelectedMessage(this.selectedIds, id);
   }
 
+  // ====== group 分组展示 ======
+
   /** Checkbox 的 onChange 可能由状态回显触发，仅在目标状态不同的时候写入。 */
   private setSelected(id: string, selected: boolean): void {
     const next: string[] = setSelectedMessage(this.selectedIds, id, selected);
@@ -1473,8 +1563,6 @@ export struct NotifyView {
       this.selectedIds = next;
     }
   }
-
-  // ====== group 分组展示 ======
 
   private isGroupExpanded(groupKey: string): boolean {
     return NotifyGroupStateUtils.isExpanded(this.expandedGroups, groupKey);
@@ -1495,14 +1583,14 @@ export struct NotifyView {
     this.updateSavedExpandedGroups(groupKey, expanded);
   }
 
+  // ====== 分组/平铺模式切换（右下角浮动按钮） ======
+
   private toggleGroupExpanded(groupKey: string): void {
     const nextExpanded: boolean = !this.isGroupExpanded(groupKey);
     this.getUIContext().animateTo({ duration: 280, curve: Curve.EaseInOut }, () => {
       this.setGroupExpanded(groupKey, nextExpanded);
     });
   }
-
-  // ====== 分组/平铺模式切换（右下角浮动按钮） ======
 
   /**
    * 切换分组显示模式并持久化。
@@ -1559,7 +1647,8 @@ export struct NotifyView {
   /** 仅用户主动展开/收起时更新全局记录，切换服务器和删除消息不会误清理同名分组状态。 */
   private updateSavedExpandedGroups(groupKey: string, expanded: boolean): void {
     const next: string[] = expanded
-      ? (this.savedExpandedGroups.indexOf(groupKey) >= 0 ? this.savedExpandedGroups : [...this.savedExpandedGroups, groupKey])
+      ? (this.savedExpandedGroups.indexOf(groupKey) >= 0 ? this.savedExpandedGroups :
+        [...this.savedExpandedGroups, groupKey])
       : this.savedExpandedGroups.filter((key: string) => key !== groupKey);
     this.savedExpandedGroups = next;
     PreferencesUtil.putString(null, PreferencesUtil.KEY_NOTIFY_EXPANDED_GROUPS, JSON.stringify(next));
@@ -1604,6 +1693,8 @@ export struct NotifyView {
     }
   }
 
+  // ====== 删除确认与执行 ======
+
   /**
    * 按 Checkbox 目标状态设置某 group 的选中状态，覆盖该组全部本地缓存消息。
    */
@@ -1627,8 +1718,6 @@ export struct NotifyView {
       this.selectedIds = this.selectedIds.filter((id: string) => !removeSet.has(id));
     }
   }
-
-  // ====== 删除确认与执行 ======
 
   private async confirmDanger(title: string, message: string, confirmText: string): Promise<boolean> {
     try {
@@ -1660,6 +1749,7 @@ export struct NotifyView {
       return false;
     }
   }
+
   /** 解析本地身份；不把不同服务器的相同数字 id 合并。 */
   private parseDeletePairs(ids: string[]): DeviceIdPair[] {
     const pairs: DeviceIdPair[] = [];
@@ -1692,7 +1782,8 @@ export struct NotifyView {
     }
   }
 
-  private async deleteManualIdsWhileSyncPaused(ids: string[] | null, groupKey: string | null): Promise<ManualDeleteResult> {
+  private async deleteManualIdsWhileSyncPaused(ids: string[] | null,
+    groupKey: string | null): Promise<ManualDeleteResult> {
     const result: ManualDeleteResult = { deletedIds: [], remoteFailed: 0, localFailed: false };
     const targetIds: string[] = ids ?? (groupKey === null
       ? await MessageCacheStore.getAllIdentities(this.getVisibleHistoryKeys())
@@ -1851,8 +1942,8 @@ export struct NotifyView {
       return;
     }
     this.confirmDanger('清空全部通知', this.viewAll
-        ? '将删除所有服务器的通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。'
-        : '将删除当前服务器的全部通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。',
+      ? '将删除所有服务器的通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。'
+      : '将删除当前服务器的全部通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。',
       '全部删除').then(async (confirmed: boolean) => {
       if (!confirmed) {
         return;
@@ -1909,7 +2000,6 @@ export struct NotifyView {
     return keys;
   }
 
-
   /** 多服务逐页提交后合并列表查询；代际变化时不把旧服务结果写回当前页面。 */
   private async refreshVisibleAfterSyncPage(expectedSeq: number): Promise<void> {
     if (this.pageRefreshInFlight) {
@@ -1932,21 +2022,15 @@ export struct NotifyView {
           this.groupTotals = refreshed.totals;
           // 统计所有可见 device_keys 的缓存消息总数，供"全选"计数使用
           let total: number = 0;
-          refreshed.totals.forEach((count: number) => { total += count; });
+          refreshed.totals.forEach((count: number) => {
+            total += count;
+          });
           this.totalCachedCount = total;
         }
       } while (this.pageRefreshPending);
     } finally {
       this.pageRefreshInFlight = false;
     }
-  }
-
-  /**
-   * 切换视图模式（全部 / 单服务器）。
-   * 通过 ServerManager 统一管理，onChange 回调会处理列表刷新。
-   */
-  setViewAll(viewAll: boolean): void {
-    ServerManager.getInstance().setViewAllMode(viewAll);
   }
 
   private async loadMessages(forceAll: boolean = false): Promise<void> {
@@ -2097,7 +2181,6 @@ export struct NotifyView {
     return null;
   }
 
-
   /**
    * 组内"加载更多"：按时间、ID 和来源组成的全序加载更旧的 100 条。
    * 数据源为本地 DB（首次播种已拉取足够消息，组内分页只读本地）。
@@ -2199,7 +2282,8 @@ export struct NotifyView {
         showToast(uiContext, '上下文获取失败');
         return;
       }
-      const count: number = await NotifyExportService.exportSelected(abilityContext, this.getVisibleHistoryKeys(), this.selectedIds);
+      const count: number =
+        await NotifyExportService.exportSelected(abilityContext, this.getVisibleHistoryKeys(), this.selectedIds);
       if (count < 0) {
         showToast(uiContext, '设备未注册，无法导出');
       } else if (count > 0) {

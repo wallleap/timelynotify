@@ -5,7 +5,7 @@ import {
   resolveBlurStyle,
   shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
-import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, IconStyleMode, ScrollEffectType } from '@kit.UIDesignKit';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { ServerList } from '../components/server/ServerList';
 import { AddServerDialog } from '../components/server/AddServerDialog';
 import { DOMAIN } from '../common/Constant';
@@ -31,13 +31,16 @@ export struct ServerView {
   // 添加服务器弹窗：点击时构造，保证材质读取最新就绪态
   private addServerController: CustomDialogController | null = null;
 
-  // 降级顶栏（API < 26）右侧 + 图标：纯系统图标，无材质链式调用
+  // 降级顶栏（API < 26）右侧 + 图标：自定义 plus.svg，无材质链式调用
   @Builder
   fallbackAddIcon() {
     Row() {
-      SymbolGlyph($r('sys.symbol.plus'))
-        .fontSize(22)
-        .fontColor([$r('app.color.color_text_primary')]);
+      Image($r('app.media.plus'))
+        .width(22)
+        .height(22)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_primary'))
+        .draggable(false);
     }
     .width(38)
     .height(38)
@@ -262,8 +265,7 @@ export struct ServerView {
             value: [
               {
                 content: {
-                  icon: $r('sys.symbol.plus'),
-                  type: IconStyleMode.SMALL,
+                  icon: $r('app.media.plus'),
                   action: (): void => {
                     this.openAddServerDialog();
                   }
