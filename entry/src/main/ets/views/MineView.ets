@@ -1,5 +1,10 @@
+import { common } from '@kit.AbilityKit';
+import { BusinessError, deviceInfo } from '@kit.BasicServicesKit';
+import { notificationManager } from '@kit.NotificationKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ThemeService } from '../services/ThemeService';
+import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../common/Constant';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
   resolveBlurStyle,
@@ -9,12 +14,27 @@ import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } 
 import { NotifySettingsSection } from '../components/minesections/NotifySettingsSection';
 import { AppInfoSection } from '../components/minesections/AppInfoSection';
 import { AboutSection } from '../components/minesections/AboutSection';
+import { SettingArrow } from '../components/settings/SettingArrow';
+import showToast from '../components/showToast';
+
+// 系统通知权限读取状态；本地订阅开关不参与判断。
+enum NotificationPermissionStatus {
+  LOADING,
+  ENABLED,
+  DISABLED,
+  ERROR
+}
 
 // 我的页 - 展示个人设置入口
 @Component
 export struct MineView {
   @State fallbackTitleBarBottom: number = -1;
   @State scrollTop: number = -1;
+  // 顶部卡片展示的系统通知权限状态。
+  @State notificationPermissionStatus: NotificationPermissionStatus = NotificationPermissionStatus.LOADING;
+  // 页面或 Tab 重新可见时刷新权限，避免从系统设置返回后展示旧状态。
+  @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
+  @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onIndexPageVisibleChanged') indexPageVisible: boolean = true;
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage（键值见 ImmersiveUtil）
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -33,9 +53,68 @@ export struct MineView {
   private readonly COLOR_MODE_KEYS: string[] = ['dark', 'light', 'system'];
   // 官方结构：Scroll 绑定自己的 Scroller 实例，供 HdsNavigation.bindToScrollable 用
   private scroller: Scroller = new Scroller();
+  // 多次刷新并发时只采纳最后一次结果，避免旧查询覆盖从设置页返回后的新状态。
+  private permissionQueryId: number = 0;
+  // 防止重复点击权限卡片同时拉起多个系统设置窗口。
+  private notificationSettingsOpening: boolean = false;
 
   aboutToAppear() {
     this.refreshColorMode();
+    this.refreshNotificationPermission();
+  }
+
+  // 系统通知权限卡片：点击整张卡片进入系统设置。
+  @Builder
+  notificationPermissionCard() {
+    Row({ space: 14 }) {
+      // 只给铃铛提供状态色底座，整张卡片仍保持与设置项一致的中性玻璃背景。
+      Row() {
+        Image(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
+          ? $r('app.media.bell_check') : $r('app.media.bell_off'))
+          .width(24)
+          .height(24)
+          .fillColor(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
+            ? $r('app.color.color_success') : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
+              ? $r('app.color.color_error') : $r('app.color.color_warning'));
+      }
+      .width(44)
+      .height(44)
+      .justifyContent(FlexAlign.Center)
+      .borderRadius(22)
+      .backgroundColor(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
+        ? $r('app.color.color_success_bg') : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
+          ? $r('app.color.color_notification_permission_error_bg') : Color.Transparent);
+      Column({ space: 4 }) {
+        Text(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
+          ? '系统通知权限已开启' : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
+            ? '系统通知权限未开启' : this.notificationPermissionStatus === NotificationPermissionStatus.ERROR
+              ? '通知权限状态获取失败' : '正在获取通知权限状态')
+          .fontSize(16)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
+            ? $r('app.color.color_success') : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
+              ? $r('app.color.color_error') : $r('app.color.color_warning'));
+        Text(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
+          ? '现在可以正常接收推送通知，点击可调整提醒方式'
+          : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
+            ? '现在收到通知不会提醒，点击去开启“允许通知”'
+            : this.notificationPermissionStatus === NotificationPermissionStatus.ERROR
+              ? '点击卡片查看通知设置'
+              : '请稍候…')
+          .fontSize(13)
+          .fontColor($r('app.color.color_text_secondary'));
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1);
+      SettingArrow();
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Center)
+    .padding(16)
+    .backgroundBlurStyle(resolveBlurStyle('bar')!)
+    .backgroundColor($r('app.color.color_bg_surface_glass'))
+    .borderRadius(12)
+    .onClick(() => this.openNotificationSettings());
   }
 
   // 降级顶栏：低版本 SDK 手工 Stack 叠层，blurStyle + 半透明底色实现毛玻璃
@@ -132,7 +211,10 @@ export struct MineView {
             (this.fallbackTitleBarBottom >= 0 && this.scrollTop >= 0
               ? Math.max(0, this.fallbackTitleBarBottom - this.scrollTop) : 0));
 
-        // 通知设置板块：开关与权限入口共用卡片，导出通知独立卡片
+        // 顶部直接展示系统通知权限状态，不混入应用内订阅偏好。
+        this.notificationPermissionCard();
+
+        // 通知设置板块：应用内订阅开关独立于顶部系统权限卡片，导出通知单独成卡片
         NotifySettingsSection();
 
         // 信息板块（构建信息 + 推送 Token）
@@ -219,5 +301,66 @@ export struct MineView {
   private async refreshColorMode(): Promise<void> {
     const v: string = await PreferencesUtil.getString(null, PreferencesUtil.KEY_COLOR_MODE, 'system');
     this.colorModeKey = this.COLOR_MODE_KEYS.includes(v) ? v : 'system';
+  }
+
+  // 切回“我的”Tab 时重新查询系统权限。
+  private onHomeTabIndexChanged(): void {
+    if (this.homeTabIndex === 2 && this.indexPageVisible) {
+      this.refreshNotificationPermission();
+    }
+  }
+
+  // 从系统设置或其他页面回到应用时重新查询系统权限。
+  private onIndexPageVisibleChanged(): void {
+    if (this.indexPageVisible && this.homeTabIndex === 2) {
+      this.refreshNotificationPermission();
+    }
+  }
+
+  // 系统状态未知时不误显示为“未开启”；异常仅影响提示卡片。
+  private async refreshNotificationPermission(): Promise<void> {
+    const queryId: number = ++this.permissionQueryId;
+    try {
+      const enabled: boolean = await notificationManager.isNotificationEnabled();
+      if (queryId === this.permissionQueryId) {
+        this.notificationPermissionStatus = enabled
+          ? NotificationPermissionStatus.ENABLED : NotificationPermissionStatus.DISABLED;
+      }
+    } catch (err) {
+      const message: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, 'MineView', '读取通知权限失败：%{public}s', message);
+      if (queryId === this.permissionQueryId) {
+        this.notificationPermissionStatus = NotificationPermissionStatus.ERROR;
+      }
+    }
+  }
+
+  // 通过顶部卡片打开系统通知设置；API 26+ 窗口关闭后立即刷新权限状态。
+  private async openNotificationSettings(): Promise<void> {
+    if (this.notificationSettingsOpening) {
+      return;
+    }
+    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(this.getUIContext());
+    if (!ctx) {
+      showToast(this.getUIContext(), '上下文获取失败');
+      return;
+    }
+    this.notificationSettingsOpening = true;
+    try {
+      if (deviceInfo.apiAvailable('26.0.0')) {
+        await notificationManager.openNotificationSettingsWithResult(ctx);
+      } else {
+        // 旧系统保留原有设置入口；页面恢复可见时仍会再次刷新状态。
+        await notificationManager.openNotificationSettings(ctx);
+      }
+    } catch (err) {
+      const e: BusinessError = err as BusinessError;
+      hilog.warn(DOMAIN, 'MineView', 'openNotificationSettings 失败：code=%{public}d msg=%{public}s',
+        e.code, e.message);
+      showToast(this.getUIContext(), '无法打开通知设置');
+    } finally {
+      this.notificationSettingsOpening = false;
+      this.refreshNotificationPermission();
+    }
   }
 }

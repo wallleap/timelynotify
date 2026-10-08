@@ -1,7 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { notificationManager } from '@kit.NotificationKit';
 import { common } from '@kit.AbilityKit';
 import { PreferencesUtil } from '../../utils/PreferencesUtil';
 import { NotifyExportService } from '../../services/NotifyExportService';
@@ -12,17 +11,16 @@ import { DOMAIN } from '../../common/Constant';
 import { SettingGroup } from '../settings/SettingGroup';
 import { SettingCell } from '../settings/SettingCell';
 import { SettingArrow } from '../settings/SettingArrow';
-import { SettingDivider } from '../settings/SettingDivider';
 
 const TAG: string = 'NotifySettingsSec';
 
 /**
- * 「通知设置」板块：开启订阅通知开关和通知权限设置共用卡片，导出通知独立成卡片。
+ * 「通知设置」板块：应用内订阅开关、导出通知与个性化设置。
  * 全自治：自身管理 notifyEnabled/exporting 状态，业务下沉到各 Service。
  */
 @Component
 export struct NotifySettingsSection {
-  // 通知授权开关状态（系统级，应用无法直接关闭，只能引导用户去系统设置）
+  // 应用内订阅通知偏好；系统通知权限由 MineView 顶部卡片单独管理。
   @State notifyEnabled: boolean = false;
   // 是否正在执行通知导出（读取本地缓存 + 保存全程置 true，防止重复触发）
   @State exporting: boolean = false;
@@ -45,16 +43,6 @@ export struct NotifySettingsSection {
             .onChange((isOn: boolean) => {
               this.onNotifyToggle(isOn);
             });
-        }
-
-        SettingDivider();
-
-        // 通知权限设置（点击拉起系统通知管理）
-        SettingCell({
-          title: '通知权限设置', icon: $r('app.media.file_lock'),
-          clickable: true, onActivate: () => this.openNotifySettings()
-        }) {
-          SettingArrow();
         }
       }
 
@@ -111,7 +99,7 @@ export struct NotifySettingsSection {
   }
 
   // 开关切换：弹应用内确认对话框（仅为合规提示，不调系统 API）
-  // 真正的通知开关由【通知权限设置】入口控制系统层
+  // 真正的通知开关由 MineView 顶部权限卡片控制系统层
   //
   // 判断逻辑：Toggle.onChange 可能在两种场景被触发——
   //   1. 用户点击：传入的 isOn 与当前 this.notifyEnabled 相反（Toggle 翻转）
@@ -139,7 +127,7 @@ export struct NotifySettingsSection {
         this.notifyEnabled = !isOn;
         return;
       }
-      if (result.index === 1) { // 确认：写盘 + 翻转本地状态（纯 UI 层；系统通知权限由【通知权限设置】入口控制）
+      if (result.index === 1) { // 确认：写盘 + 翻转本地状态（纯 UI 层；系统通知权限由 MineView 顶部卡片控制）
         this.notifyEnabled = isOn;
         PreferencesUtil.putString(null, PreferencesUtil.KEY_NOTIFY_ENABLED, isOn ? 'true' : 'false');
         return;
@@ -148,22 +136,6 @@ export struct NotifySettingsSection {
       this.notifyEnabled = isOn;
       this.notifyEnabled = !isOn;
     });
-  }
-
-  // 拉起系统应用通知设置页（用户可在其中真正开启/关闭通知）
-  private async openNotifySettings(): Promise<void> {
-    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(this.getUIContext());
-    if (!ctx) {
-      showToast(this.getUIContext(), '上下文获取失败');
-      return;
-    }
-    try {
-      await notificationManager.openNotificationSettings(ctx);
-    } catch (err) {
-      const e: BusinessError = err as BusinessError;
-      hilog.warn(DOMAIN, TAG, 'openNotificationSettings 失败：code=%{public}d msg=%{public}s', e.code, e.message);
-      showToast(this.getUIContext(), '无法打开通知设置');
-    }
   }
 
   // 导出所有来源的本地通知：调 NotifyExportService.exportAll（读取 + 保存 + 写文件）

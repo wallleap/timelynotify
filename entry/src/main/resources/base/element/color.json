@@ -153,6 +153,10 @@
       "value": "#1BA854"
     },
     {
+      "name": "color_success_bg",
+      "value": "#1A1BA854"
+    },
+    {
       "name": "color_warning",
       "value": "#D97706"
     },
@@ -167,6 +171,10 @@
     {
       "name": "color_error_bg",
       "value": "#33D84A4A"
+    },
+    {
+      "name": "color_notification_permission_error_bg",
+      "value": "#1AD84A4A"
     },
     {
       "name": "color_info",
