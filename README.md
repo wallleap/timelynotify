@@ -113,6 +113,7 @@ TODO:
   服务 → 服务器列表 ServerList → 选择服务器 → switchTo(id)
     ├─ currentId = id → persist → emitChange（UI 刷新标题）
     └─ 异步 syncKeyForServer（新 server 的 key 验证/还原/重置）
+  服务页「服务器详情」Sheet 在标题下直接显示服务器名称和 URL；长文本截断以避免挤占下方操作列表。
 
 ┌─────────────────────────────────────────────────────────────────┐
 │               迁移远程消息（NotifyMessageService）               │

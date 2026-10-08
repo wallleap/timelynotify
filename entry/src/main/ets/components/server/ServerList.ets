@@ -217,8 +217,30 @@ export struct ServerList {
           left: 16,
           right: 12,
           top: 28,
-          bottom: 10
+          bottom: 8
         });
+
+        // 名称与地址直接跟在详情标题后，不再另占一张卡片；长文本限制高度以保留操作区空间。
+        Column({ space: 4 }) {
+          Text(this.selectedServer.name && this.selectedServer.name.length > 0
+            ? this.selectedServer.name : extractHost(this.selectedServer.baseURL))
+            .fontSize(18)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.color_text_primary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%');
+
+          Text(this.selectedServer.baseURL)
+            .fontSize(14)
+            .fontColor($r('app.color.color_text_secondary'))
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .width('100%');
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Start)
+        .padding({ left: 16, right: 16, bottom: 12 });
 
         this.detailContent()
       }
@@ -231,9 +253,6 @@ export struct ServerList {
   detailContent() {
     Scroll(this.detailScroller) {
       Column({ space: 16 }) {
-        // 服务器信息
-        this.detailServerInfo();
-
         // 操作列表
         Column({ space: 0 }) {
           this.detailActionItem('复制地址和 Key', () => {
@@ -286,30 +305,6 @@ export struct ServerList {
     // 拖到 LARGE 全屏档时根 Column 获得确定高度，内容超高由此 Scroll 内部滚动
     .scrollBar(BarState.Off)
     .align(Alignment.Top);
-  }
-
-  @Builder
-  detailServerInfo() {
-    Column({ space: 8 }) {
-      Text(this.selectedServer && this.selectedServer.name && this.selectedServer.name.length > 0
-        ? this.selectedServer.name : extractHost(this.selectedServer ? this.selectedServer.baseURL : ''))
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.color_text_primary'));
-
-      Text(this.selectedServer ? this.selectedServer.baseURL : '')
-        .fontSize(13)
-        .fontColor($r('app.color.color_text_hint'))
-        .maxLines(2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis });
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
-    .padding(16)
-    .backgroundColor(
-      shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-        ? $r('app.color.color_bg_surface_glass') : $r('app.color.color_bg_surface'))
-    .borderRadius(12);
   }
 
   @Builder
