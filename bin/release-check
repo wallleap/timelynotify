@@ -127,7 +127,7 @@ BASH_VER="${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}"
 if (( BASH_VERSINFO[0] >= 3 && BASH_VERSINFO[1] >= 2 )); then
   pass "bash 版本: $BASH_VER"
 else
-  fail "bash 版本过低: $BASH_VER（需 ≥ 3.2）" "升级 bash：brew install bash（macOS）/ 系统包管理器"
+  fail "bash 版本过低: ${BASH_VER}（需 ≥ 3.2）" "升级 bash：brew install bash（macOS）/ 系统包管理器"
 fi
 
 # 基础工具逐一检查
@@ -136,7 +136,7 @@ for cmd in "${REQUIRED_CMDS[@]}"; do
   if command -v "$cmd" >/dev/null 2>&1; then
     pass "命令存在: $cmd ( $(command -v $cmd) )"
   else
-    fail "缺少命令: $cmd" "安装：brew install $cmd（macOS）/ apt-get install -y $cmd（Linux）"
+    fail "缺少命令: $cmd" "安装：brew install ${cmd}（macOS）/ apt-get install -y ${cmd}（Linux）"
   fi
 done
 
@@ -148,7 +148,7 @@ if command -v git >/dev/null 2>&1; then
   if (( GIT_MAJ > 2 || (GIT_MAJ == 2 && GIT_MIN >= 23) )); then
     pass "git 版本: $GIT_VER (支持 git switch)"
   else
-    warn "git 版本偏低: $GIT_VER（bin/release 用到 git switch，建议 ≥ 2.23）" \
+    warn "git 版本偏低: ${GIT_VER}（bin/release 用到 git switch，建议 ≥ 2.23）" \
          "升级：brew install git / 或在脚本中将『git switch X』替换为『git checkout X』"
   fi
 fi
@@ -162,15 +162,15 @@ for cmd in "${OPTIONAL_CMDS[@]}"; do
     case "$cmd" in
       java|keytool)
         if [ "$WITH_BUILD" -eq 1 ]; then
-          fail "缺少命令: $cmd（--with-build 模式需要）" "安装 JDK 8+：brew install openjdk@17"
+          fail "缺少命令: ${cmd}（--with-build 模式需要）" "安装 JDK 8+：brew install openjdk@17"
         else
-          warn "缺少命令: $cmd（--with-build 检查签名时需要）" "安装 JDK：brew install openjdk@17"
+          warn "缺少命令: ${cmd}（--with-build 检查签名时需要）" "安装 JDK：brew install openjdk@17"
         fi ;;
       node|npm)
         if [ "$WITH_BUILD" -eq 1 ]; then
-          warn "缺少命令: $cmd（若无 NODE_HOME 覆盖则 DevEco SDK 需自带 Node）" ""
+          warn "缺少命令: ${cmd}（若无 NODE_HOME 覆盖则 DevEco SDK 需自带 Node）" ""
         else
-          warn "缺少命令: $cmd（本地构建时需要，CI 容器已内置）" ""
+          warn "缺少命令: ${cmd}（本地构建时需要，CI 容器已内置）" ""
         fi ;;
     esac
   fi
@@ -258,12 +258,12 @@ CUR_BRANCH="$(git branch --show-current 2>/dev/null || true)"
 if [ -n "$CUR_BRANCH" ] && [ "$CUR_BRANCH" != "$RELEASE_BRANCH" ]; then
   # 如果本地 fetch 过了，做 merge-base 判断（避免发版内容漏合入）
   if git merge-base --is-ancestor HEAD "origin/$RELEASE_BRANCH" 2>/dev/null; then
-    pass "当前分支 $CUR_BRANCH 的提交已合入 origin/$RELEASE_BRANCH（发版内容完整）"
+    pass "当前分支 $CUR_BRANCH 的提交已合入 origin/${RELEASE_BRANCH}（发版内容完整）"
   elif [ "$SKIP_NET" -eq 0 ] && git rev-parse -q --verify "origin/$RELEASE_BRANCH" >/dev/null; then
     warn "当前分支 $CUR_BRANCH 有未合入 origin/$RELEASE_BRANCH 的提交 —— 正式发版时将『不包含』这些改动" \
-         "如需包含：先 PR/Merge 到 $RELEASE_BRANCH，或 git switch $RELEASE_BRANCH 再 bin/release"
+         "如需包含：先 PR/Merge 到 ${RELEASE_BRANCH}，或 git switch $RELEASE_BRANCH 再 bin/release"
   else
-    warn "当前在分支 $CUR_BRANCH，正式发版时 bin/release 会自动 switch 到 $RELEASE_BRANCH" ""
+    warn "当前在分支 ${CUR_BRANCH}，正式发版时 bin/release 会自动 switch 到 $RELEASE_BRANCH" ""
   fi
 fi
 
@@ -280,7 +280,7 @@ while IFS= read -r CANDIDATE; do
   fi
 done < <(git tag --list 'v[0-9]*' 2>/dev/null)
 if [ -n "$LATEST_TAG" ]; then
-  pass "最近版本 tag: $LATEST_TAG（${LATEST_STAGE}，versionCode=$LATEST_CODE）；发版时选择 major/minor/patch 和 beta/正式版"
+  pass "最近版本 tag: ${LATEST_TAG}（${LATEST_STAGE}，versionCode=${LATEST_CODE}）；发版时选择 major/minor/patch 和 beta/正式版"
 else
   warn "尚未有合法的 v* 版本 tag；发版菜单将按 0.0.0 展示候选版本" "请在 bin/release 的菜单中选择版本增量与发布阶段"
 fi
@@ -323,7 +323,7 @@ HVIGORW="${HVIGORW:-$HVIGORW_DEFAULT}"
 for dir_var in DEVECO_SDK_HOME NODE_HOME; do
   VAL="${!dir_var}"
   if [ -d "$VAL" ]; then
-    pass "$dir_var = $VAL（目录存在）"
+    pass "$dir_var = ${VAL}（目录存在）"
   else
     fail "$dir_var 不存在：$VAL" "设置正确的 SDK 路径：export $dir_var=/正确路径（DevEco 安装目录下）"
   fi
@@ -377,7 +377,7 @@ if [ -f "$BPF" ]; then
           if [ -f "$v" ]; then
             pass "签名配置文件存在: $k = $v"
           else
-            fail "签名配置文件缺失: $k = $v（本地 hvigor 自动签名会失败）" \
+            fail "签名配置文件缺失: $k = ${v}（本地 hvigor 自动签名会失败）" \
                  "打开 DevEco Studio → Project Structure → Signing Configs 重新配置一次"
           fi
           ;;
@@ -385,7 +385,7 @@ if [ -f "$BPF" ]; then
           if [ "$v" = "SHA256withECDSA" ]; then
             pass "签名算法正确: signAlg = $v"
           else
-            warn "签名算法: $v（HarmonyOS 官方推荐 SHA256withECDSA，其他算法可能被 AGC 拒签）" ""
+            warn "签名算法: ${v}（HarmonyOS 官方推荐 SHA256withECDSA，其他算法可能被 AGC 拒签）" ""
           fi
           ;;
         keyAlias)
@@ -406,7 +406,7 @@ if [ -f "$BPF" ]; then
          "CI 流程会自动使用 hap-sign-tool.jar 重签名（不受影响）；但本地 bin/build 不会产出 signed HAP"
   fi
 else
-  fail "未找到 $BPF（项目结构被破坏）" ""
+  fail "未找到 ${BPF}（项目结构被破坏）" ""
 fi
 
 # C4. AppScope/app.json5 格式合法
@@ -515,7 +515,7 @@ if [ -z "${NO_GH:-}" ] && [ "$SKIP_NET" -eq 0 ]; then
         if grep -Fxq "$sec" "$SECRET_LIST"; then
           pass "GitHub Secret 已配置: $sec"
         else
-          fail "GitHub Secret 缺失: $sec（CI Job 必败）" \
+          fail "GitHub Secret 缺失: ${sec}（CI Job 必败）" \
                "到 https://github.com/$REPO_SLUG/settings/secrets/actions 添加"
         fi
       done
