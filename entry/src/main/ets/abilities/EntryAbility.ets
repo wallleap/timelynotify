@@ -8,6 +8,7 @@ import { AppContextStore } from '../common/AppContextStore';
 import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
 import { NotifySyncService } from '../services/NotifySyncService';
+import { AppUpdateService } from '../services/AppUpdateService';
 import {
   ensureImmersiveMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
@@ -88,6 +89,8 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     hilog.info(DOMAIN, TAG, 'Ability onForeground');
     NotifySyncService.getInstance().startForeground();
+    // 启动或回前台时静默检测更新；短时间内重复进入由服务层节流。
+    AppUpdateService.onForeground(this.context);
     // 回前台自动刷新通知列表（后台→前台切换场景）
     this.bumpNotifyRefreshSignal();
     // 打开应用后未读角标已无意义，清除桌面图标角标

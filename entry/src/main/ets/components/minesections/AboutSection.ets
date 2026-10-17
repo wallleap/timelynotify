@@ -1,10 +1,10 @@
 import { common } from '@kit.AbilityKit';
-import { updateManager } from '@kit.AppGalleryKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { DOMAIN } from '../../common/Constant';
+import { DOMAIN, KEY_APP_UPDATE_AVAILABLE } from '../../common/Constant';
 import { AppInfoService, SOURCE_CODE_URL } from '../../services/AppInfoService';
+import { AppUpdateCheckStatus, AppUpdateService } from '../../services/AppUpdateService';
 import { ExternalLinkService, PRIVACY_URL } from '../../services/ExternalLinkService';
 import { FeedbackService } from '../../services/FeedbackService';
 import { ClipboardService } from '../../services/ClipboardService';
@@ -35,6 +35,8 @@ export struct AboutSection {
   @State versionCodeDisplay: number = 1000000;
   // 避免连续点击并发调用应用市场更新检测接口。
   @State checkingUpdate: boolean = false;
+  // 静默或手动检测到新版本时，在检测更新行右侧显示提示点。
+  @StorageProp(KEY_APP_UPDATE_AVAILABLE) updateAvailable: boolean = false;
   // 签名证书指纹尾 8 位（点击复制版本信息时一并复制）
   @State certFingerprintTail: string = '';
 
@@ -53,7 +55,16 @@ export struct AboutSection {
           title: '检测更新', icon: $r('app.media.update'),
           clickable: true, onActivate: () => this.checkUpdate()
         }) {
-          SettingArrow();
+          Row({ space: 8 }) {
+            if (this.updateAvailable) {
+              Row()
+                .width(8)
+                .height(8)
+                .borderRadius(4)
+                .backgroundColor($r('app.color.color_error'));
+            }
+            SettingArrow();
+          }
         }
 
         SettingDivider();
@@ -144,10 +155,10 @@ export struct AboutSection {
     }
     this.checkingUpdate = true;
     try {
-      const result: updateManager.CheckUpdateResult = await updateManager.checkAppUpdate(ctx);
-      if (result.updateAvailable === updateManager.UpdateAvailableCode.LATER_VERSION_EXIST) {
+      const status: AppUpdateCheckStatus = await AppUpdateService.checkManually(ctx);
+      if (status === AppUpdateCheckStatus.AVAILABLE) {
         this.showUpdateDialog(uiCtx, ctx);
-      } else if (result.updateAvailable === updateManager.UpdateAvailableCode.LATER_VERSION_NOT_EXIST) {
+      } else if (status === AppUpdateCheckStatus.CURRENT) {
         showToast(uiCtx, '已是最新版本');
       } else {
         showToast(uiCtx, '检测更新失败，请稍后重试');
@@ -186,9 +197,11 @@ export struct AboutSection {
 
   // 用户确认后打开应用市场；跳转失败时保留在当前页面并提示。
   private async openAppGallery(uiCtx: UIContext, ctx: common.UIAbilityContext): Promise<void> {
+    AppUpdateService.markMarketOpened();
     try {
       await ctx.openLink(this.appGalleryUrl, { appLinkingOnly: false });
     } catch (err) {
+      AppUpdateService.cancelMarketRecheck();
       const msg: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, 'AboutSection', '打开应用市场失败：%{public}s', msg);
       showToast(uiCtx, '无法打开应用市场');

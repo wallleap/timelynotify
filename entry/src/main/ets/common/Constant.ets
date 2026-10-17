@@ -19,3 +19,6 @@ export const KEY_INDEX_PAGE_VISIBLE: string = 'indexPageVisible';
 export const KEY_NOTIFY_SYNC_PROGRESS: string = 'notifySyncProgress';
 export const KEY_NOTIFY_SYNC_FEEDBACK: string = 'notifySyncFeedback';
 export const KEY_NOTIFY_SYNC_REVISION: string = 'notifySyncRevision';
+
+/** AppStorage 键：应用市场检测到新版本时为 true，供「检测更新」入口显示提示点。 */
+export const KEY_APP_UPDATE_AVAILABLE: string = 'appUpdateAvailable';
