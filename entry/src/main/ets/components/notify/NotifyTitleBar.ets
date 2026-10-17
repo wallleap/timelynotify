@@ -7,11 +7,15 @@ export struct NotifyTitleBar {
   @Prop isEditing: boolean = false;
   @Prop statusBarHeight: number = 0;
   @Prop useHdsLayout: boolean = false;
+  // 通知列表离开顶部时，为标题栏右侧的搜索图标按钮预留位置。
+  @Prop searchCollapsed: boolean = false;
   onOpenSettings: () => void = () => {
   };
   onToggleSelection: () => void = () => {
   };
   onDelete: () => void = () => {
+  };
+  onSearch: () => void = () => {
   };
 
   build() {
@@ -35,6 +39,9 @@ export struct NotifyTitleBar {
 
         this.selectionPill();
         this.deletePill();
+        if (this.searchCollapsed && !this.isEditing) {
+          this.searchPill();
+        }
       }
       .width('100%')
       .padding({
@@ -87,6 +94,27 @@ export struct NotifyTitleBar {
   }
 
   @Builder
+  private searchPill() {
+    Row() {
+      Image($r('app.media.search'))
+        .width(24)
+        .height(24)
+        .objectFit(ImageFit.Contain)
+        .draggable(false)
+        .fillColor($r('app.color.color_text_primary'));
+    }
+    .height(38)
+    .width(38)
+    .borderRadius(38)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .backgroundColor($r('app.color.color_bg_glass_control'))
+    .onClick(() => this.onSearch());
+  }
+
+  @Builder
   private titleContent(reserveMenuSpace: boolean) {
     Row({ space: 8 }) {
       Row({ space: 2 }) {
@@ -114,7 +142,7 @@ export struct NotifyTitleBar {
       .hitTestBehavior(reserveMenuSpace ? HitTestMode.None : HitTestMode.Default);
 
       if (reserveMenuSpace) {
-        Row().width(116).height(1).hitTestBehavior(HitTestMode.None);
+        Row().width(this.searchCollapsed ? 168 : 116).height(1).hitTestBehavior(HitTestMode.None);
       }
     }
     .width('100%').alignItems(VerticalAlign.Center);

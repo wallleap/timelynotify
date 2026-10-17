@@ -100,6 +100,9 @@ const SEARCH_TRANSITION_DURATION: number = 240;
 const SEARCH_ENTRY_TOP_OFFSET: number = 68;
 const SEARCH_TITLE_TOP_OFFSET: number = 16;
 const SEARCH_TITLE_RIGHT_EXTRA: number = 52;
+// 离开顶部与回顶使用不同阈值，避免手指回弹时搜索入口反复展开、收缩。
+const SEARCH_COLLAPSE_OFFSET: number = 16;
+const SEARCH_EXPAND_OFFSET: number = 2;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -144,9 +147,18 @@ export struct NotifyView {
   // 当前仅提供搜索交互预览；本地历史查询将在缓存层接口接入后实现。
   @State searchActive: boolean = false;
   @State searchQuery: string = '';
+  // 普通浏览态离开列表顶部后，将搜索入口缩成标题栏右侧图标。
+  @State searchCollapsed: boolean = false;
+  // 标题下搜索栏与标题栏圆形搜索按钮之间的跨层过渡进度。
+  @State searchCollapseTransitionVisible: boolean = false;
+  @State searchCollapseProgress: number = 0;
+  @State searchViewportWidth: number = 400;
   // 过渡期使用独立于 HDS 标题栏裁剪区域的临时搜索胶囊。
   @State searchTransitionVisible: boolean = false;
   @State searchTransitionProgress: number = 0;
+  // 右侧搜索按钮展开到标题栏输入框时，使用外层临时胶囊保持位移和宽度连续。
+  @State searchCompactTransitionVisible: boolean = false;
+  @State searchCompactTransitionProgress: number = 0;
   // 视图模式：true=显示所有服务器的通知，false=只显示当前服务器
   @State viewAll: boolean = true;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
@@ -181,6 +193,8 @@ export struct NotifyView {
   private searchInputController: TextInputController = new TextInputController();
   // 阻止过渡中重复点击造成标题栏与临时胶囊状态错位。
   private searchTransitioning: boolean = false;
+  // 滚动方向可能在动画中改变；结束时按列表实际位置校正一次。
+  private searchCollapseTransitioning: boolean = false;
   // 详情 Sheet 内部 List 的滚动控制器，与 Sheet 内 HdsNavigation.bindToScrollable 共享以驱动标题栏动态模糊。
   private detailScroller: Scroller = new Scroller();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
@@ -256,12 +270,15 @@ export struct NotifyView {
       title: this.title,
       isEditing: this.isEditing,
       statusBarHeight: this.statusBarHeight,
+      searchCollapsed: this.searchCollapsed,
       onOpenSettings: () => this.handleMoreClicked(),
       onToggleSelection: () => this.handleMultiSelectClicked(),
-      onDelete: () => this.handleDeletePillClicked()
+      onDelete: () => this.handleDeletePillClicked(),
+      onSearch: () => this.enterSearch()
     })
-      .opacity(this.searchActive ? 0 : 1)
-      .hitTestBehavior(this.searchActive ? HitTestMode.None : HitTestMode.Default)
+      .opacity(this.searchActive || this.searchCompactTransitionVisible ? 0 : 1)
+      .hitTestBehavior(this.searchActive || this.searchCompactTransitionVisible ?
+        HitTestMode.None : HitTestMode.Default)
       .onAreaChange((_old: Area, area: Area) => {
         const bottom: number = (area.globalPosition.y as number) + (area.height as number);
         if (bottom >= 0 && bottom !== this.fallbackTitleBarBottom) {
@@ -279,9 +296,10 @@ export struct NotifyView {
         title: this.title,
         isEditing: this.isEditing,
         useHdsLayout: true,
+        searchCollapsed: this.searchCollapsed,
         onOpenSettings: () => this.handleMoreClicked()
       })
-        .opacity(this.searchTransitionVisible ? 0 : 1);
+        .opacity(this.searchTransitionVisible || this.searchCompactTransitionVisible ? 0 : 1);
     }
   }
 
@@ -339,7 +357,7 @@ export struct NotifyView {
     .width('100%')
     .height(SEARCH_BAR_HEIGHT)
     .padding({ left: 16, right: 16 })
-    .opacity(this.searchTransitionVisible ? 0 : 1);
+    .opacity(this.searchTransitionVisible || this.searchCompactTransitionVisible ? 0 : 1);
   }
 
   /** 默认入口展示为文本胶囊，避免点击时提前唤起键盘。 */
@@ -369,7 +387,100 @@ export struct NotifyView {
     .width('100%')
     .height(SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP)
     .padding({ left: 16, right: 16, bottom: SEARCH_BAR_GAP })
-    .opacity(this.searchTransitionVisible ? 0 : 1);
+    .opacity(this.searchTransitionVisible || this.searchCollapseTransitionVisible ? 0 : 1);
+  }
+
+  /** 位于 HDS 外层的滚动收缩胶囊，避免跨标题栏时被 bottomBuilder 裁剪。 */
+  @Builder
+  private searchCollapseTransitionBar() {
+    Row({ space: 4 }) {
+      Image($r('app.media.search'))
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_hint'))
+        .draggable(false);
+      Text('搜索通知')
+        .fontSize(16)
+        .fontColor($r('app.color.color_text_hint'))
+        .maxLines(1)
+        .opacity(1 - this.searchCollapseProgress);
+    }
+    .width((this.searchViewportWidth - 32) * (1 - this.searchCollapseProgress) +
+      (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38) *
+      this.searchCollapseProgress)
+    .height(SEARCH_BAR_HEIGHT - (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 : 6) *
+      this.searchCollapseProgress)
+    .padding({ left: 14 - 2 * this.searchCollapseProgress })
+    .borderRadius(22)
+    .clip(true)
+    // 跨层移动期间系统材质不会连续绘制，临时层使用同主题毛玻璃兜底。
+    .backgroundColor($r('app.color.color_bg_glass_control'))
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    .position({ x: 16, y: shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
+      this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET :
+      Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + SEARCH_BAR_GAP })
+    .translate({
+      x: (this.searchViewportWidth - 32 - (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
+        SEARCH_BAR_HEIGHT : 38)) * this.searchCollapseProgress,
+      y: (this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
+        (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
+          this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET :
+          Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + SEARCH_BAR_GAP)) *
+        this.searchCollapseProgress
+    });
+  }
+
+  /** 从标题栏右侧图标原位展开，结束后由真正的输入框接管焦点和系统材质。 */
+  @Builder
+  private searchCompactTransitionBar() {
+    Row({ space: 4 }) {
+      Image($r('app.media.search'))
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_hint'))
+        .draggable(false);
+      Text('搜索通知')
+        .fontSize(16)
+        .fontColor($r('app.color.color_text_hint'))
+        .maxLines(1)
+        .opacity(this.searchCompactTransitionProgress);
+    }
+    .width((shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38) *
+      (1 - this.searchCompactTransitionProgress) +
+      (this.searchViewportWidth - 32 - SEARCH_TITLE_RIGHT_EXTRA) * this.searchCompactTransitionProgress)
+    .height((shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38) *
+      (1 - this.searchCompactTransitionProgress) + SEARCH_BAR_HEIGHT * this.searchCompactTransitionProgress)
+    .padding({ left: 12 + 2 * this.searchCompactTransitionProgress })
+    .borderRadius(22)
+    .clip(true)
+    .backgroundColor($r('app.color.color_bg_glass_control'))
+    .backgroundBlurStyle(resolveBlurStyle('card')!)
+    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    .position({
+      x: this.searchViewportWidth - 16 - (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
+        SEARCH_BAR_HEIGHT : 38),
+      y: this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET
+    })
+    .translate({
+      x: (16 - (this.searchViewportWidth - 16 -
+        (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38))) *
+        this.searchCompactTransitionProgress,
+      y: (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 : -10) *
+        this.searchCompactTransitionProgress
+    });
+
+    Text('取消')
+      .fontSize(16)
+      .fontColor($r('app.color.color_text_primary'))
+      .width(SEARCH_TITLE_RIGHT_EXTRA - 8)
+      .height(SEARCH_BAR_HEIGHT)
+      .opacity(this.searchCompactTransitionProgress)
+      .align(Alignment.Center)
+      .position({ x: this.searchViewportWidth - 16 - (SEARCH_TITLE_RIGHT_EXTRA - 8),
+        y: this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET });
   }
 
   /** 过渡胶囊位于外层 Stack，移动时不会被 HDS 的 bottomBuilder 裁剪。 */
@@ -444,6 +555,7 @@ export struct NotifyView {
     .position({ x: 0, y: this.searchActive ? this.statusBarHeight + 6 :
       (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? this.statusBarHeight + 56 :
         Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56)) + SEARCH_BAR_GAP })
+    .opacity(this.searchCollapseTransitionVisible ? 0 : 1)
     .zIndex(2);
   }
 
@@ -468,7 +580,23 @@ export struct NotifyView {
 
   /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
   private enterSearch(): void {
-    if (this.searchActive || this.isEditing || this.searchTransitioning) {
+    if (this.searchActive || this.isEditing || this.searchTransitioning || this.searchCollapseTransitioning) {
+      return;
+    }
+    // 收起状态从右侧图标原位展开，结束后再挂载输入框和键盘。
+    if (this.searchCollapsed) {
+      this.searchTransitioning = true;
+      this.searchCompactTransitionProgress = 0;
+      this.searchCompactTransitionVisible = true;
+      this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+        this.searchCompactTransitionProgress = 1;
+      });
+      setTimeout(() => {
+        this.searchActive = true;
+        this.searchCompactTransitionVisible = false;
+        this.searchTransitioning = false;
+        setTimeout(() => focusControl.requestFocus('notify_search_input'), 32);
+      }, SEARCH_TRANSITION_DURATION);
       return;
     }
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
@@ -503,6 +631,21 @@ export struct NotifyView {
     }
     this.searchInputController.stopEditing();
     this.searchQuery = '';
+    // 从输入框反向收回右侧图标，保留进入搜索前的列表滚动位置。
+    if (this.searchCollapsed) {
+      this.searchTransitioning = true;
+      this.searchCompactTransitionProgress = 1;
+      this.searchCompactTransitionVisible = true;
+      this.searchActive = false;
+      this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+        this.searchCompactTransitionProgress = 0;
+      });
+      setTimeout(() => {
+        this.searchCompactTransitionVisible = false;
+        this.searchTransitioning = false;
+      }, SEARCH_TRANSITION_DURATION);
+      return;
+    }
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       this.searchTransitioning = true;
       this.searchTransitionProgress = 1;
@@ -647,14 +790,45 @@ export struct NotifyView {
             },
             bottomBuilder: {
               builder: (): void => {
-                if (!this.searchActive && !this.isEditing) {
+                if (!this.searchActive && !this.isEditing &&
+                  (!this.searchCollapsed || this.searchCollapseTransitionVisible)) {
                   this.searchBottomBar();
                 }
               },
-              height: this.searchActive || this.isEditing ? 0 : SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP
+              height: this.searchActive || this.isEditing ? 0 : this.searchCollapseTransitionVisible ?
+                (SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP) * (1 - this.searchCollapseProgress) :
+                this.searchCollapsed ? 0 : SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP
             },
             menu: {
-              value: this.searchActive || this.searchTransitionVisible ? [] : [
+              maxCount: 3,
+              value: this.searchActive || this.searchTransitionVisible || this.searchCompactTransitionVisible ? [] :
+                this.searchCollapsed && !this.isEditing ? [
+                {
+                  content: {
+                    label: '多选',
+                    type: TextStyleMode.NORMAL,
+                    action: (): void => {
+                      this.handleMultiSelectClicked();
+                    }
+                  }
+                },
+                {
+                  content: {
+                    icon: $r('app.media.trash'),
+                    action: (): void => {
+                      this.handleDeletePillClicked();
+                    }
+                  }
+                },
+                {
+                  content: {
+                    icon: $r('app.media.search'),
+                    action: (): void => {
+                      this.enterSearch();
+                    }
+                  }
+                }
+              ] : [
                 {
                   content: {
                     label: this.isEditing ? '取消' : '多选',
@@ -714,22 +888,42 @@ export struct NotifyView {
         if (this.searchTransitionVisible) {
           this.searchTransitionBar();
         }
+        if (this.searchCollapseTransitionVisible) {
+          this.searchCollapseTransitionBar();
+        }
+        if (this.searchCompactTransitionVisible) {
+          this.searchCompactTransitionBar();
+        }
 
       }
       .width('100%')
-      .height('100%');
+      .height('100%')
+      .onAreaChange((_old: Area, area: Area) => {
+        const width: number = area.width as number;
+        if (width > 0 && width !== this.searchViewportWidth) {
+          this.searchViewportWidth = width;
+        }
+      });
     } else {
       Column() {
         Stack({ alignContent: Alignment.BottomEnd }) {
           Stack({ alignContent: Alignment.Top }) {
             this.refreshContentBody();
             this.fallbackTitleBar();
-            if (!this.isEditing) {
+            if (!this.isEditing && (!this.searchCollapsed || this.searchActive ||
+              this.searchCollapseTransitionVisible)) {
               this.searchBar();
             }
           }
           .width('100%')
           .height('100%')
+
+          if (this.searchCollapseTransitionVisible) {
+            this.searchCollapseTransitionBar();
+          }
+          if (this.searchCompactTransitionVisible) {
+            this.searchCompactTransitionBar();
+          }
 
           // 非沉浸式分支的右下角「跳到底部」按钮
           if (this.showScrollToBottom && !this.searchActive && !this.isEditing && this.messages.length > 0) {
@@ -751,6 +945,12 @@ export struct NotifyView {
       }
       .width('100%')
       .height('100%')
+      .onAreaChange((_old: Area, area: Area) => {
+        const width: number = area.width as number;
+        if (width > 0 && width !== this.searchViewportWidth) {
+          this.searchViewportWidth = width;
+        }
+      })
       .bindSheet(this.showDetail, this.detailBuilder(), {
         height: SheetSize.LARGE,
         preferType: SheetType.BOTTOM,
@@ -810,6 +1010,7 @@ export struct NotifyView {
       onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
       this.handleListScroll(scrollOffset, scrollState),
       onListReachStart: () => {
+        this.setSearchCollapsed(false);
         if (this.showScrollToBottom) {
           this.showScrollToBottom = false;
         }
@@ -1511,6 +1712,7 @@ export struct NotifyView {
    * 「跳到底部」程序滚动期间整体屏蔽，否则动画产生的正向滚动会让按钮中途重现闪烁。
    */
   private handleListScroll(scrollOffset: number, scrollState: ScrollState): void {
+    this.updateSearchCollapsedFromOffset();
     if (this.isAutoScrolling || scrollState === ScrollState.Idle) {
       return;
     }
@@ -1541,6 +1743,40 @@ export struct NotifyView {
         this.showScrollToBottom = false;
       }
     }
+  }
+
+  /** 只在越过阈值或回到顶部时切换一次，不跟随每帧滚动重建 HDS 标题栏。 */
+  private updateSearchCollapsedFromOffset(): void {
+    if (this.searchActive || this.isEditing || this.searchTransitioning ||
+      this.searchCollapseTransitioning || this.messages.length === 0) {
+      return;
+    }
+    const offset: number = this.scroller.currentOffset().yOffset;
+    if (!this.searchCollapsed && offset >= SEARCH_COLLAPSE_OFFSET) {
+      this.setSearchCollapsed(true);
+    } else if (this.searchCollapsed && offset <= SEARCH_EXPAND_OFFSET) {
+      this.setSearchCollapsed(false);
+    }
+  }
+
+  /** 动画完成后才切换 HDS 菜单数量，避免滚动过程中按钮被重排到屏幕外。 */
+  private setSearchCollapsed(collapsed: boolean): void {
+    if (this.searchCollapsed === collapsed || this.searchActive || this.isEditing ||
+      this.searchCollapseTransitioning) {
+      return;
+    }
+    this.searchCollapseTransitioning = true;
+    this.searchCollapseProgress = collapsed ? 0 : 1;
+    this.searchCollapseTransitionVisible = true;
+    this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+      this.searchCollapseProgress = collapsed ? 1 : 0;
+    });
+    setTimeout(() => {
+      this.searchCollapsed = collapsed;
+      this.searchCollapseTransitionVisible = false;
+      this.searchCollapseTransitioning = false;
+      this.updateSearchCollapsedFromOffset();
+    }, SEARCH_TRANSITION_DURATION);
   }
 
   /**
