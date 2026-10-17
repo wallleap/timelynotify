@@ -1,25 +1,46 @@
 # 及时通知
 
-通知图片保留 Bark 语义：`icon` 在列表和详情标题区左侧显示，`image` 在列表右侧显示缩略图，并在详情正文下方显示大图。从旧版本升级时，已缓存的图标会自动迁移到
-`icon` 字段。
+TimelyNotify 是使用 ArkTS 开发的鸿蒙端通知 App，希望能尽量对齐 iOS 端的 Bark 功能。
 
-TimelyNotify 是使用 ArkTS 开发的鸿蒙端通知 App。
+**下载链接**：<https://appgallery.huawei.com/link/invite-test-wap?taskId=8121c9f6a1255c454c2016bea2f7cce9>（在鸿蒙设备上打开链接）
 
-下载链接：<https://appgallery.huawei.com/link/invite-test-wap?taskId=8121c9f6a1255c454c2016bea2f7cce9>
+![](https://cdn.wallleap.cn/img/pic/illustration/20261017112747515.png?imageSlim)
+
+![](https://cdn.wallleap.cn/img/pic/illustration/20261017112714810.png?imageSlim)
+
+
 
 服务器端 [timelynotify-server](https://github.com/wallleap/timelynotify-server) 修改自 Bark-server，因此可以只部署这个服务，实现一个
-push 链接同时发送到 iOS 和 HarmonyOS。
+push 链接同时发送通知到 iOS 和 HarmonyOS
 
 > 强烈建议自建服务，相关文档：<https://docs.timelynotify.oicode.cn/deploy/>
 
 TODO:
 
-- [x] 客户端端到端解密（AES128/AES192/AES256，CBC/ECB/GCM，按服务器独立配置）
-- [ ] 多语言
+- [ ] 多语言支持，主要是支持英文
+- [ ] 一多开发，适配更多设备
+    - [ ] 手机端横屏
+    - [ ] 平板端
+    - [ ] 手表
 - [ ] 等 PushKit API 完善点，实现更多推送参数
     - 鸿蒙 Push Kit 通知点击使用 `actionType=0` 携带定位数据：`action=alert`（默认）同步后打开对应详情，
-      单服务器视图会切到来源服务；`none` 只回通知首页，`url` 优先。通知栏不提供复制等操作按钮。
-- [ ] 内容处理（详情已支持复制全文、复制链接/验证码，后续能力待完善）
+      单服务器视图会切到来源服务；`none` 只回通知首页，`url` 优先。通知中心的卡片不提供复制等操作按钮。
+- [ ] 通知内容处理（详情已支持复制全文、复制链接/验证码，后续能力待完善）
+- [ ] 能自己上传音频，传 `sound` 字段作为通知提示音
+    - 目前鸿蒙 PushKit 还不能实现，只能在开发时内置到 `rawfile` 目录中（本地通知可以）
+- [ ] 通知卡片展示 `image` 和 `icon`
+    - 目前只能显示一个到右侧（华为 Push 的 `notification.image` 字段）
+    - 左侧的（`overlayIcon`）目前只有语音通讯类能申请（有频次限制）
+- [ ] 应用未启动接收消息能存本地数据库
+- [ ] 客户端端到端解密（AES128/AES192/AES256，CBC/ECB/GCM，按服务器独立配置）
+    - [x] 应用在前台时解密
+    - [ ] 应用在未启动时解密，不再显示占位文字
+
+> 目前只申请了 `SUBSCRIPTION` 订阅类权益，能实现的操作有限
+>
+> **应用未启动**的这两项无法完美实现，推送后台通知可以实现把通知存入数据库，但有频次限制；应用未启动解密这个，鸿蒙暂无 iOS 的`UNNotificationServiceExtension`（有一个推送语音播报消息 `RemoteNotificationExtensionAbility`，但也有限制）
+>
+> 希望华为后面能把这些放开一点限制，或学苹果的做法
 
 ## 功能说明
 
