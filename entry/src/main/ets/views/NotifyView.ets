@@ -96,10 +96,14 @@ const SEARCH_BAR_GAP: number = 8;
 // 列表自身已有 16vp 顶部间距，此处不再重复留白。
 const SEARCH_BAR_BOTTOM_GAP: number = 0;
 const SEARCH_TRANSITION_DURATION: number = 240;
+// 右侧小图标横向展开的距离更长，使用稍长时长避免宽度与文字同时突变。
+const SEARCH_COMPACT_TRANSITION_DURATION: number = 320;
 // 标题下方搜索入口与 MINI 标题栏搜索框的相对位置及宽度差。
 const SEARCH_ENTRY_TOP_OFFSET: number = 68;
 const SEARCH_TITLE_TOP_OFFSET: number = 16;
 const SEARCH_TITLE_RIGHT_EXTRA: number = 52;
+// 外层 Stack 与 HDS 标题栏的坐标原点相差约 8vp，补偿后图标与输入框共用同一中心线。
+const SEARCH_COMPACT_HDS_TOP_CORRECTION: number = 8;
 // 离开顶部与回顶使用不同阈值，避免手指回弹时搜索入口反复展开、收缩。
 const SEARCH_COLLAPSE_OFFSET: number = 16;
 const SEARCH_EXPAND_OFFSET: number = 2;
@@ -276,7 +280,8 @@ export struct NotifyView {
       onDelete: () => this.handleDeletePillClicked(),
       onSearch: () => this.enterSearch()
     })
-      .opacity(this.searchActive || this.searchCompactTransitionVisible ? 0 : 1)
+      .opacity(this.searchActive ? 0 : this.searchCompactTransitionVisible ?
+        1 - this.searchCompactTransitionProgress : 1)
       .hitTestBehavior(this.searchActive || this.searchCompactTransitionVisible ?
         HitTestMode.None : HitTestMode.Default)
       .onAreaChange((_old: Area, area: Area) => {
@@ -299,7 +304,8 @@ export struct NotifyView {
         searchCollapsed: this.searchCollapsed,
         onOpenSettings: () => this.handleMoreClicked()
       })
-        .opacity(this.searchTransitionVisible || this.searchCompactTransitionVisible ? 0 : 1);
+        .opacity(this.searchTransitionVisible ? 0 : this.searchCompactTransitionVisible ?
+          1 - this.searchCompactTransitionProgress : 1);
     }
   }
 
@@ -437,23 +443,24 @@ export struct NotifyView {
   private searchCompactTransitionBar() {
     Row({ space: 4 }) {
       Image($r('app.media.search'))
-        .width(20)
-        .height(20)
+        .width(24 - 4 * this.searchCompactTransitionProgress)
+        .height(24 - 4 * this.searchCompactTransitionProgress)
         .objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.color_text_hint'))
+        .fillColor($r('app.color.color_text_primary'))
+        .opacity(1 - 0.4 * this.searchCompactTransitionProgress)
         .draggable(false);
       Text('搜索通知')
         .fontSize(16)
         .fontColor($r('app.color.color_text_hint'))
         .maxLines(1)
-        .opacity(this.searchCompactTransitionProgress);
+        .opacity(Math.max(0, (this.searchCompactTransitionProgress - 0.35) / 0.65));
     }
     .width((shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38) *
       (1 - this.searchCompactTransitionProgress) +
       (this.searchViewportWidth - 32 - SEARCH_TITLE_RIGHT_EXTRA) * this.searchCompactTransitionProgress)
     .height((shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38) *
       (1 - this.searchCompactTransitionProgress) + SEARCH_BAR_HEIGHT * this.searchCompactTransitionProgress)
-    .padding({ left: 12 + 2 * this.searchCompactTransitionProgress })
+    .padding({ left: 10 + 4 * this.searchCompactTransitionProgress })
     .borderRadius(22)
     .clip(true)
     .backgroundColor($r('app.color.color_bg_glass_control'))
@@ -462,13 +469,14 @@ export struct NotifyView {
     .position({
       x: this.searchViewportWidth - 16 - (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
         SEARCH_BAR_HEIGHT : 38),
-      y: this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET
+      y: this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
+        (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_COMPACT_HDS_TOP_CORRECTION : 0)
     })
     .translate({
       x: (16 - (this.searchViewportWidth - 16 -
         (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38))) *
         this.searchCompactTransitionProgress,
-      y: (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 : -10) *
+      y: (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 : -3) *
         this.searchCompactTransitionProgress
     });
 
@@ -477,10 +485,11 @@ export struct NotifyView {
       .fontColor($r('app.color.color_text_primary'))
       .width(SEARCH_TITLE_RIGHT_EXTRA - 8)
       .height(SEARCH_BAR_HEIGHT)
-      .opacity(this.searchCompactTransitionProgress)
+      .opacity(Math.max(0, (this.searchCompactTransitionProgress - 0.45) / 0.55))
       .align(Alignment.Center)
       .position({ x: this.searchViewportWidth - 16 - (SEARCH_TITLE_RIGHT_EXTRA - 8),
-        y: this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET });
+        y: this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
+          (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_COMPACT_HDS_TOP_CORRECTION : 3) });
   }
 
   /** 过渡胶囊位于外层 Stack，移动时不会被 HDS 的 bottomBuilder 裁剪。 */
@@ -552,7 +561,7 @@ export struct NotifyView {
     .width('100%')
     .height(SEARCH_BAR_HEIGHT)
     .padding({ left: 16, right: 16 })
-    .position({ x: 0, y: this.searchActive ? this.statusBarHeight + 6 :
+    .position({ x: 0, y: this.searchActive ? this.statusBarHeight + 13 :
       (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? this.statusBarHeight + 56 :
         Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56)) + SEARCH_BAR_GAP })
     .opacity(this.searchCollapseTransitionVisible ? 0 : 1)
@@ -588,15 +597,15 @@ export struct NotifyView {
       this.searchTransitioning = true;
       this.searchCompactTransitionProgress = 0;
       this.searchCompactTransitionVisible = true;
-      this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+      this.getUIContext().animateTo({ duration: SEARCH_COMPACT_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
         this.searchCompactTransitionProgress = 1;
       });
       setTimeout(() => {
         this.searchActive = true;
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
-        setTimeout(() => focusControl.requestFocus('notify_search_input'), 32);
-      }, SEARCH_TRANSITION_DURATION);
+        setTimeout(() => focusControl.requestFocus('notify_search_input'), 64);
+      }, SEARCH_COMPACT_TRANSITION_DURATION);
       return;
     }
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
@@ -637,13 +646,13 @@ export struct NotifyView {
       this.searchCompactTransitionProgress = 1;
       this.searchCompactTransitionVisible = true;
       this.searchActive = false;
-      this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+      this.getUIContext().animateTo({ duration: SEARCH_COMPACT_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
         this.searchCompactTransitionProgress = 0;
       });
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
-      }, SEARCH_TRANSITION_DURATION);
+      }, SEARCH_COMPACT_TRANSITION_DURATION);
       return;
     }
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
