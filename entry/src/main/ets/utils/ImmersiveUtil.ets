@@ -95,6 +95,13 @@ export function ensureImmersiveMaterial(): Promise<void> {
         materialCache['bar'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
         materialCache['body'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
         materialCache['card'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
+        // 标题栏搜索框需要与相邻 HDS 按钮一样响应光感，不复用静态 card 背板。
+        const searchLightEffect: uiMaterial.LightEffectOptions = {};
+        materialCache['search'] = new mod.ImmersiveMaterial({
+          style: mod.ImmersiveStyle.ULTRA_THIN,
+          interactive: true,
+          lightEffect: searchLightEffect
+        });
         // 浮动操作按钮：官方「纯色 + 质感」组合——
         // materialColor 用不透明控件纯色（color_bg_action，亮浅灰/暗深灰蓝，随主题切换），
         // 提供在卡片上清晰可辨的背板；不透明色会遮住材质滤镜（无模糊透出），
@@ -147,7 +154,7 @@ export function ensureImmersiveMaterial(): Promise<void> {
 
 /** 按统一闸门获取指定表面材质；未加载时返回 undefined，由调用方走降级样式。 */
 export function getEnabledSystemMaterial(
-  surface: 'bar' | 'body' | 'card' | 'action' | 'sheet' | 'toast' | 'dialog' | 'menu',
+  surface: 'bar' | 'body' | 'card' | 'search' | 'action' | 'sheet' | 'toast' | 'dialog' | 'menu',
   immersiveLightEnabled: boolean = AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false
 ): uiMaterial.Material | undefined {
   if (!shouldUseSystemMaterialPath(immersiveLightEnabled) || AppStorage.get<boolean>(KEY_MATERIAL_LOADED) !== true) {
@@ -195,6 +202,21 @@ export const IMMERSIVE_SELECT_MENU_MODIFIER: AttributeModifier<SelectAttribute> 
       instance.menuSystemMaterial(material);
     }
     instance.menuBackgroundBlurStyle(material ? BlurStyle.NONE : BlurStyle.COMPONENT_ULTRA_THICK);
+  }
+};
+
+/** 标题栏搜索容器使用统一的可交互光感材质；旧系统或材质未就绪时保留普通毛玻璃。 */
+export const IMMERSIVE_SEARCH_TITLE_MODIFIER: AttributeModifier<RowAttribute> = {
+  applyNormalAttribute(instance: RowAttribute): void {
+    const material = getEnabledSystemMaterial('search');
+    if (deviceInfo.apiAvailable('26.0.0')) {
+      instance.systemMaterial(material);
+    }
+    if (material === undefined) {
+      instance.backgroundColor($r('app.color.color_bg_glass_control'));
+      instance.backgroundBlurStyle(resolveBlurStyle('card'));
+      instance.border({ width: 1, color: $r('app.color.color_border_glass') });
+    }
   }
 };
 

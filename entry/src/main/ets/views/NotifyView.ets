@@ -21,6 +21,7 @@ import {
   getDialogBackgroundOptions,
   getDialogMaterial,
   getEnabledSystemMaterial,
+  IMMERSIVE_SEARCH_TITLE_MODIFIER,
   KEY_IMMERSIVE_LIGHT_ENABLED,
   KEY_MATERIAL_LOADED,
   resolveBlurStyle,
@@ -89,7 +90,7 @@ interface ManualDeleteResult {
 const COMPACT_BANNER_TOP_GAP: number = 8;
 // 平铺态先读取最近 500 条，触底后每次再从本地缓存读取 500 条。
 const FLAT_PAGE_SIZE: number = 500;
-// 搜索栏与标题栏之间的留白；搜索态只移动同一个输入框，不跨 HDS 标题栏重建节点。
+// 搜索栏与标题栏之间的留白；沉浸布局激活时切到 HDS 标题栏，降级布局仍平移原输入框。
 const SEARCH_BAR_HEIGHT: number = 44;
 const SEARCH_BAR_GAP: number = 8;
 // 列表自身已有 16vp 顶部间距，此处不再重复留白。
@@ -262,40 +263,96 @@ export struct NotifyView {
 
   @Builder
   customTitleContent() {
-    NotifyTitleBar({
-      title: this.title,
-      isEditing: this.isEditing,
-      useHdsLayout: true,
-      onOpenSettings: () => this.handleMoreClicked()
-    })
-      .opacity(this.searchActive ? 0 : 1)
-      .hitTestBehavior(this.searchActive ? HitTestMode.None : HitTestMode.Default);
+    if (this.searchActive) {
+      this.searchTitleBar();
+    } else {
+      NotifyTitleBar({
+        title: this.title,
+        isEditing: this.isEditing,
+        useHdsLayout: true,
+        onOpenSettings: () => this.handleMoreClicked()
+      });
+    }
   }
 
-  /** 搜索栏在页面顶层保持同一节点，通过位置与宽度变化进入原标题栏位置。 */
+  /** 标题栏与普通入口共用字段结构，避免两套搜索内容和行为逐渐分叉。 */
+  @Builder
+  private searchField() {
+    Row({ space: 8 }) {
+      Image($r('app.media.search'))
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
+        .fillColor($r('app.color.color_text_hint'))
+        .draggable(false);
+      TextInput({ placeholder: '搜索通知', text: this.searchQuery, controller: this.searchInputController })
+        .id('notify_search_input')
+        .layoutWeight(1)
+        .height(SEARCH_BAR_HEIGHT)
+        .fontSize(16)
+        .fontColor($r('app.color.color_text_primary'))
+        .placeholderColor($r('app.color.color_text_hint'))
+        .backgroundColor(Color.Transparent)
+        .enableKeyboardOnFocus(this.searchActive)
+        .onClick(() => this.enterSearch())
+        .onChange((value: string) => {
+          this.searchQuery = value;
+        });
+    }
+    .layoutWeight(1)
+    .height(SEARCH_BAR_HEIGHT)
+    .padding({ left: 14, right: 10 })
+    .alignItems(VerticalAlign.Center);
+  }
+
+  /** 激活时让输入框真正成为 HDS 标题栏子节点，系统材质由 util 统一启用。 */
+  @Builder
+  private searchTitleBar() {
+    Row({ space: 8 }) {
+      Row() {
+        this.searchField();
+      }
+      .layoutWeight(1)
+      .height(SEARCH_BAR_HEIGHT)
+      .borderRadius(22)
+      .attributeModifier(IMMERSIVE_SEARCH_TITLE_MODIFIER);
+
+      Text('取消')
+        .fontSize(16)
+        .fontColor($r('app.color.color_text_primary'))
+        .height(SEARCH_BAR_HEIGHT)
+        .padding({ left: 4, right: 4 })
+        .align(Alignment.Center)
+        .onClick(() => this.cancelSearch());
+    }
+    .width('100%')
+    .height(SEARCH_BAR_HEIGHT)
+    .padding({ left: 16, right: 16 });
+  }
+
+  /** 默认搜索入口也放入 HDS 标题栏的 bottomBuilder，不再留在页面覆盖层。 */
+  @Builder
+  private searchBottomBar() {
+    Row() {
+      Row() {
+        this.searchField();
+      }
+      .layoutWeight(1)
+      .height(SEARCH_BAR_HEIGHT)
+      .borderRadius(22)
+      .attributeModifier(IMMERSIVE_SEARCH_TITLE_MODIFIER);
+    }
+    .width('100%')
+    .height(SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP)
+    .padding({ left: 16, right: 16, bottom: SEARCH_BAR_GAP });
+  }
+
+  /** 未激活时展示标题下的入口；降级布局仍在同一覆盖层内完成切换。 */
   @Builder
   private searchBar() {
     Row({ space: this.searchActive ? 8 : 0 }) {
-      Row({ space: 8 }) {
-        Image($r('app.media.search'))
-          .width(20)
-          .height(20)
-          .objectFit(ImageFit.Contain)
-          .fillColor($r('app.color.color_text_hint'))
-          .draggable(false);
-        TextInput({ placeholder: '搜索本地通知', text: this.searchQuery, controller: this.searchInputController })
-          .id('notify_search_input')
-          .layoutWeight(1)
-          .height(SEARCH_BAR_HEIGHT)
-          .fontSize(16)
-          .fontColor($r('app.color.color_text_primary'))
-          .placeholderColor($r('app.color.color_text_hint'))
-          .backgroundColor(Color.Transparent)
-          .enableKeyboardOnFocus(this.searchActive)
-          .onClick(() => this.enterSearch())
-          .onChange((value: string) => {
-            this.searchQuery = value;
-          });
+      Row() {
+        this.searchField();
       }
       .layoutWeight(1)
       .height(SEARCH_BAR_HEIGHT)
@@ -402,7 +459,7 @@ export struct NotifyView {
     .margin({
       left: this.serverErrorBannerCollapsed ? 16 : 0,
       top: shouldUseSystemMaterialPath(this.immersiveLightEnabled)
-        ? (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP)
+        ? 0
         : Math.max(0, this.fallbackTitleBarBottom) +
           (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP) +
           (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0)
@@ -490,6 +547,14 @@ export struct NotifyView {
             stackBuilder: (): void => {
               this.customTitleContent();
             },
+            bottomBuilder: {
+              builder: (): void => {
+                if (!this.searchActive && !this.isEditing) {
+                  this.searchBottomBar();
+                }
+              },
+              height: this.searchActive || this.isEditing ? 0 : SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP
+            },
             menu: {
               value: this.searchActive ? [] : [
                 {
@@ -548,9 +613,6 @@ export struct NotifyView {
         })
         .backgroundColor($r('app.color.color_bg_page'));
 
-        if (!this.isEditing) {
-          this.searchBar();
-        }
       }
       .width('100%')
       .height('100%');
@@ -861,7 +923,7 @@ export struct NotifyView {
   private getListTopInset(): number {
     const titleInset: number = this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
       ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0;
-    const searchInset: number = this.isEditing ? 0 :
+    const searchInset: number = this.isEditing || shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 :
       SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP;
     if (this.serverErrorBanner.length === 0) {
       return titleInset + searchInset;
