@@ -159,9 +159,21 @@ export struct AboutSection {
     }
   }
 
-  // 点击开源代码行：进入内嵌 WebView 页面
+  // 点击开源代码行：通过系统链接入口在应用外打开仓库页面。
   private async openSourceLink(): Promise<void> {
-    await ExternalLinkService.openSharePage(this.getUIContext(), SOURCE_CODE_URL, '开源代码');
+    const uiCtx: UIContext = this.getUIContext();
+    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
+    if (!ctx) {
+      showToast(uiCtx, '无法打开开源代码页面');
+      return;
+    }
+    try {
+      await ctx.openLink(SOURCE_CODE_URL, { appLinkingOnly: false });
+    } catch (err) {
+      const msg: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, 'AboutSection', '打开开源代码页面失败：%{public}s', msg);
+      showToast(uiCtx, '无法打开开源代码页面');
+    }
   }
 
   // 点击隐私协议行：进入内嵌 WebView 页面

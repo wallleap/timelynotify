@@ -1,8 +1,11 @@
+import { common } from '@kit.AbilityKit';
 import { UIContext } from '@kit.ArkUI';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { DOMAIN } from '../../common/Constant';
 import { DeviceRegisterService } from '../../services/DeviceRegisterService';
 import { AppInfoService } from '../../services/AppInfoService';
-import { ExternalLinkService } from '../../services/ExternalLinkService';
 import { ClipboardService } from '../../services/ClipboardService';
+import { ThemeService } from '../../services/ThemeService';
 import showToast from '../showToast';
 import { resolveBlurStyle } from '../../utils/ImmersiveUtil';
 import { SettingGroup } from '../settings/SettingGroup';
@@ -135,13 +138,24 @@ export struct AppInfoSection {
     }
   }
 
-  // 点击构建信息行：打开云端构建记录页（伪造包无法在官方仓库创建对应 run 记录，以此验证包来源）
+  // 点击构建信息行：通过系统链接入口打开云端构建记录页，以便在应用外验证包来源。
   private async openBuildInfo(): Promise<void> {
     const uiCtx: UIContext = this.getUIContext();
     if (!AppInfoService.hasCloudBuild()) {
       showToast(uiCtx, '本地构建，无云端构建记录', 2000);
       return;
     }
-    await ExternalLinkService.openSharePage(uiCtx, AppInfoService.buildRunUrl(), '构建信息');
+    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
+    if (!ctx) {
+      showToast(uiCtx, '无法打开构建记录页面');
+      return;
+    }
+    try {
+      await ctx.openLink(AppInfoService.buildRunUrl(), { appLinkingOnly: false });
+    } catch (err) {
+      const msg: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, 'AppInfoSection', '打开构建记录页面失败：%{public}s', msg);
+      showToast(uiCtx, '无法打开构建记录页面');
+    }
   }
 }
