@@ -100,6 +100,8 @@ export default class EntryAbility extends UIAbility {
   onBackground(): void {
     hilog.info(DOMAIN, TAG, 'Ability onBackground');
     NotifySyncService.getInstance().pause();
+    // 离开前台即清理桌面图标角标；后续新推送仍可重新产生角标。
+    this.clearBadgeNumber();
   }
 
   // 温启动：Ability 存活时被再次拉起（如点击通知、recent 任务切换）。
@@ -168,7 +170,7 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, cur + 1);
   }
 
-  /** 清除桌面图标角标：打开应用后未读提示已无意义，设 0 即清除（官方约定 ≤0 为清除） */
+  /** 清除桌面图标角标：进入或离开前台时设 0 清除（官方约定 ≤0 为清除）。 */
   private clearBadgeNumber(): void {
     notificationManager.setBadgeNumber(0).then(() => {
       hilog.info(DOMAIN, TAG, '已清除桌面角标');
