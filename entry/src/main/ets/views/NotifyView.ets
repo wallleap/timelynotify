@@ -89,6 +89,12 @@ interface ManualDeleteResult {
 const COMPACT_BANNER_TOP_GAP: number = 8;
 // 平铺态先读取最近 500 条，触底后每次再从本地缓存读取 500 条。
 const FLAT_PAGE_SIZE: number = 500;
+// 搜索栏与标题栏之间的留白；搜索态只移动同一个输入框，不跨 HDS 标题栏重建节点。
+const SEARCH_BAR_HEIGHT: number = 44;
+const SEARCH_BAR_GAP: number = 8;
+// 列表自身已有 16vp 顶部间距，此处不再重复留白。
+const SEARCH_BAR_BOTTOM_GAP: number = 0;
+const SEARCH_TRANSITION_DURATION: number = 240;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -130,6 +136,9 @@ export struct NotifyView {
   @State flatLoadingMore: boolean = false;
   // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
   @State groupEnabled: boolean = true;
+  // 当前仅提供搜索交互预览；本地历史查询将在缓存层接口接入后实现。
+  @State searchActive: boolean = false;
+  @State searchQuery: string = '';
   // 视图模式：true=显示所有服务器的通知，false=只显示当前服务器
   @State viewAll: boolean = true;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
@@ -161,6 +170,7 @@ export struct NotifyView {
   // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
+  private searchInputController: TextInputController = new TextInputController();
   // 详情 Sheet 内部 List 的滚动控制器，与 Sheet 内 HdsNavigation.bindToScrollable 共享以驱动标题栏动态模糊。
   private detailScroller: Scroller = new Scroller();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
@@ -240,6 +250,8 @@ export struct NotifyView {
       onToggleSelection: () => this.handleMultiSelectClicked(),
       onDelete: () => this.handleDeletePillClicked()
     })
+      .opacity(this.searchActive ? 0 : 1)
+      .hitTestBehavior(this.searchActive ? HitTestMode.None : HitTestMode.Default)
       .onAreaChange((_old: Area, area: Area) => {
         const bottom: number = (area.globalPosition.y as number) + (area.height as number);
         if (bottom >= 0 && bottom !== this.fallbackTitleBarBottom) {
@@ -255,6 +267,105 @@ export struct NotifyView {
       isEditing: this.isEditing,
       useHdsLayout: true,
       onOpenSettings: () => this.handleMoreClicked()
+    })
+      .opacity(this.searchActive ? 0 : 1)
+      .hitTestBehavior(this.searchActive ? HitTestMode.None : HitTestMode.Default);
+  }
+
+  /** 搜索栏在页面顶层保持同一节点，通过位置与宽度变化进入原标题栏位置。 */
+  @Builder
+  private searchBar() {
+    Row({ space: this.searchActive ? 8 : 0 }) {
+      Row({ space: 8 }) {
+        Image($r('app.media.search'))
+          .width(20)
+          .height(20)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.color_text_hint'))
+          .draggable(false);
+        TextInput({ placeholder: '搜索本地通知', text: this.searchQuery, controller: this.searchInputController })
+          .id('notify_search_input')
+          .layoutWeight(1)
+          .height(SEARCH_BAR_HEIGHT)
+          .fontSize(16)
+          .fontColor($r('app.color.color_text_primary'))
+          .placeholderColor($r('app.color.color_text_hint'))
+          .backgroundColor(Color.Transparent)
+          .enableKeyboardOnFocus(this.searchActive)
+          .onClick(() => this.enterSearch())
+          .onChange((value: string) => {
+            this.searchQuery = value;
+          });
+      }
+      .layoutWeight(1)
+      .height(SEARCH_BAR_HEIGHT)
+      .padding({ left: 14, right: 10 })
+      .alignItems(VerticalAlign.Center)
+      .borderRadius(22)
+      .border({ width: 1, color: $r('app.color.color_border_glass') })
+      .backgroundColor($r('app.color.color_bg_glass_control'))
+      .backgroundBlurStyle(resolveBlurStyle('card')!)
+      .onClick(() => this.enterSearch());
+
+      if (this.searchActive) {
+        Text('取消')
+          .fontSize(16)
+          .fontColor($r('app.color.color_text_primary'))
+          .height(SEARCH_BAR_HEIGHT)
+          .padding({ left: 4, right: 4 })
+          .align(Alignment.Center)
+          .onClick(() => this.cancelSearch());
+      }
+    }
+    .width('100%')
+    .height(SEARCH_BAR_HEIGHT)
+    .padding({ left: 16, right: 16 })
+    .position({ x: 0, y: this.searchActive ? this.statusBarHeight + 6 :
+      (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? this.statusBarHeight + 56 :
+        Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56)) + SEARCH_BAR_GAP })
+    .zIndex(2);
+  }
+
+  /** 当前阶段只展示搜索 UI，不对屏幕已加载消息做误导性的局部过滤。 */
+  @Builder
+  private searchPreview() {
+    Column({ space: 8 }) {
+      Text('搜索结果将在此显示')
+        .fontSize(16)
+        .fontColor($r('app.color.color_text_secondary'));
+      Text('本地历史查询尚未接入')
+        .fontSize(13)
+        .fontColor($r('app.color.color_text_hint'));
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ top: shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 24 :
+      Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + 24 })
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor($r('app.color.color_bg_page'));
+  }
+
+  /** 点击搜索时先让输入框完成位移，再聚焦以避免键盘动画打断标题栏过渡。 */
+  private enterSearch(): void {
+    if (this.searchActive || this.isEditing) {
+      return;
+    }
+    this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+      this.searchActive = true;
+    });
+    setTimeout(() => {
+      if (this.searchActive) {
+        focusControl.requestFocus('notify_search_input');
+      }
+    }, SEARCH_TRANSITION_DURATION);
+  }
+
+  /** 取消搜索仅恢复 UI；原列表节点与滚动控制器始终保留。 */
+  private cancelSearch(): void {
+    this.searchInputController.stopEditing();
+    this.searchQuery = '';
+    this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+      this.searchActive = false;
     });
   }
 
@@ -291,7 +402,9 @@ export struct NotifyView {
     .margin({
       left: this.serverErrorBannerCollapsed ? 16 : 0,
       top: shouldUseSystemMaterialPath(this.immersiveLightEnabled)
-        ? 0 : Math.max(0, this.fallbackTitleBarBottom) +
+        ? (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP)
+        : Math.max(0, this.fallbackTitleBarBottom) +
+          (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP) +
           (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0)
     })
     .onAreaChange((_old: Area, area: Area) => {
@@ -322,6 +435,10 @@ export struct NotifyView {
       if (this.serverErrorBanner.length > 0) {
         this.serverErrorBannerView();
       }
+
+      if (this.searchActive) {
+        this.searchPreview();
+      }
     }
     .width('100%')
     .height('100%');
@@ -338,13 +455,13 @@ export struct NotifyView {
         .layoutWeight(1);
 
         // 右下角"跳到底部"浮动按钮：上滑离开首屏时出现，位于分组按钮上方
-        if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
+        if (this.showScrollToBottom && !this.searchActive && !this.isEditing && this.messages.length > 0) {
           this.scrollToBottomFab();
         }
 
         // 右下角"分组/平铺"模式切换浮动按钮
         // 仅在非编辑模式、有消息时显示
-        if (!this.isEditing && this.messages.length > 0) {
+        if (!this.searchActive && !this.isEditing && this.messages.length > 0) {
           this.groupModeToggleFab();
         }
       }
@@ -362,90 +479,101 @@ export struct NotifyView {
 
   build() {
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
-      HdsNavigation() {
-        this.viewportBody();
+      Stack({ alignContent: Alignment.TopStart }) {
+        HdsNavigation() {
+          this.viewportBody();
+        }
+        .titleBar({
+          enableComponentSafeArea: true,
+          avoidLayoutSafeArea: true,
+          content: {
+            stackBuilder: (): void => {
+              this.customTitleContent();
+            },
+            menu: {
+              value: this.searchActive ? [] : [
+                {
+                  content: {
+                    label: this.isEditing ? '取消' : '多选',
+                    type: TextStyleMode.NORMAL,
+                    action: (): void => {
+                      this.handleMultiSelectClicked();
+                    }
+                  }
+                },
+                {
+                  content: {
+                    icon: $r('app.media.trash'),
+                    action: (): void => {
+                      this.handleDeletePillClicked();
+                    }
+                  }
+                }
+              ]
+            },
+          },
+          style: {
+            scrollEffectOpts: {
+              enableScrollEffect: true,
+              scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+            },
+            systemMaterialEffect: {
+              materialType: hdsMaterial.MaterialType.ADAPTIVE,
+              materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+            },
+          },
+        })
+        .hideBackButton(true)
+        .titleMode(HdsNavigationTitleMode.MINI)
+        .bindToScrollable([this.scroller])
+        .width('100%')
+        .height('100%')
+        .bindSheet(this.showDetail, this.detailBuilder(), {
+          height: SheetSize.LARGE,
+          preferType: SheetType.BOTTOM,
+          // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
+          showClose: false,
+          enableFloatingDragBar: true,
+          // 降级时减轻遮罩，让轻量模糊背板下的列表层次更可辨；正文 List 保持实色。
+          maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+            ? undefined : '#33000000',
+          backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+            ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
+          blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
+            ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
+          systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
+          onDisappear: () => {
+            this.showDetail = false;
+          }
+        })
+        .backgroundColor($r('app.color.color_bg_page'));
+
+        if (!this.isEditing) {
+          this.searchBar();
+        }
       }
-      .titleBar({
-        enableComponentSafeArea: true,
-        avoidLayoutSafeArea: true,
-        content: {
-          stackBuilder: (): void => {
-            this.customTitleContent();
-          },
-          menu: {
-            value: [
-              {
-                content: {
-                  label: this.isEditing ? '取消' : '多选',
-                  type: TextStyleMode.NORMAL,
-                  action: (): void => {
-                    this.handleMultiSelectClicked();
-                  }
-                }
-              },
-              {
-                content: {
-                  icon: $r('app.media.trash'),
-                  action: (): void => {
-                    this.handleDeletePillClicked();
-                  }
-                }
-              }
-            ]
-          },
-        },
-        style: {
-          scrollEffectOpts: {
-            enableScrollEffect: true,
-            scrollEffectType: ScrollEffectType.GRADIENT_BLUR
-          },
-          systemMaterialEffect: {
-            materialType: hdsMaterial.MaterialType.ADAPTIVE,
-            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-          },
-        }
-      })
-      .hideBackButton(true)
-      .titleMode(HdsNavigationTitleMode.MINI)
-      .bindToScrollable([this.scroller])
       .width('100%')
-      .height('100%')
-      .bindSheet(this.showDetail, this.detailBuilder(), {
-        height: SheetSize.LARGE,
-        preferType: SheetType.BOTTOM,
-        // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
-        showClose: false,
-        enableFloatingDragBar: true,
-        // 降级时减轻遮罩，让轻量模糊背板下的列表层次更可辨；正文 List 保持实色。
-        maskColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? undefined : '#33000000',
-        backgroundColor: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? Color.Transparent : $r('app.color.color_bg_sheet_blur'),
-        blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
-          ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
-        systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
-        onDisappear: () => {
-          this.showDetail = false;
-        }
-      })
-      .backgroundColor($r('app.color.color_bg_page'));
+      .height('100%');
     } else {
       Column() {
         Stack({ alignContent: Alignment.BottomEnd }) {
           Stack({ alignContent: Alignment.Top }) {
             this.refreshContentBody();
             this.fallbackTitleBar();
+            if (!this.isEditing) {
+              this.searchBar();
+            }
           }
           .width('100%')
           .height('100%')
 
           // 非沉浸式分支的右下角「跳到底部」按钮
-          if (this.showScrollToBottom && !this.isEditing && this.messages.length > 0) {
+          if (this.showScrollToBottom && !this.searchActive && !this.isEditing && this.messages.length > 0) {
             this.scrollToBottomFab();
           }
 
           // 非沉浸式分支的右下角分组模式切换按钮
-          if (!this.isEditing && this.messages.length > 0) {
+          if (!this.searchActive && !this.isEditing && this.messages.length > 0) {
             this.groupModeToggleFab();
           }
         }
@@ -733,11 +861,13 @@ export struct NotifyView {
   private getListTopInset(): number {
     const titleInset: number = this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
       ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0;
+    const searchInset: number = this.isEditing ? 0 :
+      SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP;
     if (this.serverErrorBanner.length === 0) {
-      return titleInset;
+      return titleInset + searchInset;
     }
     const bannerHeight: number = this.serverErrorBannerCollapsed ? 32 : 44;
-    return titleInset + Math.max(this.serverErrorBannerHeight, bannerHeight) +
+    return titleInset + searchInset + Math.max(this.serverErrorBannerHeight, bannerHeight) +
       (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0);
   }
 
