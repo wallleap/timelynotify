@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { updateManager } from '@kit.AppGalleryKit';
-import { UIContext } from '@kit.ArkUI';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { promptAction, UIContext } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN } from '../../common/Constant';
 import { AppInfoService, SOURCE_CODE_URL } from '../../services/AppInfoService';
@@ -8,6 +9,7 @@ import { ExternalLinkService, PRIVACY_URL } from '../../services/ExternalLinkSer
 import { FeedbackService } from '../../services/FeedbackService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { ThemeService } from '../../services/ThemeService';
+import { getDialogMaterial } from '../../utils/ImmersiveUtil';
 import showToast from '../showToast';
 import { SettingGroup } from '../settings/SettingGroup';
 import { SettingGroupTitle } from '../settings/SettingGroupTitle';
@@ -23,7 +25,7 @@ import { SettingDivider } from '../settings/SettingDivider';
  */
 @Component
 export struct AboutSection {
-  // 已上架应用的市场详情页；检测到新版本后才打开。
+  // 已上架应用的市场详情页；检测到新版本且用户确认后才打开。
   private readonly appGalleryUrl: string =
     'https://appgallery.huawei.com/app/detail?id=cn.oicode.timelynotify';
   // 点击备案号时打开工信部备案管理系统。
@@ -129,7 +131,7 @@ export struct AboutSection {
     }
   }
 
-  // 先向应用市场检查更新；仅在有新版本时打开市场详情页。
+  // 先向应用市场检查更新；有新版本时先询问用户，不直接跳转。
   private async checkUpdate(): Promise<void> {
     if (this.checkingUpdate) {
       return;
@@ -144,7 +146,7 @@ export struct AboutSection {
     try {
       const result: updateManager.CheckUpdateResult = await updateManager.checkAppUpdate(ctx);
       if (result.updateAvailable === updateManager.UpdateAvailableCode.LATER_VERSION_EXIST) {
-        await ctx.openLink(this.appGalleryUrl, { appLinkingOnly: false });
+        this.showUpdateDialog(uiCtx, ctx);
       } else if (result.updateAvailable === updateManager.UpdateAvailableCode.LATER_VERSION_NOT_EXIST) {
         showToast(uiCtx, '已是最新版本');
       } else {
@@ -152,10 +154,44 @@ export struct AboutSection {
       }
     } catch (err) {
       const msg: string = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, 'AboutSection', '检测更新或打开应用市场失败：%{public}s', msg);
-      showToast(uiCtx, '检测更新或打开应用市场失败');
+      hilog.warn(DOMAIN, 'AboutSection', '检测更新失败：%{public}s', msg);
+      showToast(uiCtx, '检测更新失败，请稍后重试');
     } finally {
       this.checkingUpdate = false;
+    }
+  }
+
+  // 有新版本时显示确认弹窗；取消或关闭弹窗均不打开应用市场。
+  private showUpdateDialog(uiCtx: UIContext, ctx: common.UIAbilityContext): void {
+    const buttons: promptAction.Button[] = [
+      { text: '暂不更新', color: $r('app.color.color_text_tertiary') },
+      { text: '前往应用市场更新', color: $r('app.color.color_brand') }
+    ];
+    uiCtx.getPromptAction().showDialog({
+      title: '发现新版本',
+      message: '检测到新版本，是否前往应用市场更新？',
+      buttons: buttons,
+      systemMaterial: getDialogMaterial(),
+    }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
+      if (err) {
+        hilog.warn(DOMAIN, 'AboutSection', '显示更新弹窗失败：%{public}s', err.message);
+        showToast(uiCtx, '无法显示更新提示');
+        return;
+      }
+      if (result.index === 1) {
+        this.openAppGallery(uiCtx, ctx);
+      }
+    });
+  }
+
+  // 用户确认后打开应用市场；跳转失败时保留在当前页面并提示。
+  private async openAppGallery(uiCtx: UIContext, ctx: common.UIAbilityContext): Promise<void> {
+    try {
+      await ctx.openLink(this.appGalleryUrl, { appLinkingOnly: false });
+    } catch (err) {
+      const msg: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, 'AboutSection', '打开应用市场失败：%{public}s', msg);
+      showToast(uiCtx, '无法打开应用市场');
     }
   }
 
