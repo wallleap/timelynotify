@@ -96,6 +96,10 @@ const SEARCH_BAR_GAP: number = 8;
 // 列表自身已有 16vp 顶部间距，此处不再重复留白。
 const SEARCH_BAR_BOTTOM_GAP: number = 0;
 const SEARCH_TRANSITION_DURATION: number = 240;
+// 标题下方搜索入口与 MINI 标题栏搜索框的相对位置及宽度差。
+const SEARCH_ENTRY_TOP_OFFSET: number = 68;
+const SEARCH_TITLE_TOP_OFFSET: number = 16;
+const SEARCH_TITLE_RIGHT_EXTRA: number = 52;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -140,6 +144,9 @@ export struct NotifyView {
   // 当前仅提供搜索交互预览；本地历史查询将在缓存层接口接入后实现。
   @State searchActive: boolean = false;
   @State searchQuery: string = '';
+  // 过渡期使用独立于 HDS 标题栏裁剪区域的临时搜索胶囊。
+  @State searchTransitionVisible: boolean = false;
+  @State searchTransitionProgress: number = 0;
   // 视图模式：true=显示所有服务器的通知，false=只显示当前服务器
   @State viewAll: boolean = true;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
@@ -172,6 +179,8 @@ export struct NotifyView {
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
   private searchInputController: TextInputController = new TextInputController();
+  // 阻止过渡中重复点击造成标题栏与临时胶囊状态错位。
+  private searchTransitioning: boolean = false;
   // 详情 Sheet 内部 List 的滚动控制器，与 Sheet 内 HdsNavigation.bindToScrollable 共享以驱动标题栏动态模糊。
   private detailScroller: Scroller = new Scroller();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
@@ -271,14 +280,15 @@ export struct NotifyView {
         isEditing: this.isEditing,
         useHdsLayout: true,
         onOpenSettings: () => this.handleMoreClicked()
-      });
+      })
+        .opacity(this.searchTransitionVisible ? 0 : 1);
     }
   }
 
   /** 标题栏与普通入口共用字段结构，避免两套搜索内容和行为逐渐分叉。 */
   @Builder
   private searchField() {
-    Row({ space: 8 }) {
+    Row({ space: 4 }) {
       Image($r('app.media.search'))
         .width(20)
         .height(20)
@@ -293,6 +303,7 @@ export struct NotifyView {
         .fontColor($r('app.color.color_text_primary'))
         .placeholderColor($r('app.color.color_text_hint'))
         .backgroundColor(Color.Transparent)
+        .padding({ left: 0, right: 0 })
         .enableKeyboardOnFocus(this.searchActive)
         .onClick(() => this.enterSearch())
         .onChange((value: string) => {
@@ -327,24 +338,77 @@ export struct NotifyView {
     }
     .width('100%')
     .height(SEARCH_BAR_HEIGHT)
-    .padding({ left: 16, right: 16 });
+    .padding({ left: 16, right: 16 })
+    .opacity(this.searchTransitionVisible ? 0 : 1);
   }
 
-  /** 默认搜索入口也放入 HDS 标题栏的 bottomBuilder，不再留在页面覆盖层。 */
+  /** 默认入口展示为文本胶囊，避免点击时提前唤起键盘。 */
   @Builder
   private searchBottomBar() {
     Row() {
       Row() {
-        this.searchField();
+        Row({ space: 4 }) {
+          Image($r('app.media.search'))
+            .width(20)
+            .height(20)
+            .objectFit(ImageFit.Contain)
+            .fillColor($r('app.color.color_text_hint'))
+            .draggable(false);
+          Text('搜索通知')
+            .fontSize(16)
+            .fontColor($r('app.color.color_text_hint'));
+        }
+        .padding({ left: 14 });
       }
       .layoutWeight(1)
       .height(SEARCH_BAR_HEIGHT)
       .borderRadius(22)
-      .attributeModifier(IMMERSIVE_SEARCH_TITLE_MODIFIER);
+      .attributeModifier(IMMERSIVE_SEARCH_TITLE_MODIFIER)
+      .onClick(() => this.enterSearch());
     }
     .width('100%')
     .height(SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP)
-    .padding({ left: 16, right: 16, bottom: SEARCH_BAR_GAP });
+    .padding({ left: 16, right: 16, bottom: SEARCH_BAR_GAP })
+    .opacity(this.searchTransitionVisible ? 0 : 1);
+  }
+
+  /** 过渡胶囊位于外层 Stack，移动时不会被 HDS 的 bottomBuilder 裁剪。 */
+  @Builder
+  private searchTransitionBar() {
+    Row({ space: 8 * this.searchTransitionProgress }) {
+      Row({ space: 4 }) {
+        Image($r('app.media.search'))
+          .width(20)
+          .height(20)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.color_text_hint'))
+          .draggable(false);
+        Text('搜索通知')
+          .fontSize(16)
+          .fontColor($r('app.color.color_text_hint'));
+      }
+      .layoutWeight(1)
+      .height(SEARCH_BAR_HEIGHT)
+      .padding({ left: 14 })
+      .borderRadius(22)
+      // 移动中的跨层材质不会持续绘制，临时胶囊用轻量毛玻璃避免中途变成纯透明。
+      .backgroundColor($r('app.color.color_bg_glass_control'))
+      .backgroundBlurStyle(resolveBlurStyle('card')!)
+      .border({ width: 1, color: $r('app.color.color_border_glass') });
+
+      Text('取消')
+        .fontSize(16)
+        .fontColor($r('app.color.color_text_primary'))
+        .width((SEARCH_TITLE_RIGHT_EXTRA - 8) * this.searchTransitionProgress)
+        .height(SEARCH_BAR_HEIGHT)
+        .opacity(this.searchTransitionProgress)
+        .align(Alignment.Center);
+    }
+    .width('100%')
+    .height(SEARCH_BAR_HEIGHT)
+    .padding({ left: 16, right: 16 })
+    .position({ x: 0, y: this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET })
+    .translate({ y: (SEARCH_TITLE_TOP_OFFSET - SEARCH_ENTRY_TOP_OFFSET) * this.searchTransitionProgress });
   }
 
   /** 未激活时展示标题下的入口；降级布局仍在同一覆盖层内完成切换。 */
@@ -402,9 +466,24 @@ export struct NotifyView {
     .backgroundColor($r('app.color.color_bg_page'));
   }
 
-  /** 点击搜索时先让输入框完成位移，再聚焦以避免键盘动画打断标题栏过渡。 */
+  /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
   private enterSearch(): void {
-    if (this.searchActive || this.isEditing) {
+    if (this.searchActive || this.isEditing || this.searchTransitioning) {
+      return;
+    }
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
+      this.searchTransitioning = true;
+      this.searchTransitionProgress = 0;
+      this.searchTransitionVisible = true;
+      this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+        this.searchTransitionProgress = 1;
+      });
+      setTimeout(() => {
+        this.searchActive = true;
+        this.searchTransitionVisible = false;
+        this.searchTransitioning = false;
+        setTimeout(() => focusControl.requestFocus('notify_search_input'), 32);
+      }, SEARCH_TRANSITION_DURATION);
       return;
     }
     this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
@@ -419,8 +498,27 @@ export struct NotifyView {
 
   /** 取消搜索仅恢复 UI；原列表节点与滚动控制器始终保留。 */
   private cancelSearch(): void {
+    if (this.searchTransitioning) {
+      return;
+    }
     this.searchInputController.stopEditing();
     this.searchQuery = '';
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
+      this.searchTransitioning = true;
+      this.searchTransitionProgress = 1;
+      this.searchTransitionVisible = true;
+      this.searchActive = false;
+      setTimeout(() => {
+        this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+          this.searchTransitionProgress = 0;
+        });
+        setTimeout(() => {
+          this.searchTransitionVisible = false;
+          this.searchTransitioning = false;
+        }, SEARCH_TRANSITION_DURATION);
+      }, 16);
+      return;
+    }
     this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
       this.searchActive = false;
     });
@@ -556,7 +654,7 @@ export struct NotifyView {
               height: this.searchActive || this.isEditing ? 0 : SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP
             },
             menu: {
-              value: this.searchActive ? [] : [
+              value: this.searchActive || this.searchTransitionVisible ? [] : [
                 {
                   content: {
                     label: this.isEditing ? '取消' : '多选',
@@ -612,6 +710,10 @@ export struct NotifyView {
           }
         })
         .backgroundColor($r('app.color.color_bg_page'));
+
+        if (this.searchTransitionVisible) {
+          this.searchTransitionBar();
+        }
 
       }
       .width('100%')
