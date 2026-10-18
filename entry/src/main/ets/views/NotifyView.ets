@@ -200,11 +200,14 @@ export struct NotifyView {
   // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
-  // 搜索结果独立滚动；有命中时交给 HDS 标题栏驱动动态模糊，不影响原列表位置。
+  // 搜索内容独立滚动；空状态也保持 List 挂载，供 HDS 标题栏正确采样。
   private searchScroller: Scroller = new Scroller();
   private searchInputController: TextInputController = new TextInputController();
   private searchSeq: number = 0;
   private searchTimer: number = -1;
+  // 原列表在关键词搜索期间隐藏；记录首次隐藏前的偏移以便清空或取消时恢复。
+  private searchBaseOffset: number = 0;
+  private searchBaseOffsetSaved: boolean = false;
   // 阻止过渡中重复点击造成标题栏与临时胶囊状态错位。
   private searchTransitioning: boolean = false;
   // 滚动方向可能在动画中改变；结束时按列表实际位置校正一次。
@@ -348,8 +351,15 @@ export struct NotifyView {
           if (value === this.searchQuery) {
             return;
           }
+          if (this.searchQuery.trim().length === 0 && value.trim().length > 0) {
+            this.searchBaseOffset = Math.max(0, this.scroller.currentOffset().yOffset);
+            this.searchBaseOffsetSaved = true;
+          }
           this.searchQuery = value;
           this.scheduleSearch();
+          if (value.trim().length === 0) {
+            this.restoreSearchBaseOffset();
+          }
         });
     }
     .layoutWeight(1)
@@ -590,17 +600,22 @@ export struct NotifyView {
   @Builder
   private searchPreview() {
     Column() {
-      if (this.searchResults.length === 0) {
-        Text(this.searchLoading ? '正在搜索…' : this.searchError ? '搜索失败，请重试' : '没有找到相关通知')
-          .fontSize(16).fontColor($r('app.color.color_text_secondary'))
-          .margin({ top: 24 })
-          .onClick(() => { if (this.searchError) this.scheduleSearch(); });
-      } else {
-        List({ space: 0, scroller: this.searchScroller }) {
-          // 与原列表一致：让列表铺满可滚动区域，仅在内容首部留出标题栏下方间距。
+      List({ space: 0, scroller: this.searchScroller }) {
+        // 与原列表一致：让列表铺满可滚动区域，仅在内容首部留出标题栏下方间距。
+        ListItem() {
+          Row().width('100%').height(16);
+        }
+        if (this.searchResults.length === 0) {
           ListItem() {
-            Row().width('100%').height(16);
+            Text(this.searchLoading ? '正在搜索…' : this.searchError ? '搜索失败，请重试' : '没有找到相关通知')
+              .fontSize(16)
+              .fontColor($r('app.color.color_text_secondary'))
+              .width('100%')
+              .textAlign(TextAlign.Center)
+              .padding({ top: 8 })
+              .onClick(() => { if (this.searchError) this.scheduleSearch(); });
           }
+        } else {
           ForEach(this.searchResults, (message: NotifyMessage, index: number) => {
             ListItem() {
               NotifyGroupMessageRow({
@@ -629,16 +644,16 @@ export struct NotifyView {
             .backgroundColor($r('app.color.color_bg_surface'))
             .borderRadius({ bottomLeft: 12, bottomRight: 12 });
           }
-          ListItem() {
-            Row().width('100%').height(this.navBarHeight + 72);
-          }
         }
-        .width('100%')
-        .layoutWeight(1)
-        .padding({ left: 16, right: 16 })
-        .clip(false)
-        .onReachEnd(() => this.loadMoreSearch());
+        ListItem() {
+          Row().width('100%').height(this.navBarHeight + 72);
+        }
       }
+      .width('100%')
+      .layoutWeight(1)
+      .padding({ left: 16, right: 16 })
+      .clip(false)
+      .onReachEnd(() => this.loadMoreSearch());
     }
     .width('100%')
     .height('100%')
@@ -696,6 +711,18 @@ export struct NotifyView {
     this.searchLoading = true;
     this.searchError = false;
     this.fetchSearchPage(this.searchSeq, this.searchResults[this.searchResults.length - 1]);
+  }
+
+  /** 搜索层撤下后还原原列表的浏览位置，避免 HDS 切换滚动器时将其重置到顶部。 */
+  private restoreSearchBaseOffset(): void {
+    if (!this.searchBaseOffsetSaved) {
+      return;
+    }
+    const offset: number = this.searchBaseOffset;
+    this.searchBaseOffsetSaved = false;
+    setTimeout((): void => {
+      this.scroller.scrollTo({ xOffset: 0, yOffset: offset, animation: false });
+    }, 32);
   }
 
   /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
@@ -760,6 +787,7 @@ export struct NotifyView {
     this.searchLoading = false;
     this.searchHasMore = false;
     this.searchError = false;
+    this.restoreSearchBaseOffset();
     // 从输入框反向收回右侧图标，保留进入搜索前的列表滚动位置。
     if (this.searchCollapsed) {
       this.searchTransitioning = true;
@@ -857,7 +885,9 @@ export struct NotifyView {
         this.refreshListContent();
       }
       .width('100%')
-      .height('100%');
+      .height('100%')
+      // 保留原列表节点及滚动位置，但搜索有关键词时不让它参与标题栏背后取色。
+      .visibility(this.searchActive && this.searchQuery.trim().length > 0 ? Visibility.Hidden : Visibility.Visible);
 
       if (this.serverErrorBanner.length > 0) {
         this.serverErrorBannerView();
@@ -991,8 +1021,8 @@ export struct NotifyView {
         })
         .hideBackButton(true)
         .titleMode(HdsNavigationTitleMode.MINI)
-        .bindToScrollable([this.searchActive && this.searchQuery.trim().length > 0 &&
-          this.searchResults.length > 0 ? this.searchScroller : this.scroller])
+        .bindToScrollable([this.searchActive && this.searchQuery.trim().length > 0 ?
+          this.searchScroller : this.scroller])
         .width('100%')
         .height('100%')
         .bindSheet(this.showDetail, this.detailBuilder(), {
