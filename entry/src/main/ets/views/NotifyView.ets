@@ -172,6 +172,14 @@ export struct NotifyView {
   // 右侧搜索按钮展开到标题栏输入框时，使用外层临时胶囊保持位移和宽度连续。
   @State searchCompactTransitionVisible: boolean = false;
   @State searchCompactTransitionProgress: number = 0;
+  // 点击半途胶囊时记录实际几何位置，避免下一段动画跳回右侧图标起点。
+  @State searchCompactStartX: number = 0;
+  @State searchCompactStartY: number = 0;
+  @State searchCompactStartWidth: number = SEARCH_BAR_HEIGHT;
+  @State searchCompactStartHeight: number = SEARCH_BAR_HEIGHT;
+  @State searchCompactStartPadding: number = 10;
+  @State searchCompactStartTextOpacity: number = 0;
+  @State searchCompactStartIconSize: number = 24;
   // 视图模式：true=显示所有服务器的通知，false=只显示当前服务器
   @State viewAll: boolean = true;
   // 左滑互斥：当前展开左滑的消息 ID（-1 表示无）
@@ -215,6 +223,9 @@ export struct NotifyView {
   private searchTransitioning: boolean = false;
   // 滚动方向可能在动画中改变；结束时按列表实际位置校正一次。
   private searchCollapseTransitioning: boolean = false;
+  // 收缩动画中点击胶囊时，等该动画收尾后继续进入搜索，避免点击无响应。
+  private pendingSearchAfterCollapse: boolean = false;
+  private searchCompactStartedFromScroll: boolean = false;
   // 系统状态栏回顶不一定逐帧发送 onDidScroll，滚动期间以 Scroller 实际偏移驱动过渡。
   private searchScrollSampleTimer: number = -1;
   private searchScrollLastOffset: number = -1;
@@ -287,6 +298,7 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    this.pendingSearchAfterCollapse = false;
     this.stopSearchScrollSampling();
     if (this.onChange) {
       ServerManager.getInstance().removeChangeListener(this.onChange);
@@ -431,7 +443,9 @@ export struct NotifyView {
     .width('100%')
     .height(SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP)
     .padding({ left: 16, right: 16, bottom: SEARCH_BAR_GAP })
-    .opacity(this.searchTransitionVisible || this.searchCollapseTransitionVisible ? 0 : 1);
+    .opacity(this.searchTransitionVisible || this.searchCollapseTransitionVisible ? 0 : 1)
+    .hitTestBehavior(this.searchTransitionVisible || this.searchCollapseTransitionVisible ?
+      HitTestMode.None : HitTestMode.Default);
   }
 
   /** 位于 HDS 外层的滚动收缩胶囊，避免跨标题栏时被 bottomBuilder 裁剪。 */
@@ -482,41 +496,39 @@ export struct NotifyView {
   private searchCompactTransitionBar() {
     Row({ space: 4 }) {
       Image($r('app.media.search'))
-        .width(24 - 4 * this.searchCompactTransitionProgress)
-        .height(24 - 4 * this.searchCompactTransitionProgress)
+        .width(this.searchCompactStartIconSize * (1 - this.searchCompactTransitionProgress) +
+          20 * this.searchCompactTransitionProgress)
+        .height(this.searchCompactStartIconSize * (1 - this.searchCompactTransitionProgress) +
+          20 * this.searchCompactTransitionProgress)
         .objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.color_text_primary'))
+        .fillColor(this.searchCompactStartedFromScroll ? $r('app.color.color_text_hint') :
+          $r('app.color.color_text_primary'))
         .opacity(1 - 0.4 * this.searchCompactTransitionProgress)
         .draggable(false);
       Text('搜索通知')
         .fontSize(16)
         .fontColor($r('app.color.color_text_hint'))
         .maxLines(1)
-        .opacity(Math.max(0, (this.searchCompactTransitionProgress - 0.35) / 0.65));
+        .opacity(this.searchCompactStartTextOpacity * (1 - this.searchCompactTransitionProgress) +
+          Math.max(0, (this.searchCompactTransitionProgress - 0.35) / 0.65));
     }
-    .width((shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38) *
-      (1 - this.searchCompactTransitionProgress) +
+    .width(this.searchCompactStartWidth * (1 - this.searchCompactTransitionProgress) +
       (this.searchViewportWidth - 32 - SEARCH_TITLE_RIGHT_EXTRA) * this.searchCompactTransitionProgress)
-    .height((shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38) *
-      (1 - this.searchCompactTransitionProgress) + SEARCH_BAR_HEIGHT * this.searchCompactTransitionProgress)
-    .padding({ left: 10 + 4 * this.searchCompactTransitionProgress })
+    .height(this.searchCompactStartHeight * (1 - this.searchCompactTransitionProgress) +
+      SEARCH_BAR_HEIGHT * this.searchCompactTransitionProgress)
+    .padding({ left: this.searchCompactStartPadding * (1 - this.searchCompactTransitionProgress) +
+      14 * this.searchCompactTransitionProgress })
     .borderRadius(22)
     .clip(true)
     .backgroundColor($r('app.color.color_bg_glass_control'))
     .backgroundBlurStyle(resolveBlurStyle('card')!)
     .border({ width: 1, color: $r('app.color.color_border_glass') })
-    .position({
-      x: this.searchViewportWidth - 16 - (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
-        SEARCH_BAR_HEIGHT : 38),
-      y: this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
-        (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_COMPACT_HDS_TOP_CORRECTION : 0)
-    })
+    .position({ x: this.searchCompactStartX, y: this.searchCompactStartY })
     .translate({
-      x: (16 - (this.searchViewportWidth - 16 -
-        (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_BAR_HEIGHT : 38))) *
-        this.searchCompactTransitionProgress,
-      y: (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 : -3) *
-        this.searchCompactTransitionProgress
+      x: (16 - this.searchCompactStartX) * this.searchCompactTransitionProgress,
+      y: (this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
+        (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_COMPACT_HDS_TOP_CORRECTION : 3) -
+        this.searchCompactStartY) * this.searchCompactTransitionProgress
     });
 
     Text('取消')
@@ -604,6 +616,7 @@ export struct NotifyView {
       (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? this.statusBarHeight + 56 :
         Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56)) + SEARCH_BAR_GAP })
     .opacity(this.searchCollapseTransitionVisible ? 0 : 1)
+    .hitTestBehavior(this.searchCollapseTransitionVisible ? HitTestMode.None : HitTestMode.Default)
     .zIndex(2);
   }
 
@@ -736,15 +749,51 @@ export struct NotifyView {
     }, 32);
   }
 
-  /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
-  private enterSearch(): void {
-    if (this.searchActive || this.isEditing || this.searchTransitioning || this.searchCollapseTransitioning) {
+  /** 记录搜索入口当下的位置，供进入与取消搜索共用同一动画端点。 */
+  private prepareSearchCompactTransition(fromScroll: boolean): void {
+    const materialPath: boolean = shouldUseSystemMaterialPath(this.immersiveLightEnabled);
+    const compactSize: number = materialPath ? SEARCH_BAR_HEIGHT : 38;
+    this.searchCompactStartedFromScroll = fromScroll;
+    if (fromScroll) {
+      const progress: number = this.searchCollapseProgress;
+      const entryY: number = materialPath ? this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET :
+        Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + SEARCH_BAR_GAP;
+      this.searchCompactStartX = 16 + (this.searchViewportWidth - 32 - compactSize) * progress;
+      this.searchCompactStartY = entryY + (this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET - entryY) * progress;
+      this.searchCompactStartWidth = (this.searchViewportWidth - 32) * (1 - progress) + compactSize * progress;
+      this.searchCompactStartHeight = SEARCH_BAR_HEIGHT - (materialPath ? 0 : 6) * progress;
+      this.searchCompactStartPadding = 14 - 2 * progress;
+      this.searchCompactStartTextOpacity = 1 - progress;
+      this.searchCompactStartIconSize = 20;
       return;
     }
+    this.searchCompactStartX = this.searchViewportWidth - 16 - compactSize;
+    this.searchCompactStartY = this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
+      (materialPath ? SEARCH_COMPACT_HDS_TOP_CORRECTION : 0);
+    this.searchCompactStartWidth = compactSize;
+    this.searchCompactStartHeight = compactSize;
+    this.searchCompactStartPadding = 10;
+    this.searchCompactStartTextOpacity = 0;
+    this.searchCompactStartIconSize = 24;
+  }
+
+  /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
+  private enterSearch(): void {
+    if (this.searchActive || this.isEditing || this.searchTransitioning) {
+      return;
+    }
+    if (this.searchCollapseTransitioning) {
+      this.pendingSearchAfterCollapse = true;
+      return;
+    }
+    // 点击滚动过渡胶囊时先结束它的采样与绘制，避免输入框接管后旧胶囊仍叠在列表上。
+    this.stopSearchScrollSampling();
     // 收起状态从右侧图标原位展开，结束后再挂载输入框和键盘。
     if (this.searchCollapsed) {
+      this.prepareSearchCompactTransition(this.searchCollapseTransitionVisible);
       this.searchTransitioning = true;
       this.searchCompactTransitionProgress = 0;
+      this.searchCollapseTransitionVisible = false;
       this.searchCompactTransitionVisible = true;
       this.getUIContext().animateTo({ duration: SEARCH_COMPACT_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
         this.searchCompactTransitionProgress = 1;
@@ -757,6 +806,7 @@ export struct NotifyView {
       }, SEARCH_COMPACT_TRANSITION_DURATION);
       return;
     }
+    this.searchCollapseTransitionVisible = false;
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       this.searchTransitioning = true;
       this.searchTransitionProgress = 0;
@@ -811,6 +861,14 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
+        const offset: number = Math.max(0, this.scroller.currentOffset().yOffset);
+        if (offset <= SEARCH_EXPAND_OFFSET) {
+          this.finishSearchExpandAtTop();
+        } else if (this.searchCompactStartedFromScroll && offset < SEARCH_EXPAND_RANGE) {
+          const ratio: number = offset / SEARCH_EXPAND_RANGE;
+          this.searchCollapseProgress = ratio * ratio * (3 - 2 * ratio);
+          this.searchCollapseTransitionVisible = true;
+        }
       }, SEARCH_COMPACT_TRANSITION_DURATION);
       return;
     }
@@ -1062,7 +1120,8 @@ export struct NotifyView {
         if (this.searchTransitionVisible) {
           this.searchTransitionBar();
         }
-        if (this.searchCollapseTransitionVisible) {
+        if (this.searchCollapseTransitionVisible && !this.searchActive &&
+          !this.searchTransitionVisible && !this.searchCompactTransitionVisible) {
           this.searchCollapseTransitionBar();
         }
         if (this.searchCompactTransitionVisible) {
@@ -1092,7 +1151,8 @@ export struct NotifyView {
           .width('100%')
           .height('100%')
 
-          if (this.searchCollapseTransitionVisible) {
+          if (this.searchCollapseTransitionVisible && !this.searchActive &&
+            !this.searchTransitionVisible && !this.searchCompactTransitionVisible) {
             this.searchCollapseTransitionBar();
           }
           if (this.searchCompactTransitionVisible) {
@@ -1970,6 +2030,7 @@ export struct NotifyView {
   /** 从 List 的滚动开始事件持续采样；系统回顶缺少逐帧回调时也能在到顶前展开。 */
   private startSearchScrollSampling(): void {
     if (this.searchScrollSampleTimer >= 0 || this.searchActive || this.isEditing ||
+      this.searchTransitioning || this.searchCollapseTransitioning ||
       this.messages.length === 0) {
       return;
     }
@@ -2007,7 +2068,8 @@ export struct NotifyView {
 
   /** 到顶时直接完成临时胶囊与 HDS 搜索栏的交接，不再额外播放 240ms 展开。 */
   private finishSearchExpandAtTop(): void {
-    if (!this.searchCollapsed || this.searchActive || this.isEditing || this.searchCollapseTransitioning) {
+    if (!this.searchCollapsed || this.searchActive || this.isEditing || this.searchTransitioning ||
+      this.searchCollapseTransitioning) {
       return;
     }
     this.searchCollapseProgress = 0;
@@ -2037,6 +2099,10 @@ export struct NotifyView {
       this.searchCollapseTransitionVisible = false;
       this.searchCollapseTransitioning = false;
       this.updateSearchCollapsedFromOffset();
+      if (this.pendingSearchAfterCollapse) {
+        this.pendingSearchAfterCollapse = false;
+        this.enterSearch();
+      }
     }, SEARCH_TRANSITION_DURATION);
   }
 
