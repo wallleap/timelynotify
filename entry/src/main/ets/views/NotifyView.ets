@@ -64,7 +64,7 @@ import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
-import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
+import { NotifyGroupMessageRow } from '../components/notify/NotifyGroupMessageRow';
 import { NotifyExportService } from '../services/NotifyExportService';
 import {
   belongsToPushInstance,
@@ -200,6 +200,8 @@ export struct NotifyView {
   // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
+  // 搜索结果独立滚动；有命中时交给 HDS 标题栏驱动动态模糊，不影响原列表位置。
+  private searchScroller: Scroller = new Scroller();
   private searchInputController: TextInputController = new TextInputController();
   private searchSeq: number = 0;
   private searchTimer: number = -1;
@@ -342,6 +344,10 @@ export struct NotifyView {
         .enableKeyboardOnFocus(this.searchActive)
         .onClick(() => this.enterSearch())
         .onChange((value: string) => {
+          // HDS 标题栏更新可能重复回调相同文本；只在真实输入变化时重新防抖查询。
+          if (value === this.searchQuery) {
+            return;
+          }
           this.searchQuery = value;
           this.scheduleSearch();
         });
@@ -590,17 +596,25 @@ export struct NotifyView {
           .margin({ top: 24 })
           .onClick(() => { if (this.searchError) this.scheduleSearch(); });
       } else {
-        List({ space: 12 }) {
-          ForEach(this.searchResults, (message: NotifyMessage) => {
+        List({ space: 0, scroller: this.searchScroller }) {
+          // 与原列表一致：让列表铺满可滚动区域，仅在内容首部留出标题栏下方间距。
+          ListItem() {
+            Row().width('100%').height(16);
+          }
+          ForEach(this.searchResults, (message: NotifyMessage, index: number) => {
             ListItem() {
-              NotifyMessageCard({
+              NotifyGroupMessageRow({
                 message: message,
+                isLast: notifyIdentity(message) === notifyIdentity(this.searchResults[this.searchResults.length - 1]) &&
+                  !this.searchHasMore,
                 onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
                 onOpenUrl: (url: string) => this.openUrl(url),
                 onCopyCode: (code: string) => this.copyCode(code),
                 onCopyUrl: (url: string) => this.copyUrl(url)
               });
             }
+            .borderRadius({ topLeft: index === 0 ? 12 : 0, topRight: index === 0 ? 12 : 0 })
+            .clip(true);
           }, (message: NotifyMessage) => notifyIdentity(message));
           if (this.searchHasMore || this.searchLoading || this.searchError) {
             ListItem() {
@@ -612,19 +626,22 @@ export struct NotifyView {
                 .padding(16)
                 .onClick(() => this.loadMoreSearch());
             }
+            .backgroundColor($r('app.color.color_bg_surface'))
+            .borderRadius({ bottomLeft: 12, bottomRight: 12 });
+          }
+          ListItem() {
+            Row().width('100%').height(this.navBarHeight + 72);
           }
         }
         .width('100%')
         .layoutWeight(1)
         .padding({ left: 16, right: 16 })
+        .clip(false)
         .onReachEnd(() => this.loadMoreSearch());
       }
     }
     .width('100%')
     .height('100%')
-    .padding({ top: shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 24 :
-      Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + 24,
-      bottom: this.navBarHeight + 16 })
     .alignItems(HorizontalAlign.Center)
     .backgroundColor($r('app.color.color_bg_page'))
     .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseInOut }));
@@ -974,7 +991,8 @@ export struct NotifyView {
         })
         .hideBackButton(true)
         .titleMode(HdsNavigationTitleMode.MINI)
-        .bindToScrollable([this.scroller])
+        .bindToScrollable([this.searchActive && this.searchQuery.trim().length > 0 &&
+          this.searchResults.length > 0 ? this.searchScroller : this.scroller])
         .width('100%')
         .height('100%')
         .bindSheet(this.showDetail, this.detailBuilder(), {
