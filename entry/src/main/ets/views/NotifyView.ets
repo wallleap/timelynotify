@@ -211,6 +211,8 @@ export struct NotifyView {
   private forceRefreshQueued: boolean = false;
   // Toggle 状态回调结束后再切换列表，避免同步清空消息时卸载正在响应事件的组件。
   private groupSwitchTimer: number = -1;
+  // 「跳到底部」是单次动作：等待 Toggle 回调结束后执行，并忽略期间的连点。
+  private scrollToBottomTimer: number = -1;
   // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
@@ -304,6 +306,10 @@ export struct NotifyView {
     if (this.groupSwitchTimer >= 0) {
       clearTimeout(this.groupSwitchTimer);
       this.groupSwitchTimer = -1;
+    }
+    if (this.scrollToBottomTimer >= 0) {
+      clearTimeout(this.scrollToBottomTimer);
+      this.scrollToBottomTimer = -1;
     }
     this.pendingSearchAfterCollapse = false;
     this.stopSearchScrollSampling();
@@ -1939,28 +1945,39 @@ export struct NotifyView {
    */
   @Builder
   private scrollToBottomFab() {
-    Row() {
-      Image($r('app.media.select_more'))
-        .width(20)
-        .height(20)
-        .objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.color_text_primary'))
-        .draggable(false);
+    Toggle({ type: ToggleType.Button, isOn: false }) {
+      Row() {
+        Image($r('app.media.select_more'))
+          .width(20)
+          .height(20)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.color_text_primary'))
+          .draggable(false);
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center);
     }
     .width(44)
     .height(44)
     .borderRadius(22)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
-    .backgroundColor($r('app.color.color_bg_glass_control'))
-    .backgroundBlurStyle(resolveBlurStyle('card')!)
-    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    .selectedColor(Color.Transparent)
+    .attributeModifier(IMMERSIVE_GROUP_TOGGLE_MODIFIER)
     // 分组按钮 bottom = navBarHeight + 72；本按钮在其上方，留 12vp 间距 + 44vp 按钮高度。
     .margin({ right: 16, bottom: this.navBarHeight + 72 + 44 + 12 })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 16 }))
       .animation({ duration: 220, curve: Curve.EaseOut }))
-    .onClick(() => {
-      this.scrollToBottom();
+    .onChange((isOn: boolean) => {
+      if (!isOn || this.isAutoScrolling || this.scrollToBottomTimer >= 0) {
+        return;
+      }
+      this.scrollToBottomTimer = setTimeout(() => {
+        this.scrollToBottomTimer = -1;
+        if (this.showScrollToBottom && !this.isAutoScrolling) {
+          this.scrollToBottom();
+        }
+      }, 0);
     });
   }
 

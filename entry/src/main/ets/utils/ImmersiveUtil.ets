@@ -233,7 +233,7 @@ export const IMMERSIVE_SEARCH_TITLE_MODIFIER: AttributeModifier<RowAttribute> = 
   }
 };
 
-/** 分组切换 Toggle 使用全页面可生效的交互材质；材质不可用时保留原悬浮按钮外观。 */
+/** 通知页两个悬浮 Toggle 共用全页面交互材质；材质不可用时保留玻璃模糊外观。 */
 export const IMMERSIVE_GROUP_TOGGLE_MODIFIER: AttributeModifier<ToggleAttribute> = {
   applyNormalAttribute(instance: ToggleAttribute): void {
     const material = getEnabledSystemMaterial('groupToggle');
