@@ -241,6 +241,9 @@ export struct NotifyView {
   private detailScroller: Scroller = new Scroller();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
   private isAutoScrolling: boolean = false;
+  // 自动贴底后继续隐藏按钮，直到真实手势把列表带离底部。
+  private suppressBottomButtonUntilUserScroll: boolean = false;
+  private bottomButtonUserTouchStarted: boolean = false;
   // 当前列表对应的 device_key 快照；key 切换时需清空内存中的旧设备消息，即使处于“全部”模式。
   private visibleDeviceKeys: string = '';
   // 持久化的全局展开记录；仅在切换展开/收起时变更，避免切换服务器时误删不可见分组。
@@ -274,6 +277,8 @@ export struct NotifyView {
       });
     this.loadExpandedGroups();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
+      this.suppressBottomButtonUntilUserScroll = false;
+      this.bottomButtonUserTouchStarted = false;
       this.exitEditMode();
       // 从 ServerManager 同步视图模式（ServerSwitchDialog 切换全部/单服务器时触发）
       const newViewAll: boolean = ServerManager.getInstance().getViewAllMode();
@@ -303,6 +308,8 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    this.suppressBottomButtonUntilUserScroll = false;
+    this.bottomButtonUserTouchStarted = false;
     if (this.groupSwitchTimer >= 0) {
       clearTimeout(this.groupSwitchTimer);
       this.groupSwitchTimer = -1;
@@ -1264,6 +1271,9 @@ export struct NotifyView {
       onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
       this.handleListScroll(scrollOffset, scrollState),
       onListScrollStart: () => this.handleSearchScrollStart(),
+      onListTouchDown: () => {
+        this.bottomButtonUserTouchStarted = true;
+      },
       onListScrollStop: () => this.handleSearchScrollStop(),
       onListReachStart: () => {
         this.finishSearchExpandAtTop();
@@ -2003,6 +2013,10 @@ export struct NotifyView {
     if (offset === undefined) {
       return;
     }
+    if (this.suppressBottomButtonUntilUserScroll && this.bottomButtonUserTouchStarted && scrollOffset < -0.5) {
+      this.suppressBottomButtonUntilUserScroll = false;
+      this.bottomButtonUserTouchStarted = false;
+    }
     const atTop: boolean = offset <= 0;
     if (atTop) {
       if (this.showScrollToBottom) {
@@ -2015,6 +2029,9 @@ export struct NotifyView {
       if (this.showScrollToBottom) {
         this.showScrollToBottom = false;
       }
+      return;
+    }
+    if (this.suppressBottomButtonUntilUserScroll) {
       return;
     }
     if (scrollOffset > 0) {
@@ -2176,6 +2193,8 @@ export struct NotifyView {
    */
   private scrollToBottom(): void {
     this.showScrollToBottom = false;
+    this.suppressBottomButtonUntilUserScroll = true;
+    this.bottomButtonUserTouchStarted = false;
     this.isAutoScrolling = true;
     this.scrollToBottomSignal++;
   }
@@ -2536,6 +2555,8 @@ export struct NotifyView {
    */
   private toggleGroupEnabled(): void {
     this.stopSearchScrollSampling();
+    this.suppressBottomButtonUntilUserScroll = false;
+    this.bottomButtonUserTouchStarted = false;
     this.groupEnabled = !this.groupEnabled;
     this.flatLoadedLimit = FLAT_PAGE_SIZE;
     // 两种模式的首屏取数方式不同，先移除旧模式快照，避免其尾项被当作平铺态游标。

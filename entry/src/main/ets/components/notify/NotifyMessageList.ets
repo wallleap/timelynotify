@@ -106,6 +106,9 @@ export struct NotifyMessageList {
   // 系统状态栏回顶可能不逐帧发送 onDidScroll；滚动开始时通知页面采样 Scroller 实际位置。
   onListScrollStart: () => void = () => {
   };
+  // 真实手指按下列表；页面借此区分用户滚动与自动贴底后的回弹事件。
+  onListTouchDown: () => void = () => {
+  };
   onListScrollStop: () => void = () => {
   };
   // 列表到达起点（顶部）回调：双击状态栏等编程式滚动回到顶部时 onDidScroll 可能不触发，
@@ -292,6 +295,7 @@ export struct NotifyMessageList {
       // 启动瞬间被误判为用户手势而提前清状态。
       if (event.type === TouchType.Down) {
         this.interruptAutoScroll();
+        this.onListTouchDown();
       }
     })
     .onScrollIndex((firstVisibleIndex: number, lastVisibleIndex: number, _centerIndex: number) => {
