@@ -108,6 +108,9 @@ const SEARCH_COMPACT_HDS_TOP_CORRECTION: number = 8;
 // 离开顶部与回顶使用不同阈值，避免手指回弹时搜索入口反复展开、收缩。
 const SEARCH_COLLAPSE_OFFSET: number = 16;
 const SEARCH_EXPAND_OFFSET: number = 2;
+// 回顶最后一段随列表位置渐进展开；完整搜索栏仍只在真正到顶时接管。
+const SEARCH_EXPAND_RANGE: number = 240;
+const SEARCH_SCROLL_SAMPLE_MS: number = 16;
 const SEARCH_PAGE_SIZE: number = 50;
 const SEARCH_DEBOUNCE_MS: number = 250;
 
@@ -212,6 +215,12 @@ export struct NotifyView {
   private searchTransitioning: boolean = false;
   // 滚动方向可能在动画中改变；结束时按列表实际位置校正一次。
   private searchCollapseTransitioning: boolean = false;
+  // 系统状态栏回顶不一定逐帧发送 onDidScroll，滚动期间以 Scroller 实际偏移驱动过渡。
+  private searchScrollSampleTimer: number = -1;
+  private searchScrollLastOffset: number = -1;
+  private searchScrollIdleSamples: number = 0;
+  // 只用实际偏移变化判断方向；停在过渡区时保留当前位置，不回弹到图标。
+  private searchMovingTowardTop: boolean = false;
   // 详情 Sheet 内部 List 的滚动控制器，与 Sheet 内 HdsNavigation.bindToScrollable 共享以驱动标题栏动态模糊。
   private detailScroller: Scroller = new Scroller();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
@@ -278,6 +287,7 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    this.stopSearchScrollSampling();
     if (this.onChange) {
       ServerManager.getInstance().removeChangeListener(this.onChange);
     }
@@ -463,7 +473,8 @@ export struct NotifyView {
           this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET :
           Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + SEARCH_BAR_GAP)) *
         this.searchCollapseProgress
-    });
+    })
+    .onClick(() => this.enterSearch());
   }
 
   /** 从标题栏右侧图标原位展开，结束后由真正的输入框接管焦点和系统材质。 */
@@ -954,14 +965,17 @@ export struct NotifyView {
                   this.searchBottomBar();
                 }
               },
-              height: this.searchActive || this.isEditing ? 0 : this.searchCollapseTransitionVisible ?
+              // 回顶的临时胶囊在 HDS 外层绘制；收缩态过渡不逐帧改变标题栏高度，
+              // 否则高度反过来改变 Scroller 偏移，形成滚动与展开互相驱动的抖动。
+              height: this.searchActive || this.isEditing || this.searchCollapsed ? 0 :
+                this.searchCollapseTransitionVisible ?
                 (SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP) * (1 - this.searchCollapseProgress) :
-                this.searchCollapsed ? 0 : SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP
+                SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP
             },
             menu: {
               maxCount: 3,
               value: this.searchActive || this.searchTransitionVisible || this.searchCompactTransitionVisible ? [] :
-                this.searchCollapsed && !this.isEditing ? [
+                this.searchCollapsed && !this.isEditing && !this.searchCollapseTransitionVisible ? [
                 {
                   content: {
                     label: '多选',
@@ -1169,8 +1183,10 @@ export struct NotifyView {
       },
       onListScroll: (scrollOffset: number, scrollState: ScrollState) =>
       this.handleListScroll(scrollOffset, scrollState),
+      onListScrollStart: () => this.handleSearchScrollStart(),
+      onListScrollStop: () => this.handleSearchScrollStop(),
       onListReachStart: () => {
-        this.setSearchCollapsed(false);
+        this.finishSearchExpandAtTop();
         if (this.showScrollToBottom) {
           this.showScrollToBottom = false;
         }
@@ -1872,6 +1888,11 @@ export struct NotifyView {
    * 「跳到底部」程序滚动期间整体屏蔽，否则动画产生的正向滚动会让按钮中途重现闪烁。
    */
   private handleListScroll(scrollOffset: number, scrollState: ScrollState): void {
+    if (scrollOffset < -0.5) {
+      this.searchMovingTowardTop = true;
+    } else if (scrollOffset > 0.5) {
+      this.searchMovingTowardTop = false;
+    }
     this.updateSearchCollapsedFromOffset();
     if (this.isAutoScrolling || scrollState === ScrollState.Idle) {
       return;
@@ -1905,21 +1926,97 @@ export struct NotifyView {
     }
   }
 
-  /** 只在越过阈值或回到顶部时切换一次，不跟随每帧滚动重建 HDS 标题栏。 */
+  /** 滚动偏移驱动回顶展开；离顶收缩仍沿用原动画。 */
   private updateSearchCollapsedFromOffset(): void {
     if (this.searchActive || this.isEditing || this.searchTransitioning ||
       this.searchCollapseTransitioning || this.messages.length === 0) {
       return;
     }
-    const offset: number = this.scroller.currentOffset().yOffset;
+    const offset: number = Math.max(0, this.scroller.currentOffset().yOffset);
+    if (this.searchCollapsed && offset <= SEARCH_EXPAND_OFFSET) {
+      this.finishSearchExpandAtTop();
+      return;
+    }
+    if (this.searchCollapsed && (this.searchMovingTowardTop || this.searchCollapseTransitionVisible) &&
+      offset < SEARCH_EXPAND_RANGE) {
+      const ratio: number = offset / SEARCH_EXPAND_RANGE;
+      // 平滑插值避免进入/离开采样区间时速度突变；不启动额外的定时动画。
+      const progress: number = ratio * ratio * (3 - 2 * ratio);
+      if (!this.searchCollapseTransitionVisible) {
+        this.searchCollapseTransitionVisible = true;
+      }
+      this.searchCollapseProgress = progress;
+      return;
+    }
+    if (this.searchCollapsed && this.searchCollapseTransitionVisible) {
+      this.searchCollapseTransitionVisible = false;
+      this.searchCollapseProgress = 1;
+    }
     if (!this.searchCollapsed && offset >= SEARCH_COLLAPSE_OFFSET) {
       this.setSearchCollapsed(true);
-    } else if (this.searchCollapsed && offset <= SEARCH_EXPAND_OFFSET) {
-      this.setSearchCollapsed(false);
     }
   }
 
-  /** 动画完成后才切换 HDS 菜单数量，避免滚动过程中按钮被重排到屏幕外。 */
+  /** 系统回顶与手势滚动共用实际偏移采样，不再按事件来源猜测动画时序。 */
+  private handleSearchScrollStart(): void {
+    this.startSearchScrollSampling();
+  }
+
+  /** 滚动停止只停止采样；半途位置不强制缩回。 */
+  private handleSearchScrollStop(): void {
+    this.stopSearchScrollSampling();
+  }
+
+  /** 从 List 的滚动开始事件持续采样；系统回顶缺少逐帧回调时也能在到顶前展开。 */
+  private startSearchScrollSampling(): void {
+    if (this.searchScrollSampleTimer >= 0 || this.searchActive || this.isEditing ||
+      this.messages.length === 0) {
+      return;
+    }
+    this.searchScrollLastOffset = this.scroller.currentOffset().yOffset;
+    this.searchScrollIdleSamples = 0;
+    this.searchScrollSampleTimer = setInterval(() => {
+      const offset: number = this.scroller.currentOffset().yOffset;
+      if (offset < this.searchScrollLastOffset - 0.5) {
+        this.searchMovingTowardTop = true;
+      } else if (offset > this.searchScrollLastOffset + 0.5) {
+        this.searchMovingTowardTop = false;
+      }
+      this.updateSearchCollapsedFromOffset();
+      // onScrollIndex 也可能由数据更新触发；长时间无位移时释放兜底采样器。
+      this.searchScrollIdleSamples = Math.abs(offset - this.searchScrollLastOffset) < 0.5 ?
+        this.searchScrollIdleSamples + 1 : 0;
+      this.searchScrollLastOffset = offset;
+      if (offset <= SEARCH_EXPAND_OFFSET || this.searchScrollIdleSamples >= 120) {
+        this.stopSearchScrollSampling();
+      }
+    }, SEARCH_SCROLL_SAMPLE_MS);
+  }
+
+  /** 停止采样；只有真正到顶才交接完整搜索栏，半途保留过渡胶囊。 */
+  private stopSearchScrollSampling(): void {
+    if (this.searchScrollSampleTimer >= 0) {
+      clearInterval(this.searchScrollSampleTimer);
+      this.searchScrollSampleTimer = -1;
+    }
+    if (this.scroller.currentOffset().yOffset <= SEARCH_EXPAND_OFFSET) {
+      this.finishSearchExpandAtTop();
+    }
+    this.searchMovingTowardTop = false;
+  }
+
+  /** 到顶时直接完成临时胶囊与 HDS 搜索栏的交接，不再额外播放 240ms 展开。 */
+  private finishSearchExpandAtTop(): void {
+    if (!this.searchCollapsed || this.searchActive || this.isEditing || this.searchCollapseTransitioning) {
+      return;
+    }
+    this.searchCollapseProgress = 0;
+    this.searchMovingTowardTop = false;
+    this.searchCollapsed = false;
+    this.searchCollapseTransitionVisible = false;
+  }
+
+  /** 离顶收缩动画；回顶展开改由滚动位置连续驱动。 */
   private setSearchCollapsed(collapsed: boolean): void {
     if (this.searchCollapsed === collapsed || this.searchActive || this.isEditing ||
       this.searchCollapseTransitioning) {
@@ -1933,6 +2030,10 @@ export struct NotifyView {
     });
     setTimeout(() => {
       this.searchCollapsed = collapsed;
+      // 收缩动画改变标题栏高度产生的偏移不能被误判成用户正在回顶。
+      if (collapsed) {
+        this.searchMovingTowardTop = false;
+      }
       this.searchCollapseTransitionVisible = false;
       this.searchCollapseTransitioning = false;
       this.updateSearchCollapsedFromOffset();

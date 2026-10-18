@@ -103,6 +103,11 @@ export struct NotifyMessageList {
   onListScroll: (scrollOffset: number, scrollState: ScrollState) => void =
     (_scrollOffset: number, _scrollState: ScrollState) => {
     };
+  // 系统状态栏回顶可能不逐帧发送 onDidScroll；滚动开始时通知页面采样 Scroller 实际位置。
+  onListScrollStart: () => void = () => {
+  };
+  onListScrollStop: () => void = () => {
+  };
   // 列表到达起点（顶部）回调：双击状态栏等编程式滚动回到顶部时 onDidScroll 可能不触发，
   // 通过 onReachStart 兜底确保「跳到底部」按钮隐藏。
   onListReachStart: () => void = () => {
@@ -269,6 +274,9 @@ export struct NotifyMessageList {
     .onDidScroll((scrollOffset: number, scrollState: ScrollState) => {
       this.onListScroll(scrollOffset, scrollState);
     })
+    .onScrollStart(() => {
+      this.onListScrollStart();
+    })
     .onReachStart(() => {
       this.onListReachStart();
     })
@@ -290,8 +298,11 @@ export struct NotifyMessageList {
       // 记录可视区末尾 ListItem 绝对索引，供「跳到底部」判断剩余行数与驱动瞬跳后的第二段。
       this.visibleEndIndex = lastVisibleIndex;
       this.advanceAutoScrollAfterJump(lastVisibleIndex);
+      // 若系统回顶不派发 onScrollStart/onDidScroll，索引变化仍可启动位置采样。
+      this.onListScrollStart();
     })
     .onScrollStop(() => {
+      this.onListScrollStop();
       // 仅平滑滚动态（smoothing）结束后清除；瞬跳态（jumping）的 stop 事件不可靠，
       // 统一忽略，由 onScrollIndex 驱动下一阶段，避免依赖定时器或吞事件。
       if (this.autoScrollState === AUTO_SCROLL_SMOOTHING) {
