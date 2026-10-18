@@ -1086,6 +1086,53 @@ export class MessageCacheStore {
     }
   }
 
+  /** 在可见来源的全部未过期本地历史中搜索；使用全序游标，避免一次性加载整库。 */
+  static async searchLocal(deviceKeys: string[], keyword: string, before: NotifyMessage | null,
+    limit: number): Promise<NotifyMessage[] | null> {
+    if (deviceKeys.length === 0 || keyword.trim().length === 0 || limit <= 0) {
+      return [];
+    }
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      return null;
+    }
+    try {
+      const placeholders: string = deviceKeys.map(() => '?').join(',');
+      // 使用 ! 转义 LIKE 元字符，使用户输入的 %、_、! 都按字面量匹配。
+      const pattern: string = `%${keyword.trim().replace(/!/g, '!!').replace(/%/g, '!%').replace(/_/g, '!_')}%`;
+      const args: Array<string | number> = deviceKeys.slice();
+      args.push(Date.now(), pattern, pattern, pattern, pattern);
+      let cursorSql: string = '';
+      if (before) {
+        cursorSql = ` AND (timestamp < ? OR (timestamp = ? AND id < ?) OR ` +
+          `(timestamp = ? AND id = ? AND device_key < ?))`;
+        args.push(before.timestamp, before.timestamp, before.id,
+          before.timestamp, before.id, before.deviceKey);
+      }
+      args.push(limit);
+      const rs: relationalStore.ResultSet = await db.querySql(
+        `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) ` +
+        `AND (expires_at=0 OR expires_at>?) AND ` +
+        `(title LIKE ? ESCAPE '!' OR body LIKE ? ESCAPE '!' OR ` +
+        `subtitle LIKE ? ESCAPE '!' OR group_key LIKE ? ESCAPE '!')` + cursorSql +
+        ` ORDER BY timestamp DESC, id DESC, device_key DESC LIMIT ?`, args);
+      const messages: NotifyMessage[] = [];
+      try {
+        if (rs.goToFirstRow()) {
+          do {
+            messages.push(rowToMessage(rs));
+          } while (rs.goToNextRow());
+        }
+      } finally {
+        rs.close();
+      }
+      return messages;
+    } catch (err) {
+      hilog.warn(DOMAIN, TAG, 'searchLocal 失败：%{public}s', formatError(err));
+      return null;
+    }
+  }
+
   /**
    * 获取指定 device_keys 下所有消息的身份字符串（JSON.stringify([deviceKey, id])）。
    * 用于"全选"时选中全部本地缓存消息，不受列表分页加载数量限制。

@@ -64,6 +64,7 @@ import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
+import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyExportService } from '../services/NotifyExportService';
 import {
   belongsToPushInstance,
@@ -107,6 +108,8 @@ const SEARCH_COMPACT_HDS_TOP_CORRECTION: number = 8;
 // 离开顶部与回顶使用不同阈值，避免手指回弹时搜索入口反复展开、收缩。
 const SEARCH_COLLAPSE_OFFSET: number = 16;
 const SEARCH_EXPAND_OFFSET: number = 2;
+const SEARCH_PAGE_SIZE: number = 50;
+const SEARCH_DEBOUNCE_MS: number = 250;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -148,9 +151,12 @@ export struct NotifyView {
   @State flatLoadingMore: boolean = false;
   // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
   @State groupEnabled: boolean = true;
-  // 当前仅提供搜索交互预览；本地历史查询将在缓存层接口接入后实现。
   @State searchActive: boolean = false;
   @State searchQuery: string = '';
+  @State searchResults: NotifyMessage[] = [];
+  @State searchLoading: boolean = false;
+  @State searchHasMore: boolean = false;
+  @State searchError: boolean = false;
   // 普通浏览态离开列表顶部后，将搜索入口缩成标题栏右侧图标。
   @State searchCollapsed: boolean = false;
   // 标题下搜索栏与标题栏圆形搜索按钮之间的跨层过渡进度。
@@ -195,6 +201,8 @@ export struct NotifyView {
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
   private searchInputController: TextInputController = new TextInputController();
+  private searchSeq: number = 0;
+  private searchTimer: number = -1;
   // 阻止过渡中重复点击造成标题栏与临时胶囊状态错位。
   private searchTransitioning: boolean = false;
   // 滚动方向可能在动画中改变；结束时按列表实际位置校正一次。
@@ -256,6 +264,9 @@ export struct NotifyView {
         this.groupLoadingMore = new Set<string>();
       }
       this.loadSeq++;
+      if (this.searchActive && this.searchQuery.trim().length > 0) {
+        this.scheduleSearch();
+      }
       this.loadMessages();
     };
     ServerManager.getInstance().addChangeListener(this.onChange);
@@ -332,6 +343,7 @@ export struct NotifyView {
         .onClick(() => this.enterSearch())
         .onChange((value: string) => {
           this.searchQuery = value;
+          this.scheduleSearch();
         });
     }
     .layoutWeight(1)
@@ -568,23 +580,105 @@ export struct NotifyView {
     .zIndex(2);
   }
 
-  /** 当前阶段只展示搜索 UI，不对屏幕已加载消息做误导性的局部过滤。 */
+  /** 输入关键词后才覆盖搜索结果；空关键词直接展示原列表，保持进入搜索前的滚动位置。 */
   @Builder
   private searchPreview() {
-    Column({ space: 8 }) {
-      Text('搜索结果将在此显示')
-        .fontSize(16)
-        .fontColor($r('app.color.color_text_secondary'));
-      Text('本地历史查询尚未接入')
-        .fontSize(13)
-        .fontColor($r('app.color.color_text_hint'));
+    Column() {
+      if (this.searchResults.length === 0) {
+        Text(this.searchLoading ? '正在搜索…' : this.searchError ? '搜索失败，请重试' : '没有找到相关通知')
+          .fontSize(16).fontColor($r('app.color.color_text_secondary'))
+          .margin({ top: 24 })
+          .onClick(() => { if (this.searchError) this.scheduleSearch(); });
+      } else {
+        List({ space: 12 }) {
+          ForEach(this.searchResults, (message: NotifyMessage) => {
+            ListItem() {
+              NotifyMessageCard({
+                message: message,
+                onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
+                onOpenUrl: (url: string) => this.openUrl(url),
+                onCopyCode: (code: string) => this.copyCode(code),
+                onCopyUrl: (url: string) => this.copyUrl(url)
+              });
+            }
+          }, (message: NotifyMessage) => notifyIdentity(message));
+          if (this.searchHasMore || this.searchLoading || this.searchError) {
+            ListItem() {
+              Text(this.searchLoading ? '加载中…' : this.searchError ? '加载失败，点击重试' : '加载更多')
+                .fontSize(14)
+                .fontColor($r('app.color.color_text_secondary'))
+                .width('100%')
+                .textAlign(TextAlign.Center)
+                .padding(16)
+                .onClick(() => this.loadMoreSearch());
+            }
+          }
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .padding({ left: 16, right: 16 })
+        .onReachEnd(() => this.loadMoreSearch());
+      }
     }
     .width('100%')
     .height('100%')
     .padding({ top: shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 24 :
-      Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + 24 })
+      Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + 24,
+      bottom: this.navBarHeight + 16 })
     .alignItems(HorizontalAlign.Center)
-    .backgroundColor($r('app.color.color_bg_page'));
+    .backgroundColor($r('app.color.color_bg_page'))
+    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseInOut }));
+  }
+
+  /** 输入防抖并废弃旧请求；搜索范围与当前通知视图一致。 */
+  private scheduleSearch(): void {
+    this.searchSeq++;
+    if (this.searchTimer >= 0) {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = -1;
+    }
+    this.searchResults = [];
+    this.searchHasMore = false;
+    this.searchError = false;
+    if (this.searchQuery.trim().length === 0) {
+      this.searchLoading = false;
+      return;
+    }
+    this.searchLoading = true;
+    const seq: number = this.searchSeq;
+    this.searchTimer = setTimeout(() => {
+      this.searchTimer = -1;
+      this.fetchSearchPage(seq, null);
+    }, SEARCH_DEBOUNCE_MS);
+  }
+
+  private async fetchSearchPage(seq: number, before: NotifyMessage | null): Promise<void> {
+    const keys: string[] = this.getVisibleHistoryKeys();
+    const query: string = this.searchQuery.trim();
+    const page: NotifyMessage[] | null = await MessageCacheStore.searchLocal(keys, query, before, SEARCH_PAGE_SIZE + 1);
+    if (seq !== this.searchSeq || !this.searchActive || query !== this.searchQuery.trim() ||
+      keys.join('|') !== this.getVisibleHistoryKeys().join('|')) {
+      return;
+    }
+    this.searchLoading = false;
+    if (page === null) {
+      this.searchError = true;
+      return;
+    }
+    this.searchError = false;
+    this.searchHasMore = page.length > SEARCH_PAGE_SIZE;
+    const visible: NotifyMessage[] = page.slice(0, SEARCH_PAGE_SIZE);
+    this.searchResults = before ? this.searchResults.concat(visible) : visible;
+  }
+
+  private loadMoreSearch(): void {
+    if (!this.searchActive || this.searchLoading || (!this.searchHasMore && !this.searchError) ||
+      this.searchResults.length === 0) {
+      return;
+    }
+    this.searchLoading = true;
+    this.searchError = false;
+    this.fetchSearchPage(this.searchSeq, this.searchResults[this.searchResults.length - 1]);
   }
 
   /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
@@ -639,7 +733,16 @@ export struct NotifyView {
       return;
     }
     this.searchInputController.stopEditing();
+    this.searchSeq++;
+    if (this.searchTimer >= 0) {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = -1;
+    }
     this.searchQuery = '';
+    this.searchResults = [];
+    this.searchLoading = false;
+    this.searchHasMore = false;
+    this.searchError = false;
     // 从输入框反向收回右侧图标，保留进入搜索前的列表滚动位置。
     if (this.searchCollapsed) {
       this.searchTransitioning = true;
@@ -743,7 +846,7 @@ export struct NotifyView {
         this.serverErrorBannerView();
       }
 
-      if (this.searchActive) {
+      if (this.searchActive && this.searchQuery.trim().length > 0) {
         this.searchPreview();
       }
     }
