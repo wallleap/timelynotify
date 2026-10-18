@@ -1,4 +1,4 @@
-import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
+import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, IconStyleMode } from '@kit.UIDesignKit';
 import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
 import { extractHost } from '../../utils/ServerUrlUtil';
@@ -28,7 +28,8 @@ const LIST_MAX_HEIGHT: number = 280;
  * 透出弹窗背板；单选指示为自绘圆环（选中=品牌色圆环+实心内点，未选中=描边圆环）。
  * 背板在 API 26+ 且开关开启时与 Sheet 一样通过统一工具传入 THICK 材质，设备最终效果由系统决定。
  * 降级时面板本身再加 1px color_border_subtle 细描边，深色下勾出面板轮廓。
- * API 26+ 沉浸分支使用 HDS 固定标题栏、叠放的描边透明关闭按钮和绑定的滚动区；
+ * API 26+ 沉浸分支使用 HDS 半模态标题栏及其内置关闭菜单，滚动区与标题栏绑定；
+ * 标题栏模糊使用 MODAL 默认样式，避免额外叠加自定义渐变层。
  * 降级分支保留普通固定标题与关闭图标。服务器的增删/Token/加密等管理在「服务」页。
  */
 @CustomDialog
@@ -233,57 +234,46 @@ export struct ServerSwitchDialog {
     .padding({ left: CONTENT_SIDE_INSET, right: CONTENT_SIDE_INSET - 4 });
   }
 
-  @Builder
-  private glassCloseButton() {
-    Row() {
-      Image($r('app.media.close'))
-        .width(20)
-        .height(20)
-        .objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.color_text_primary'))
-        .draggable(false);
-    }
-    .width(38)
-    .height(38)
-    .borderRadius(38)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
-    .border({ width: 1, color: $r('app.color.color_border_glass') })
-    // 弹窗背板已做模糊；按钮再叠白色模糊会在亮色下变成实心白圆。
-    .backgroundColor(Color.Transparent)
-    .margin({ top: 12, right: 14 })
-    .onClick(() => this.close());
-  }
-
   build() {
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
-      Stack({ alignContent: Alignment.TopEnd }) {
-        HdsNavigation() {
-          this.serverListScroll();
-        }
-        .titleBar({
-          enableComponentSafeArea: true,
-          content: { title: { mainTitle: '切换通知服务' } },
-          style: {
-            scrollEffectOpts: {
-              enableScrollEffect: true,
-              scrollEffectType: ScrollEffectType.GRADIENT_BLUR
-            },
-            systemMaterialEffect: {
-              materialType: hdsMaterial.MaterialType.ADAPTIVE,
-              materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
-            }
-          }
-        })
-        .hideBackButton(true)
-        .titleMode(HdsNavigationTitleMode.MODAL)
-        .bindToScrollable([this.listScroller])
-        .width('100%')
-        .height('100%')
-        .backgroundColor(Color.Transparent);
-
-        this.glassCloseButton();
+      HdsNavigation() {
+        this.serverListScroll();
       }
+      .titleBar({
+        enableComponentSafeArea: true,
+        content: {
+          title: { mainTitle: '切换通知服务' },
+          // 关闭按钮交给 HDS 标题栏绘制，才能与标题栏材质和滚动模糊保持一致。
+          menu: {
+            value: [{
+              content: {
+                icon: $r('sys.symbol.xmark'),
+                type: IconStyleMode.SMALL,
+                action: (): void => this.close()
+              }
+            }]
+          }
+        },
+        style: {
+          // MODAL 默认状态和滚动后状态的图标色可能不同；明确指定颜色避免浅色材质上看不见关闭符号。
+          originalStyle: {
+            contentStyle: {
+              menuStyle: { iconColor: $r('app.color.color_text_primary') }
+            }
+          },
+          scrollEffectStyle: {
+            contentStyle: {
+              menuStyle: { iconColor: $r('app.color.color_text_primary') }
+            }
+          },
+          systemMaterialEffect: {
+            materialType: hdsMaterial.MaterialType.ADAPTIVE,
+            materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
+          }
+        }
+      })
+      .titleMode(HdsNavigationTitleMode.MODAL)
+      .bindToScrollable([this.listScroller])
       .width('100%')
       .height(this.dialogHeight())
       .backgroundColor(Color.Transparent)
