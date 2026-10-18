@@ -92,6 +92,10 @@ export function ensureImmersiveMaterial(): Promise<void> {
     if (mod && typeof mod.ImmersiveMaterial === 'function' && mod.ImmersiveStyle) {
       try {
         // 预创建各表面材质实例（材质配置对象不可变，可安全复用）
+        // module.json5 全局为 ENABLE；组件级关闭必须传 Material.empty，undefined 会恢复默认材质。
+        if (mod.Material && mod.Material.empty) {
+          materialCache['empty'] = mod.Material.empty;
+        }
         materialCache['bar'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
         materialCache['body'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
         materialCache['card'] = new mod.ImmersiveMaterial({ style: mod.ImmersiveStyle.ULTRA_THIN });
@@ -101,6 +105,15 @@ export function ensureImmersiveMaterial(): Promise<void> {
           style: mod.ImmersiveStyle.ULTRA_THIN,
           interactive: true,
           lightEffect: searchLightEffect
+        });
+        // 分组/平铺为双状态操作，可由全页面支持沉浸光感的 Toggle.Button 承载。
+        // 半透明赋色在低算力设备上也能保留可辨认的圆形背板。
+        const groupToggleLightEffect: uiMaterial.LightEffectOptions = {};
+        materialCache['groupToggle'] = new mod.ImmersiveMaterial({
+          style: mod.ImmersiveStyle.ULTRA_THIN,
+          materialColor: $r('app.color.color_bg_glass_control'),
+          interactive: true,
+          lightEffect: groupToggleLightEffect
         });
         // 浮动操作按钮：官方「纯色 + 质感」组合——
         // materialColor 用不透明控件纯色（color_bg_action，亮浅灰/暗深灰蓝，随主题切换），
@@ -154,7 +167,7 @@ export function ensureImmersiveMaterial(): Promise<void> {
 
 /** 按统一闸门获取指定表面材质；未加载时返回 undefined，由调用方走降级样式。 */
 export function getEnabledSystemMaterial(
-  surface: 'bar' | 'body' | 'card' | 'search' | 'action' | 'sheet' | 'toast' | 'dialog' | 'menu',
+  surface: 'bar' | 'body' | 'card' | 'search' | 'groupToggle' | 'action' | 'sheet' | 'toast' | 'dialog' | 'menu',
   immersiveLightEnabled: boolean = AppStorage.get<boolean>(KEY_IMMERSIVE_LIGHT_ENABLED) !== false
 ): uiMaterial.Material | undefined {
   if (!shouldUseSystemMaterialPath(immersiveLightEnabled) || AppStorage.get<boolean>(KEY_MATERIAL_LOADED) !== true) {
@@ -211,6 +224,21 @@ export const IMMERSIVE_SEARCH_TITLE_MODIFIER: AttributeModifier<RowAttribute> = 
     const material = getEnabledSystemMaterial('search');
     if (deviceInfo.apiAvailable('26.0.0')) {
       instance.systemMaterial(material);
+    }
+    if (material === undefined) {
+      instance.backgroundColor($r('app.color.color_bg_glass_control'));
+      instance.backgroundBlurStyle(resolveBlurStyle('card'));
+      instance.border({ width: 1, color: $r('app.color.color_border_glass') });
+    }
+  }
+};
+
+/** 分组切换 Toggle 使用全页面可生效的交互材质；材质不可用时保留原悬浮按钮外观。 */
+export const IMMERSIVE_GROUP_TOGGLE_MODIFIER: AttributeModifier<ToggleAttribute> = {
+  applyNormalAttribute(instance: ToggleAttribute): void {
+    const material = getEnabledSystemMaterial('groupToggle');
+    if (deviceInfo.apiAvailable('26.0.0')) {
+      instance.systemMaterial(material ?? materialCache['empty']);
     }
     if (material === undefined) {
       instance.backgroundColor($r('app.color.color_bg_glass_control'));

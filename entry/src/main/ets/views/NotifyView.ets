@@ -21,6 +21,7 @@ import {
   getDialogBackgroundOptions,
   getDialogMaterial,
   getEnabledSystemMaterial,
+  IMMERSIVE_GROUP_TOGGLE_MODIFIER,
   IMMERSIVE_SEARCH_TITLE_MODIFIER,
   KEY_IMMERSIVE_LIGHT_ENABLED,
   KEY_MATERIAL_LOADED,
@@ -208,6 +209,8 @@ export struct NotifyView {
   private flatLoadedLimit: number = FLAT_PAGE_SIZE;
   private loadQueued: boolean = false;
   private forceRefreshQueued: boolean = false;
+  // Toggle 状态回调结束后再切换列表，避免同步清空消息时卸载正在响应事件的组件。
+  private groupSwitchTimer: number = -1;
   // 防止前后台刷新和点击信号同时到达时重复同步、重复打开详情。
   private openingPushNotice: boolean = false;
   private scroller: Scroller = new Scroller();
@@ -298,6 +301,10 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    if (this.groupSwitchTimer >= 0) {
+      clearTimeout(this.groupSwitchTimer);
+      this.groupSwitchTimer = -1;
+    }
     this.pendingSearchAfterCollapse = false;
     this.stopSearchScrollSampling();
     if (this.onChange) {
@@ -374,8 +381,11 @@ export struct NotifyView {
             return;
           }
           if (this.searchQuery.trim().length === 0 && value.trim().length > 0) {
-            this.searchBaseOffset = Math.max(0, this.scroller.currentOffset().yOffset);
-            this.searchBaseOffsetSaved = true;
+            const offset = this.getListYOffset();
+            if (offset !== undefined) {
+              this.searchBaseOffset = Math.max(0, offset);
+              this.searchBaseOffsetSaved = true;
+            }
           }
           this.searchQuery = value;
           this.scheduleSearch();
@@ -861,7 +871,11 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
-        const offset: number = Math.max(0, this.scroller.currentOffset().yOffset);
+        const currentOffset = this.getListYOffset();
+        if (currentOffset === undefined) {
+          return;
+        }
+        const offset: number = Math.max(0, currentOffset);
         if (offset <= SEARCH_EXPAND_OFFSET) {
           this.finishSearchExpandAtTop();
         } else if (this.searchCompactStartedFromScroll && offset < SEARCH_EXPAND_RANGE) {
@@ -1452,7 +1466,7 @@ export struct NotifyView {
       this.serverErrorBannerHeight = 0;
       return;
     }
-    this.serverErrorBannerCollapsed = this.scroller.currentOffset().yOffset > 0;
+    this.serverErrorBannerCollapsed = (this.getListYOffset() ?? 0) > 0;
   }
 
   /**
@@ -1885,25 +1899,36 @@ export struct NotifyView {
    */
   @Builder
   private groupModeToggleFab() {
-    Row() {
-      Image(this.groupEnabled ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
-        .width(20)
-        .height(20)
-        .objectFit(ImageFit.Contain)
-        .fillColor($r('app.color.color_text_primary'))
-        .draggable(false);
+    Toggle({ type: ToggleType.Button, isOn: this.groupEnabled }) {
+      Row() {
+        Image(this.groupEnabled ? $r('app.media.group_expand') : $r('app.media.group_collapse'))
+          .width(20)
+          .height(20)
+          .objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.color_text_primary'))
+          .draggable(false);
+      }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center);
     }
     .width(44)
     .height(44)
     .borderRadius(22)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
-    .backgroundColor($r('app.color.color_bg_glass_control'))
-    .backgroundBlurStyle(resolveBlurStyle('card')!)
-    .border({ width: 1, color: $r('app.color.color_border_glass') })
+    .selectedColor(Color.Transparent)
+    .attributeModifier(IMMERSIVE_GROUP_TOGGLE_MODIFIER)
     .margin({ right: 16, bottom: this.navBarHeight + 56 + 16 })
-    .onClick(() => {
-      this.toggleGroupEnabled();
+    .onChange((isOn: boolean) => {
+      if (this.groupEnabled === isOn || this.groupSwitchTimer >= 0) {
+        return;
+      }
+      this.groupSwitchTimer = setTimeout(() => {
+        this.groupSwitchTimer = -1;
+        if (this.groupEnabled !== isOn) {
+          this.toggleGroupEnabled();
+        }
+      }, 0);
     });
   }
 
@@ -1957,8 +1982,11 @@ export struct NotifyView {
     if (this.isAutoScrolling || scrollState === ScrollState.Idle) {
       return;
     }
-    const offset = this.scroller.currentOffset();
-    const atTop: boolean = offset.yOffset <= 0;
+    const offset = this.getListYOffset();
+    if (offset === undefined) {
+      return;
+    }
+    const atTop: boolean = offset <= 0;
     if (atTop) {
       if (this.showScrollToBottom) {
         this.showScrollToBottom = false;
@@ -1986,13 +2014,22 @@ export struct NotifyView {
     }
   }
 
+  /** 列表重建期间 Scroller 可能暂时解绑，此时 currentOffset() 没有返回值。 */
+  private getListYOffset(): number | undefined {
+    return this.scroller.currentOffset()?.yOffset;
+  }
+
   /** 滚动偏移驱动回顶展开；离顶收缩仍沿用原动画。 */
   private updateSearchCollapsedFromOffset(): void {
     if (this.searchActive || this.isEditing || this.searchTransitioning ||
       this.searchCollapseTransitioning || this.messages.length === 0) {
       return;
     }
-    const offset: number = Math.max(0, this.scroller.currentOffset().yOffset);
+    const currentOffset = this.getListYOffset();
+    if (currentOffset === undefined) {
+      return;
+    }
+    const offset: number = Math.max(0, currentOffset);
     if (this.searchCollapsed && offset <= SEARCH_EXPAND_OFFSET) {
       this.finishSearchExpandAtTop();
       return;
@@ -2034,10 +2071,18 @@ export struct NotifyView {
       this.messages.length === 0) {
       return;
     }
-    this.searchScrollLastOffset = this.scroller.currentOffset().yOffset;
+    const initialOffset = this.getListYOffset();
+    if (initialOffset === undefined) {
+      return;
+    }
+    this.searchScrollLastOffset = initialOffset;
     this.searchScrollIdleSamples = 0;
     this.searchScrollSampleTimer = setInterval(() => {
-      const offset: number = this.scroller.currentOffset().yOffset;
+      const offset = this.getListYOffset();
+      if (offset === undefined || this.searchActive || this.isEditing || this.messages.length === 0) {
+        this.stopSearchScrollSampling();
+        return;
+      }
       if (offset < this.searchScrollLastOffset - 0.5) {
         this.searchMovingTowardTop = true;
       } else if (offset > this.searchScrollLastOffset + 0.5) {
@@ -2060,7 +2105,8 @@ export struct NotifyView {
       clearInterval(this.searchScrollSampleTimer);
       this.searchScrollSampleTimer = -1;
     }
-    if (this.scroller.currentOffset().yOffset <= SEARCH_EXPAND_OFFSET) {
+    const offset = this.getListYOffset();
+    if (offset !== undefined && offset <= SEARCH_EXPAND_OFFSET) {
       this.finishSearchExpandAtTop();
     }
     this.searchMovingTowardTop = false;
@@ -2472,6 +2518,7 @@ export struct NotifyView {
    * 切回分组时也清空，让用户重新选择展开哪些组。
    */
   private toggleGroupEnabled(): void {
+    this.stopSearchScrollSampling();
     this.groupEnabled = !this.groupEnabled;
     this.flatLoadedLimit = FLAT_PAGE_SIZE;
     // 两种模式的首屏取数方式不同，先移除旧模式快照，避免其尾项被当作平铺态游标。
