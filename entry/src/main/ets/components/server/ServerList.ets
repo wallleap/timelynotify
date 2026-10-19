@@ -4,11 +4,12 @@ import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
 import { DeviceRegisterService } from '../../services/DeviceRegisterService';
 import { ServerKeyDialog, ServerRenameDialog } from '../ServerActionDialogs';
-import { ClientTokenDialog } from '../ClientTokenDialog';
+import { ClientTokenDialog, DEPLOY_DOCS_URL } from '../ClientTokenDialog';
 import { EncryptionConfig } from '../../model/EncryptionConfig';
 import { EncryptionConfigService } from '../../services/EncryptionConfigService';
 import { NotifyMessageService, toShortSyncError } from '../../services/NotifyMessageService';
 import { NotifySyncService } from '../../services/NotifySyncService';
+import { ExternalLinkService } from '../../services/ExternalLinkService';
 import { DecryptionSettingsDialog } from '../DecryptionSettingsDialog';
 import { DangerConfirmDialog } from '../DangerConfirmDialog';
 import showToast from '../showToast';
@@ -69,6 +70,7 @@ export struct ServerList {
   private keyController: CustomDialogController | null = null;
   private clientTokenController: CustomDialogController | null = null;
   private encryptionController: CustomDialogController | null = null;
+  private pendingDeployDocs: boolean = false;
 
   aboutToAppear() {
     this.refresh();
@@ -181,6 +183,7 @@ export struct ServerList {
         systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
       onDisappear: () => {
         this.showDetail = false;
+        this.pendingDeployDocs = false;
       }
     });
   }
@@ -526,6 +529,18 @@ export struct ServerList {
             this.checkServers();
             const current: number = AppStorage.get<number>(KEY_NOTIFY_REFRESH_SIGNAL) ?? 0;
             AppStorage.setOrCreate(KEY_NOTIFY_REFRESH_SIGNAL, current + 1);
+          },
+          onOpenDocs: (): void => {
+            if (this.pendingDeployDocs) {
+              return;
+            }
+            if (!this.showDetail) {
+              ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL, '部署文档');
+              return;
+            }
+            this.pendingDeployDocs = true;
+            this.showDetail = false;
+            ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL, '部署文档');
           },
         }),
         alignment: DialogAlignment.Center,

@@ -1,12 +1,13 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { NotifyMessageService } from '../services/NotifyMessageService';
+import { ExternalLinkService } from '../services/ExternalLinkService';
 import { DOMAIN } from '../common/Constant';
 import showToast from './showToast';
 
 const TAG: string = 'ClientTokenDlg';
 
 // 自建服务部署文档（含 client_token 配置说明）
-const DEPLOY_DOCS_URL: string = 'https://docs.timelynotify.oicode.cn/deploy/#client-token';
+export const DEPLOY_DOCS_URL: string = 'https://docs.timelynotify.oicode.cn/deploy/#client-token';
 
 @Builder
 function emptyTokenBuilder(): void {
@@ -29,6 +30,8 @@ export struct ClientTokenDialog {
   saveToken?: ((token: string) => Promise<boolean>) | null = null;
   onSaved: () => void = () => {
   };
+  // 服务页可接管跳转以关闭详情 Sheet；通知页无 Sheet 时由弹窗直接打开文档。
+  onOpenDocs?: (() => void) | null = null;
 
   aboutToAppear() {
     this.inputToken = this.getInitToken();
@@ -113,18 +116,14 @@ export struct ClientTokenDialog {
     }
   }
 
-  // 跳转部署文档（内嵌 WebView）：先关弹窗，避免返回时弹窗残留
-  private async openDocs(): Promise<void> {
+  // 先关 Token 弹窗；有父组件回调时由其处理 Sheet，否则直接打开文档。
+  private openDocs(): void {
     this.close();
-    try {
-      await this.getUIContext().getRouter().pushUrl({
-        url: 'pages/SharePage', params: { url: DEPLOY_DOCS_URL, title: '部署文档' }
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, TAG, '跳转部署文档失败：%{public}s', msg);
-      showToast(this.getUIContext(), '无法打开页面');
+    if (this.onOpenDocs) {
+      this.onOpenDocs();
+      return;
     }
+    ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL, '部署文档');
   }
 
   private async save(): Promise<void> {
