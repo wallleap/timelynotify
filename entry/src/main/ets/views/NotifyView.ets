@@ -95,6 +95,10 @@ const FLAT_PAGE_SIZE: number = 500;
 // 搜索栏与标题栏之间的留白；沉浸布局激活时切到 HDS 标题栏，降级布局仍平移原输入框。
 const SEARCH_BAR_HEIGHT: number = 44;
 const SEARCH_BAR_GAP: number = 8;
+// 搜索输入框进入标题栏后，沉浸布局的 Banner 需让出原下方搜索栏的整段高度。
+const SEARCH_ACTIVE_BANNER_HDS_LIFT: number = SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP + COMPACT_BANNER_TOP_GAP;
+// 降级布局已有独立的定位逻辑，收缩态只需补偿标题栏下方的呼吸间距。
+const SEARCH_ACTIVE_BANNER_FALLBACK_LIFT: number = 8;
 // 降级布局中搜索栏与服务异常 Banner 之间单独留白。
 const SEARCH_BANNER_GAP: number = 8;
 // 列表自身已有 16vp 顶部间距，此处不再重复留白。
@@ -937,6 +941,34 @@ export struct NotifyView {
   }
 
   // 单服务或全部模式下 per-server 错误的非阻塞提示条（点击打开对应修复入口）
+  private getBannerSearchCollapseProgress(): number {
+    if (this.isEditing) {
+      return 0;
+    }
+    // 右侧图标展开为标题栏输入框不会恢复下方搜索栏；保留滚动收缩量。
+    if (this.searchCollapsed && (this.searchCompactTransitionVisible || this.searchActive)) {
+      const start: number = this.searchCompactStartedFromScroll ? this.searchCollapseProgress : 1;
+      return Math.max(0, Math.min(1, start));
+    }
+    if (this.searchCollapseTransitionVisible) {
+      return Math.max(0, Math.min(1, this.searchCollapseProgress));
+    }
+    return this.searchCollapsed ? 1 : 0;
+  }
+
+  private getBannerSearchActiveLiftProgress(): number {
+    if (this.isEditing) {
+      return 0;
+    }
+    if (this.searchCompactTransitionVisible) {
+      return Math.max(0, Math.min(1, this.searchCompactTransitionProgress));
+    }
+    if (this.searchTransitionVisible) {
+      return Math.max(0, Math.min(1, this.searchTransitionProgress));
+    }
+    return this.searchActive ? 1 : 0;
+  }
+
   @Builder
   serverErrorBannerView() {
     Row() {
@@ -982,12 +1014,17 @@ export struct NotifyView {
     .margin({
       top: shouldUseSystemMaterialPath(this.immersiveLightEnabled)
         ? 0
-        : (this.searchActive ? this.getFallbackActiveSearchInset() :
+        : (this.searchActive && !this.searchCollapsed ? this.getFallbackActiveSearchInset() :
           Math.max(0, this.fallbackTitleBarBottom) +
           (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP)) +
           (this.isEditing ? 0 : SEARCH_BANNER_GAP) +
           (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0)
     })
+    // Banner 仅视觉平移：跟随滚动收缩与搜索激活，不反复改首项占位。
+    .translate({ y: -(SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT) * this.getBannerSearchCollapseProgress() -
+      (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_ACTIVE_BANNER_HDS_LIFT :
+        this.searchCollapsed ? SEARCH_ACTIVE_BANNER_FALLBACK_LIFT : 0) *
+      this.getBannerSearchActiveLiftProgress() })
   }
 
   @Builder
