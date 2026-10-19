@@ -95,8 +95,6 @@ const FLAT_PAGE_SIZE: number = 500;
 // 搜索栏与标题栏之间的留白；沉浸布局激活时切到 HDS 标题栏，降级布局仍平移原输入框。
 const SEARCH_BAR_HEIGHT: number = 44;
 const SEARCH_BAR_GAP: number = 8;
-// 搜索输入框进入标题栏后，沉浸布局的 Banner 需让出原下方搜索栏的整段高度。
-const SEARCH_ACTIVE_BANNER_HDS_LIFT: number = SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP + COMPACT_BANNER_TOP_GAP;
 // 降级布局已有独立的定位逻辑，收缩态只需补偿标题栏下方的呼吸间距。
 const SEARCH_ACTIVE_BANNER_FALLBACK_LIFT: number = 8;
 // 降级布局中搜索栏与服务异常 Banner 之间单独留白。
@@ -984,68 +982,104 @@ export struct NotifyView {
     return this.searchActive ? 1 : 0;
   }
 
+  /** HDS 外层的 Banner 与搜索过渡胶囊共用屏幕坐标，不再依赖内容区起点。 */
+  private getHdsBannerTop(): number {
+    const titleY: number = this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET;
+    const entryY: number = this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET;
+    let searchY: number = entryY;
+    if (this.searchCompactTransitionVisible) {
+      const progress: number = Math.max(0, Math.min(1, this.searchCompactTransitionProgress));
+      searchY = this.searchCompactStartY + (titleY - SEARCH_COMPACT_HDS_TOP_CORRECTION -
+        this.searchCompactStartY) * progress;
+    } else if (this.searchTransitionVisible) {
+      searchY = entryY + (titleY - entryY) * this.searchTransitionProgress;
+    } else if (this.searchCollapseTransitionVisible) {
+      searchY = entryY + (titleY - entryY) * this.searchCollapseProgress;
+    } else if (this.searchActive || this.searchCollapsed || this.isEditing) {
+      searchY = titleY;
+    }
+    return searchY + SEARCH_BAR_HEIGHT + SEARCH_BANNER_GAP;
+  }
+
+  /** 搜索期间只收起 Banner 外观；保留列表滚动状态供取消搜索时恢复。 */
+  private isServerErrorBannerCompact(): boolean {
+    return this.serverErrorBannerCollapsed || this.searchActive || this.searchTransitionVisible ||
+      this.searchCompactTransitionVisible;
+  }
+
+  @Builder
+  private serverErrorBannerContent() {
+    Row() {
+      Text(this.isServerErrorBannerCompact() ? '服务异常 · 点击修复' : this.serverErrorBanner)
+        .fontSize(12)
+        .fontColor($r('app.color.color_warning'))
+        .maxLines(this.isServerErrorBannerCompact() ? 1 : 3)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(this.isServerErrorBannerCompact() ? 0 : 1)
+    }
+    // 展开态跟通知卡片对齐；收缩态仍按文字宽度显示胶囊。
+    .width(this.isServerErrorBannerCompact() ? 'auto' : '100%')
+    .constraintSize({ maxWidth: '100%' })
+    .padding(this.isServerErrorBannerCompact()
+      ? {
+        left: 12,
+        right: 12,
+        top: 7,
+        bottom: 7
+      }
+      : {
+        left: 16,
+        right: 16,
+        top: 6,
+        bottom: 6
+      })
+    .backgroundColor($r('app.color.color_bg_warning'))
+    .borderRadius(this.isServerErrorBannerCompact() ? 20 : 12)
+    .animation({ duration: 180, curve: Curve.EaseOut })
+    .onAreaChange((_old: Area, area: Area) => {
+      const height: number = area.height as number;
+      if (height > 0 && height !== this.serverErrorBannerHeight) {
+        this.serverErrorBannerHeight = height;
+      }
+    })
+    .onClick(() => {
+      this.openFixDialogForFirstError();
+    });
+  }
+
   @Builder
   serverErrorBannerView() {
     Row() {
-      Row() {
-        Text(this.serverErrorBannerCollapsed ? '服务异常 · 点击修复' : this.serverErrorBanner)
-          .fontSize(12)
-          .fontColor($r('app.color.color_warning'))
-          .maxLines(this.serverErrorBannerCollapsed ? 1 : 3)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .layoutWeight(this.serverErrorBannerCollapsed ? 0 : 1)
-      }
-      // 展开态跟通知卡片对齐；收缩态仍按文字宽度显示胶囊。
-      .width(this.serverErrorBannerCollapsed ? 'auto' : '100%')
-      .constraintSize({ maxWidth: '100%' })
-      .padding(this.serverErrorBannerCollapsed
-        ? {
-          left: 12,
-          right: 12,
-          top: 7,
-          bottom: 7
-        }
-        : {
-          left: 16,
-          right: 16,
-          top: 6,
-          bottom: 6
-        })
-      .backgroundColor($r('app.color.color_bg_warning'))
-      .borderRadius(this.serverErrorBannerCollapsed ? 20 : 12)
-      .onAreaChange((_old: Area, area: Area) => {
-        const height: number = area.height as number;
-        if (height > 0 && height !== this.serverErrorBannerHeight) {
-          this.serverErrorBannerHeight = height;
-        }
-      })
-      .onClick(() => {
-        this.openFixDialogForFirstError();
-      });
+      this.serverErrorBannerContent();
     }
     .width('100%')
-    .padding({ left: 16, right: this.serverErrorBannerCollapsed ? 0 : 16 })
-    // 降级搜索态的标题栏虽隐藏仍占位；Banner 改按搜索框底边避让，沉浸布局保持原位。
+    .padding({ left: 16, right: this.isServerErrorBannerCompact() ? 0 : 16 })
+    // 降级态按搜索框底边避让；沉浸态在外层 Stack 单独定位。
     .margin({
-      top: shouldUseSystemMaterialPath(this.immersiveLightEnabled)
-        ? 0
-        : (this.searchActive && !this.searchCollapsed ? this.getFallbackActiveSearchInset() :
-          Math.max(0, this.fallbackTitleBarBottom) +
-          (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP)) +
-          (this.isEditing ? 0 : SEARCH_BANNER_GAP) +
-          (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0)
+      top: (this.searchActive && !this.searchCollapsed ? this.getFallbackActiveSearchInset() :
+        Math.max(0, this.fallbackTitleBarBottom) +
+        (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP)) +
+        (this.isEditing ? 0 : SEARCH_BANNER_GAP) +
+        (this.isServerErrorBannerCompact() ? COMPACT_BANNER_TOP_GAP : 0)
     })
-    // Banner 仅视觉平移：跟随滚动收缩与搜索激活，不反复改首项占位。
     .translate({ y: -(SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT) * this.getBannerSearchCollapseProgress() -
-      (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? SEARCH_ACTIVE_BANNER_HDS_LIFT :
-        this.searchCollapsed ? SEARCH_ACTIVE_BANNER_FALLBACK_LIFT : 0) *
+      (this.searchCollapsed ? SEARCH_ACTIVE_BANNER_FALLBACK_LIFT : 0) *
       this.getBannerSearchActiveLiftProgress() })
   }
 
   @Builder
+  private hdsServerErrorBannerView() {
+    Row() {
+      this.serverErrorBannerContent();
+    }
+    .width('100%')
+    .padding({ left: 16, right: this.isServerErrorBannerCompact() ? 0 : 16 })
+    .position({ x: 0, y: this.getHdsBannerTop() });
+  }
+
+  @Builder
   refreshContentBody() {
-    // 沉浸光感与降级模式统一使用 Stack 覆盖布局：Banner 浮于列表上层，
-    // 避免正常流布局把列表往下推、或滚动内容覆盖 Banner。
+    // 降级布局的 Banner 浮于列表上层；HDS Banner 改在外层与搜索控件共用坐标。
     Stack({ alignContent: Alignment.TopStart }) {
       Column() {
         if (this.syncProgressText.length > 0 || this.syncFeedbackText.length > 0) {
@@ -1058,7 +1092,7 @@ export struct NotifyView {
       // 保留原列表节点及滚动位置，但搜索有关键词时不让它参与标题栏背后取色。
       .visibility(this.searchActive && this.searchQuery.trim().length > 0 ? Visibility.Hidden : Visibility.Visible);
 
-      if (this.serverErrorBanner.length > 0) {
+      if (this.serverErrorBanner.length > 0 && !shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
         this.serverErrorBannerView();
       }
 
@@ -1215,6 +1249,10 @@ export struct NotifyView {
           }
         })
         .backgroundColor($r('app.color.color_bg_page'));
+
+        if (this.serverErrorBanner.length > 0) {
+          this.hdsServerErrorBannerView();
+        }
 
         if (this.searchTransitionVisible) {
           this.searchTransitionBar();
@@ -1597,10 +1635,11 @@ export struct NotifyView {
     if (this.serverErrorBanner.length === 0) {
       return titleInset + searchInset;
     }
-    const bannerHeight: number = this.serverErrorBannerCollapsed ? 32 : 44;
-    return titleInset + searchInset + Math.max(this.serverErrorBannerHeight, bannerHeight) +
+    const compact: boolean = this.isServerErrorBannerCompact();
+    const bannerHeight: number = compact ? 32 : Math.max(this.serverErrorBannerHeight, 44);
+    return titleInset + searchInset + bannerHeight +
       (!shouldUseSystemMaterialPath(this.immersiveLightEnabled) && !this.isEditing ? SEARCH_BANNER_GAP : 0) +
-      (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0);
+      (compact ? COMPACT_BANNER_TOP_GAP : 0);
   }
 
   /** 以轻量动画切换 Banner 的完整提示与收缩胶囊形态。 */
