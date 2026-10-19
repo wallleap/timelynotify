@@ -95,6 +95,8 @@ const FLAT_PAGE_SIZE: number = 500;
 // 搜索栏与标题栏之间的留白；沉浸布局激活时切到 HDS 标题栏，降级布局仍平移原输入框。
 const SEARCH_BAR_HEIGHT: number = 44;
 const SEARCH_BAR_GAP: number = 8;
+// 降级布局中搜索栏与服务异常 Banner 之间单独留白。
+const SEARCH_BANNER_GAP: number = 8;
 // 列表自身已有 16vp 顶部间距，此处不再重复留白。
 const SEARCH_BAR_BOTTOM_GAP: number = 0;
 const SEARCH_TRANSITION_DURATION: number = 240;
@@ -196,6 +198,7 @@ export struct NotifyView {
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // 自绘标题栏底边与列表起点均使用窗口坐标；两者之差即实际遮挡距离。
   @State fallbackTitleBarBottom: number = -1;
+  @State fallbackSearchBarBottom: number = -1;
   @State listTop: number = -1;
   // 「跳到底部」浮动按钮显隐：上滑离开首屏时显示，下滑、在首屏或到达底部时隐藏。
   @State showScrollToBottom: boolean = false;
@@ -638,6 +641,15 @@ export struct NotifyView {
     .position({ x: 0, y: this.searchActive ? this.statusBarHeight + 13 :
       (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? this.statusBarHeight + 56 :
         Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56)) + SEARCH_BAR_GAP })
+    .onAreaChange((_old: Area, area: Area) => {
+      if (!this.searchActive) {
+        return;
+      }
+      const bottom: number = (area.globalPosition.y as number) + (area.height as number);
+      if (bottom >= 0 && bottom !== this.fallbackSearchBarBottom) {
+        this.fallbackSearchBarBottom = bottom;
+      }
+    })
     .opacity(this.searchCollapseTransitionVisible ? 0 : 1)
     .hitTestBehavior(this.searchCollapseTransitionVisible ? HitTestMode.None : HitTestMode.Default)
     .zIndex(2);
@@ -811,6 +823,8 @@ export struct NotifyView {
     }
     // 点击滚动过渡胶囊时先结束它的采样与绘制，避免输入框接管后旧胶囊仍叠在列表上。
     this.stopSearchScrollSampling();
+    // 降级搜索栏上移前清除普通入口的旧坐标，首项占位先使用目标位置，随后再以实测底边校准。
+    this.fallbackSearchBarBottom = -1;
     // 收起状态从右侧图标原位展开，结束后再挂载输入框和键盘。
     if (this.searchCollapsed) {
       this.prepareSearchCompactTransition(this.searchCollapseTransitionVisible);
@@ -924,48 +938,53 @@ export struct NotifyView {
   @Builder
   serverErrorBannerView() {
     Row() {
-      Text(this.serverErrorBannerCollapsed ? '服务异常 · 点击修复' : this.serverErrorBanner)
-        .fontSize(12)
-        .fontColor($r('app.color.color_warning'))
-        .maxLines(this.serverErrorBannerCollapsed ? 1 : 2)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(this.serverErrorBannerCollapsed ? 0 : 1)
-    }
-    // 收缩态按内容宽度布局，最长不超过父容器，避免长状态文案溢出屏幕。
-    .width(this.serverErrorBannerCollapsed ? 'auto' : '100%')
-    .constraintSize({ maxWidth: '100%' })
-    .padding(this.serverErrorBannerCollapsed
-      ? {
-        left: 12,
-        right: 12,
-        top: 7,
-        bottom: 7
+      Row() {
+        Text(this.serverErrorBannerCollapsed ? '服务异常 · 点击修复' : this.serverErrorBanner)
+          .fontSize(12)
+          .fontColor($r('app.color.color_warning'))
+          .maxLines(this.serverErrorBannerCollapsed ? 1 : 3)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(this.serverErrorBannerCollapsed ? 0 : 1)
       }
-      : {
-        left: 16,
-        right: 16,
-        top: 6,
-        bottom: 6
+      // 展开态跟通知卡片对齐；收缩态仍按文字宽度显示胶囊。
+      .width(this.serverErrorBannerCollapsed ? 'auto' : '100%')
+      .constraintSize({ maxWidth: '100%' })
+      .padding(this.serverErrorBannerCollapsed
+        ? {
+          left: 12,
+          right: 12,
+          top: 7,
+          bottom: 7
+        }
+        : {
+          left: 16,
+          right: 16,
+          top: 6,
+          bottom: 6
+        })
+      .backgroundColor($r('app.color.color_bg_warning'))
+      .borderRadius(this.serverErrorBannerCollapsed ? 20 : 12)
+      .onAreaChange((_old: Area, area: Area) => {
+        const height: number = area.height as number;
+        if (height > 0 && height !== this.serverErrorBannerHeight) {
+          this.serverErrorBannerHeight = height;
+        }
       })
-    .backgroundColor($r('app.color.color_bg_warning'))
-    .borderRadius(this.serverErrorBannerCollapsed ? 20 : 0)
-    // 降级布局的标题栏以 Stack 覆盖正文；Banner 使用标题栏实际底边避让，沉浸布局保持原位。
+      .onClick(() => {
+        this.openFixDialogForFirstError();
+      });
+    }
+    .width('100%')
+    .padding({ left: 16, right: this.serverErrorBannerCollapsed ? 0 : 16 })
+    // 降级搜索态的标题栏虽隐藏仍占位；Banner 改按搜索框底边避让，沉浸布局保持原位。
     .margin({
-      left: this.serverErrorBannerCollapsed ? 16 : 0,
       top: shouldUseSystemMaterialPath(this.immersiveLightEnabled)
         ? 0
-        : Math.max(0, this.fallbackTitleBarBottom) +
-          (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP) +
+        : (this.searchActive ? this.getFallbackActiveSearchInset() :
+          Math.max(0, this.fallbackTitleBarBottom) +
+          (this.isEditing ? 0 : SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP)) +
+          (this.isEditing ? 0 : SEARCH_BANNER_GAP) +
           (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0)
-    })
-    .onAreaChange((_old: Area, area: Area) => {
-      const height: number = area.height as number;
-      if (height > 0 && height !== this.serverErrorBannerHeight) {
-        this.serverErrorBannerHeight = height;
-      }
-    })
-    .onClick(() => {
-      this.openFixDialogForFirstError();
     })
   }
 
@@ -1170,6 +1189,15 @@ export struct NotifyView {
           Stack({ alignContent: Alignment.Top }) {
             this.refreshContentBody();
             this.fallbackTitleBar();
+            if (this.searchActive) {
+              // 降级搜索态隐藏了普通标题栏，补上不透出列表文字的标题区背板。
+              Row()
+                .width('100%')
+                .height(this.statusBarHeight + 13 + SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP)
+                .backgroundColor($r('app.color.color_bg_page'))
+                .hitTestBehavior(HitTestMode.None)
+                .zIndex(1);
+            }
             if (!this.isEditing && (!this.searchCollapsed || this.searchActive ||
               this.searchCollapseTransitionVisible)) {
               this.searchBar();
@@ -1485,20 +1513,30 @@ export struct NotifyView {
     this.serverErrorBannerCollapsed = (this.getListYOffset() ?? 0) > 0;
   }
 
-  /**
-   * Banner 覆盖在列表之上时（沉浸光感与降级模式均如此），为首项和下拉刷新指示器预留实际高度，
-   * 避免首条通知被 Banner 遮挡。无 Banner 时只保留标题栏避让距离。
-   */
+  /** 降级搜索态按搜索栏底边计算避让，避免继续沿用隐藏标题栏的高度。 */
+  private getFallbackActiveSearchInset(): number {
+    // 搜索态的普通标题栏不可见，优先使用搜索框实测底边；首次布局前使用相同的目标位置。
+    const searchBottom: number = this.fallbackSearchBarBottom >= 0 ? this.fallbackSearchBarBottom :
+      this.statusBarHeight + 13 + SEARCH_BAR_HEIGHT;
+    return Math.max(0, searchBottom - Math.max(0, this.listTop)) + SEARCH_BAR_GAP;
+  }
+
+  /** Banner 覆盖列表时，为首项和下拉刷新指示器预留实际遮挡高度。 */
   private getListTopInset(): number {
-    const titleInset: number = this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
+    const fallbackActiveSearch: boolean = this.searchActive &&
+      !shouldUseSystemMaterialPath(this.immersiveLightEnabled);
+    const titleInset: number = fallbackActiveSearch ? this.getFallbackActiveSearchInset() :
+      this.fallbackTitleBarBottom >= 0 && this.listTop >= 0
       ? Math.max(0, this.fallbackTitleBarBottom - this.listTop) : 0;
-    const searchInset: number = this.isEditing || shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 :
+    const searchInset: number = fallbackActiveSearch || this.isEditing ||
+      shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 0 :
       SEARCH_BAR_GAP + SEARCH_BAR_HEIGHT + SEARCH_BAR_BOTTOM_GAP;
     if (this.serverErrorBanner.length === 0) {
       return titleInset + searchInset;
     }
     const bannerHeight: number = this.serverErrorBannerCollapsed ? 32 : 44;
     return titleInset + searchInset + Math.max(this.serverErrorBannerHeight, bannerHeight) +
+      (!shouldUseSystemMaterialPath(this.immersiveLightEnabled) && !this.isEditing ? SEARCH_BANNER_GAP : 0) +
       (this.serverErrorBannerCollapsed ? COMPACT_BANNER_TOP_GAP : 0);
   }
 
