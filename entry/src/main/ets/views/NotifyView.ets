@@ -225,6 +225,7 @@ export struct NotifyView {
   private scroller: Scroller = new Scroller();
   // 搜索内容独立滚动；空状态也保持 List 挂载，供 HDS 标题栏正确采样。
   private searchScroller: Scroller = new Scroller();
+  private searchPreviewMounted: boolean = false;
   private searchInputController: TextInputController = new TextInputController();
   private searchSeq: number = 0;
   private searchTimer: number = -1;
@@ -315,6 +316,7 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    this.searchPreviewMounted = false;
     this.suppressBottomButtonUntilUserScroll = false;
     this.bottomButtonUserTouchStarted = false;
     if (this.groupSwitchTimer >= 0) {
@@ -666,9 +668,9 @@ export struct NotifyView {
   private searchPreview() {
     Column() {
       List({ space: 0, scroller: this.searchScroller }) {
-        // 与原列表一致：让列表铺满可滚动区域，仅在内容首部留出标题栏下方间距。
+        // 降级布局的 List 从页面顶端开始，首项必须避开标题栏中的搜索框。
         ListItem() {
-          Row().width('100%').height(16);
+          Row().width('100%').height(this.getSearchPreviewTopInset());
         }
         if (this.searchResults.length === 0) {
           ListItem() {
@@ -718,6 +720,13 @@ export struct NotifyView {
       .layoutWeight(1)
       .padding({ left: 16, right: 16 })
       .clip(false)
+      .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+      .onAppear(() => {
+        this.searchPreviewMounted = true;
+      })
+      .onDisAppear(() => {
+        this.searchPreviewMounted = false;
+      })
       .onReachEnd(() => this.loadMoreSearch());
     }
     .width('100%')
@@ -729,6 +738,10 @@ export struct NotifyView {
 
   /** 输入防抖并废弃旧请求；搜索范围与当前通知视图一致。 */
   private scheduleSearch(): void {
+    // 先在旧结果仍挂载时回顶，避免新关键词继承旧列表偏移而只露出卡片下半段。
+    if (this.searchPreviewMounted) {
+      this.searchScroller.scrollEdge(Edge.Top);
+    }
     this.searchSeq++;
     if (this.searchTimer >= 0) {
       clearTimeout(this.searchTimer);
@@ -1550,6 +1563,16 @@ export struct NotifyView {
       return;
     }
     this.serverErrorBannerCollapsed = (this.getListYOffset() ?? 0) > 0;
+  }
+
+  /** 搜索结果在降级布局中从页面顶端绘制，首项按输入框实测底边避让。 */
+  private getSearchPreviewTopInset(): number {
+    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
+      return 16;
+    }
+    const searchBottom: number = this.fallbackSearchBarBottom >= 0 ? this.fallbackSearchBarBottom :
+      this.statusBarHeight + 13 + SEARCH_BAR_HEIGHT;
+    return Math.max(16, searchBottom + SEARCH_BAR_GAP);
   }
 
   /** 降级搜索态按搜索栏底边计算避让，避免继续沿用隐藏标题栏的高度。 */
