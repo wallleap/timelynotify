@@ -733,13 +733,15 @@ export struct NotifyView {
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     .backgroundColor($r('app.color.color_bg_page'))
+    // 搜索激活时保持列表节点挂载；首字只切换可见性，避免 HDS 重绑滚动器导致输入框失焦。
+    .visibility(this.searchQuery.trim().length > 0 ? Visibility.Visible : Visibility.Hidden)
     .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseInOut }));
   }
 
   /** 输入防抖并废弃旧请求；搜索范围与当前通知视图一致。 */
   private scheduleSearch(): void {
     // 先在旧结果仍挂载时回顶，避免新关键词继承旧列表偏移而只露出卡片下半段。
-    if (this.searchPreviewMounted) {
+    if (this.searchPreviewMounted && this.searchResults.length > 0) {
       this.searchScroller.scrollEdge(Edge.Top);
     }
     this.searchSeq++;
@@ -1060,7 +1062,7 @@ export struct NotifyView {
         this.serverErrorBannerView();
       }
 
-      if (this.searchActive && this.searchQuery.trim().length > 0) {
+      if (this.searchActive) {
         this.searchPreview();
       }
     }
@@ -1191,8 +1193,7 @@ export struct NotifyView {
         })
         .hideBackButton(true)
         .titleMode(HdsNavigationTitleMode.MINI)
-        .bindToScrollable([this.searchActive && this.searchQuery.trim().length > 0 ?
-          this.searchScroller : this.scroller])
+        .bindToScrollable([this.searchActive ? this.searchScroller : this.scroller])
         .width('100%')
         .height('100%')
         .bindSheet(this.showDetail, this.detailBuilder(), {
