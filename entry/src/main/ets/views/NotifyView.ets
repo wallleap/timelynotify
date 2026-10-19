@@ -335,7 +335,9 @@ export struct NotifyView {
       title: this.title,
       isEditing: this.isEditing,
       statusBarHeight: this.statusBarHeight,
-      searchCollapsed: this.searchCollapsed,
+      // 临时滚动胶囊接管搜索入口时，不再同时显示标题栏右侧的搜索图标。
+      searchCollapsed: this.searchCollapsed && !this.searchCollapseTransitionVisible &&
+        !this.searchCompactTransitionVisible,
       onOpenSettings: () => this.handleMoreClicked(),
       onToggleSelection: () => this.handleMultiSelectClicked(),
       onDelete: () => this.handleDeletePillClicked(),
