@@ -696,19 +696,18 @@ export struct NotifyView {
             .borderRadius({ topLeft: index === 0 ? 12 : 0, topRight: index === 0 ? 12 : 0 })
             .clip(true);
           }, (message: NotifyMessage) => notifyIdentity(message));
-          if (this.searchHasMore || this.searchLoading || this.searchError) {
-            ListItem() {
-              Text(this.searchLoading ? '加载中…' : this.searchError ? '加载失败，点击重试' : '加载更多')
-                .fontSize(14)
-                .fontColor($r('app.color.color_text_secondary'))
-                .width('100%')
-                .textAlign(TextAlign.Center)
-                .padding(16)
-                .onClick(() => this.loadMoreSearch());
-            }
-            .backgroundColor($r('app.color.color_bg_surface'))
-            .borderRadius({ bottomLeft: 12, bottomRight: 12 });
+          ListItem() {
+            Text(this.searchLoading ? '加载中…' : this.searchError ? '加载失败，点击重试' :
+              this.searchHasMore ? '加载更多' : '没有更多了')
+              .fontSize(14)
+              .fontColor($r('app.color.color_text_secondary'))
+              .width('100%')
+              .textAlign(TextAlign.Center)
+              .padding(16)
+              .onClick(() => this.loadMoreSearch());
           }
+          .backgroundColor($r('app.color.color_bg_surface'))
+          .borderRadius({ bottomLeft: 12, bottomRight: 12 });
         }
         ListItem() {
           Row().width('100%').height(this.navBarHeight + 72);
