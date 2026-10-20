@@ -65,7 +65,7 @@ import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
-import { NotifyGroupMessageRow } from '../components/notify/NotifyGroupMessageRow';
+import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyExportService } from '../services/NotifyExportService';
 import {
   belongsToPushInstance,
@@ -102,6 +102,7 @@ const SEARCH_BANNER_GAP: number = 8;
 // 列表自身已有 16vp 顶部间距，此处不再重复留白。
 const SEARCH_BAR_BOTTOM_GAP: number = 0;
 const SEARCH_TRANSITION_DURATION: number = 240;
+const SEARCH_PREVIEW_HANDOFF_DURATION: number = 48;
 // 右侧小图标横向展开的距离更长，使用稍长时长避免宽度与文字同时突变。
 const SEARCH_COMPACT_TRANSITION_DURATION: number = 320;
 // 标题下方搜索入口与 MINI 标题栏搜索框的相对位置及宽度差。
@@ -148,6 +149,7 @@ export struct NotifyView {
   // 导出选中消息：防重复触发
   @State exportingSelected: boolean = false;
   @State expandedGroups: string[] = [];
+  private flatExpandedGroups: string[] = [];
   @State groupCardHeights: Map<string, number> = new Map<string, number>();
   // 每个 group_key 的真实总数（含未加载到内存的部分），用于徽标显示和"加载更多"按钮
   @State groupTotals: Map<string, number> = new Map<string, number>();
@@ -160,6 +162,7 @@ export struct NotifyView {
   // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
   @State groupEnabled: boolean = true;
   @State searchActive: boolean = false;
+  @State searchPreviewExiting: boolean = false;
   @State searchQuery: string = '';
   @State searchResults: NotifyMessage[] = [];
   @State searchLoading: boolean = false;
@@ -402,7 +405,7 @@ export struct NotifyView {
           if (value === this.searchQuery) {
             return;
           }
-          if (this.searchQuery.trim().length === 0 && value.trim().length > 0) {
+          if (!this.searchBaseOffsetSaved && this.searchQuery.trim().length === 0 && value.trim().length > 0) {
             const offset = this.getListYOffset();
             if (offset !== undefined) {
               this.searchBaseOffset = Math.max(0, offset);
@@ -656,8 +659,9 @@ export struct NotifyView {
         this.fallbackSearchBarBottom = bottom;
       }
     })
-    .opacity(this.searchCollapseTransitionVisible ? 0 : 1)
-    .hitTestBehavior(this.searchCollapseTransitionVisible ? HitTestMode.None : HitTestMode.Default)
+    .opacity(this.searchCollapseTransitionVisible || this.searchCompactTransitionVisible ? 0 : 1)
+    .hitTestBehavior(this.searchCollapseTransitionVisible || this.searchCompactTransitionVisible ?
+      HitTestMode.None : HitTestMode.Default)
     .zIndex(2);
   }
 
@@ -677,24 +681,21 @@ export struct NotifyView {
               .fontColor($r('app.color.color_text_secondary'))
               .width('100%')
               .textAlign(TextAlign.Center)
-              .padding({ top: 8 })
+              .padding({ top: 40 })
               .onClick(() => { if (this.searchError) this.scheduleSearch(); });
           }
         } else {
-          ForEach(this.searchResults, (message: NotifyMessage, index: number) => {
+          ForEach(this.searchResults, (message: NotifyMessage) => {
             ListItem() {
-              NotifyGroupMessageRow({
+              NotifyMessageCard({
                 message: message,
-                isLast: notifyIdentity(message) === notifyIdentity(this.searchResults[this.searchResults.length - 1]) &&
-                  !this.searchHasMore,
                 onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
                 onOpenUrl: (url: string) => this.openUrl(url),
                 onCopyCode: (code: string) => this.copyCode(code),
                 onCopyUrl: (url: string) => this.copyUrl(url)
               });
             }
-            .borderRadius({ topLeft: index === 0 ? 12 : 0, topRight: index === 0 ? 12 : 0 })
-            .clip(true);
+            .margin({ bottom: 16 });
           }, (message: NotifyMessage) => notifyIdentity(message));
           ListItem() {
             Text(this.searchLoading ? '加载中…' : this.searchError ? '加载失败，点击重试' :
@@ -706,8 +707,6 @@ export struct NotifyView {
               .padding(16)
               .onClick(() => this.loadMoreSearch());
           }
-          .backgroundColor($r('app.color.color_bg_surface'))
-          .borderRadius({ bottomLeft: 12, bottomRight: 12 });
         }
         ListItem() {
           Row().width('100%').height(this.navBarHeight + 72);
@@ -731,8 +730,7 @@ export struct NotifyView {
     .alignItems(HorizontalAlign.Center)
     .backgroundColor($r('app.color.color_bg_page'))
     // 搜索激活时保持列表节点挂载；首字只切换可见性，避免 HDS 重绑滚动器导致输入框失焦。
-    .visibility(this.searchQuery.trim().length > 0 ? Visibility.Visible : Visibility.Hidden)
-    .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseInOut }));
+    .visibility(this.searchQuery.trim().length > 0 ? Visibility.Visible : Visibility.Hidden);
   }
 
   /** 输入防抖并废弃旧请求；搜索范围与当前通知视图一致。 */
@@ -839,6 +837,12 @@ export struct NotifyView {
       this.pendingSearchAfterCollapse = true;
       return;
     }
+    this.searchPreviewExiting = false;
+    const offset: number | undefined = this.getListYOffset();
+    if (offset !== undefined) {
+      this.searchBaseOffset = Math.max(0, offset);
+      this.searchBaseOffsetSaved = true;
+    }
     // 点击滚动过渡胶囊时先结束它的采样与绘制，避免输入框接管后旧胶囊仍叠在列表上。
     this.stopSearchScrollSampling();
     // 降级搜索栏上移前清除普通入口的旧坐标，首项占位先使用目标位置，随后再以实测底边校准。
@@ -850,11 +854,11 @@ export struct NotifyView {
       this.searchCompactTransitionProgress = 0;
       this.searchCollapseTransitionVisible = false;
       this.searchCompactTransitionVisible = true;
-      this.getUIContext().animateTo({ duration: SEARCH_COMPACT_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+      this.getUIContext().animateTo({ duration: SEARCH_COMPACT_TRANSITION_DURATION, curve: Curve.EaseOut }, () => {
         this.searchCompactTransitionProgress = 1;
+        this.searchActive = true;
       });
       setTimeout(() => {
-        this.searchActive = true;
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
         setTimeout(() => focusControl.requestFocus('notify_search_input'), 64);
@@ -866,18 +870,18 @@ export struct NotifyView {
       this.searchTransitioning = true;
       this.searchTransitionProgress = 0;
       this.searchTransitionVisible = true;
-      this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+      this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseOut }, () => {
         this.searchTransitionProgress = 1;
+        this.searchActive = true;
       });
       setTimeout(() => {
-        this.searchActive = true;
         this.searchTransitionVisible = false;
         this.searchTransitioning = false;
         setTimeout(() => focusControl.requestFocus('notify_search_input'), 32);
       }, SEARCH_TRANSITION_DURATION);
       return;
     }
-    this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
+    this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseOut }, () => {
       this.searchActive = true;
     });
     setTimeout(() => {
@@ -898,18 +902,34 @@ export struct NotifyView {
       clearTimeout(this.searchTimer);
       this.searchTimer = -1;
     }
-    this.searchQuery = '';
-    this.searchResults = [];
-    this.searchLoading = false;
-    this.searchHasMore = false;
-    this.searchError = false;
+    const exitSeq: number = this.searchSeq;
+    this.searchPreviewExiting = this.searchQuery.trim().length > 0;
+    // 先把原列表切回分组，并让 LazyForEach 完成布局；搜索结果暂时盖在其上，避免重载空帧可见。
+    setTimeout(() => {
+      if (this.searchActive || this.searchSeq !== exitSeq) {
+        return;
+      }
+      this.searchQuery = '';
+      this.searchPreviewExiting = false;
+    }, SEARCH_PREVIEW_HANDOFF_DURATION);
+    // 结果层退场后再清理旧内容，避免先闪出空状态。
+    setTimeout(() => {
+      if (this.searchActive || this.searchSeq !== exitSeq) {
+        return;
+      }
+      this.searchResults = [];
+      this.searchLoading = false;
+      this.searchHasMore = false;
+      this.searchError = false;
+    }, SEARCH_PREVIEW_HANDOFF_DURATION + 16);
     this.restoreSearchBaseOffset();
+    // 列表结构立即切回分组，不参与搜索胶囊的 animateTo；结果层在上方遮住首次布局。
+    this.searchActive = false;
     // 从输入框反向收回右侧图标，保留进入搜索前的列表滚动位置。
     if (this.searchCollapsed) {
       this.searchTransitioning = true;
       this.searchCompactTransitionProgress = 1;
       this.searchCompactTransitionVisible = true;
-      this.searchActive = false;
       this.getUIContext().animateTo({ duration: SEARCH_COMPACT_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
         this.searchCompactTransitionProgress = 0;
       });
@@ -935,7 +955,6 @@ export struct NotifyView {
       this.searchTransitioning = true;
       this.searchTransitionProgress = 1;
       this.searchTransitionVisible = true;
-      this.searchActive = false;
       setTimeout(() => {
         this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
           this.searchTransitionProgress = 0;
@@ -947,9 +966,6 @@ export struct NotifyView {
       }, 16);
       return;
     }
-    this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
-      this.searchActive = false;
-    });
   }
 
   // 单服务或全部模式下 per-server 错误的非阻塞提示条（点击打开对应修复入口）
@@ -1095,7 +1111,7 @@ export struct NotifyView {
         this.serverErrorBannerView();
       }
 
-      if (this.searchActive) {
+      if (this.searchActive || this.searchPreviewExiting) {
         this.searchPreview();
       }
     }
@@ -1226,7 +1242,7 @@ export struct NotifyView {
         })
         .hideBackButton(true)
         .titleMode(HdsNavigationTitleMode.MINI)
-        .bindToScrollable([this.searchActive ? this.searchScroller : this.scroller])
+        .bindToScrollable([this.searchActive && !this.searchTransitioning ? this.searchScroller : this.scroller])
         .width('100%')
         .height('100%')
         .bindSheet(this.showDetail, this.detailBuilder(), {
@@ -1366,12 +1382,13 @@ export struct NotifyView {
       messages: this.messages,
       isEditing: this.isEditing,
       selectedIds: this.selectedIds,
-      expandedGroups: this.expandedGroups,
+      expandedGroups: this.searchActive ? this.flatExpandedGroups : this.expandedGroups,
       groupCardHeights: this.groupCardHeights,
       groupTotals: this.groupTotals,
       selectedGroupCounts: this.selectedGroupCounts,
       groupLoadingMore: this.groupLoadingMore,
-      groupEnabled: this.groupEnabled,
+      groupEnabled: this.groupEnabled && !this.searchActive,
+      searchUngrouped: this.groupEnabled && this.searchActive,
       flatHasMore: !this.groupEnabled && this.totalCachedCount > this.messages.length,
       flatLoadingMore: this.flatLoadingMore,
       statusBarHeight: this.statusBarHeight,

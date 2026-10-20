@@ -43,6 +43,7 @@ export struct NotifyMessageList {
   @Prop groupLoadingMore: Set<string> = new Set<string>();
   // 是否启用分组显示（false 时所有消息平铺）
   @Prop @Watch('reloadDataSource') groupEnabled: boolean = true;
+  @Prop searchUngrouped: boolean = false;
   // 平铺态的本地历史分页状态；分组态继续使用组内「加载更多」。
   @Prop flatHasMore: boolean = false;
   @Prop flatLoadingMore: boolean = false;
@@ -55,6 +56,8 @@ export struct NotifyMessageList {
   listScroller: Scroller = new Scroller();
   // 主 List 唯一的数据源；分组内消息删除时可直接发送 onDataDelete。
   private dataSource: NotifyListDataSource = new NotifyListDataSource();
+  // 取消搜索时平铺行与分组行的 key 不同，必须一次性切换，避免逐条删除时露出空帧。
+  private renderedGroupEnabled: boolean = true;
   // 当前可视区最后一个 ListItem 的绝对索引（由 onScrollIndex 维护），用于估算距末尾的剩余行数。
   private visibleEndIndex: number = 0;
   // 「跳到底部」自动滚动当前阶段；见顶部 AUTO_SCROLL_* 常量的状态机说明。
@@ -141,6 +144,9 @@ export struct NotifyMessageList {
           ListItem() {
             NotifyMessageCard({
               message: row.message,
+              contentTransitionId: this.searchUngrouped && this.messages.length > 0 &&
+                notifyIdentity(row.message) === notifyIdentity(this.messages[0]) ?
+                `gmc:${row.message.group}` : '',
               isEditing: this.isEditing,
               selected: this.isSelected(notifyIdentity(row.message)),
               onSelect: (id: string) => this.onToggleSelect(id),
@@ -154,7 +160,9 @@ export struct NotifyMessageList {
               onCopyCode: (code: string) => this.onCopyCode(code),
               onCopyUrl: (url: string) => this.onCopyUrl(url)
             });
-          }.margin({ bottom: row.spaceAfter }).swipeAction({
+          }
+          .margin({ bottom: row.spaceAfter })
+          .swipeAction({
             end: {
               builder: () => {
                 this.deleteOne(row.message!);
@@ -181,7 +189,9 @@ export struct NotifyMessageList {
               onOpenUrl: (url: string) => this.onOpenUrl(url),
               onCopyCode: (code: string) => this.onCopyCode(code)
             });
-          }.margin({ bottom: row.spaceAfter }).swipeAction({
+          }
+          .margin({ bottom: row.spaceAfter })
+          .swipeAction({
             end: {
               builder: () => {
                 this.deleteGroup(row.section!);
@@ -215,7 +225,6 @@ export struct NotifyMessageList {
             // NotifyGroupMessageRow 自身依据 isLast 负责背景、裁剪和圆角。
           }
           .margin({ bottom: row.spaceAfter })
-          .transition(TransitionEffect.OPACITY.animation({ duration: 180, curve: Curve.EaseOut }))
           .swipeAction({
             end: {
               builder: () => {
@@ -442,8 +451,18 @@ export struct NotifyMessageList {
   private reloadDataSource(): void {
     // 数据结构变化（删除、展开/收起、刷新）会使「跳到底部」的目标索引失效，先中断在途自动滚动。
     this.interruptAutoScroll();
-    this.dataSource.sync(buildNotifyListRows(
-      buildNotifySections(this.messages, this.groupTotals, this.groupEnabled), this.expandedGroups));
+    const rows: NotifyListRow[] = buildNotifyListRows(
+      buildNotifySections(this.messages, this.groupTotals, this.groupEnabled),
+      this.groupEnabled ? this.expandedGroups : []);
+    if (!this.renderedGroupEnabled && this.groupEnabled) {
+      // 搜索取消后反向切回分组：原列表的整批行已就绪，再通知 LazyForEach 重载。
+      // 这里不能给 ListItem 配入场透明度，否则结果层撤下时新卡片仍会半透明。
+      this.dataSource.replace(rows);
+    } else {
+      // 进入搜索时仍精确增删，保留首条内容的共享元素源节点。
+      this.dataSource.sync(rows);
+    }
+    this.renderedGroupEnabled = this.groupEnabled;
   }
 
   @Builder

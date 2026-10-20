@@ -14,6 +14,8 @@ import { NotifyEncryptionBadge, NotifyExpiryBadge } from './NotifyGroupVisuals';
 @Component
 export struct NotifyMessageCard {
   @Prop message: NotifyMessage = new NotifyMessage();
+  // 搜索临时平铺时，首条消息内容与折叠分组预览共享位置过渡。
+  @Prop contentTransitionId: string = '';
   @Prop isEditing: boolean = false;
   @Prop selected: boolean = false;
   onSelect: (id: string) => void = (_id: string) => {
@@ -96,7 +98,9 @@ export struct NotifyMessageCard {
           if (this.message.encrypted) {
             NotifyEncryptionBadge();
           }
-        }.layoutWeight(1).alignItems(HorizontalAlign.Start);
+        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+          .geometryTransition(this.contentTransitionId)
+          .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
       }
       .width('100%')
       .padding({
