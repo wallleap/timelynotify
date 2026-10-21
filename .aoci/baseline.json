@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-21T01:31:40Z",
-  "updated_at": "2026-10-21T02:57:13Z",
+  "updated_at": "2026-10-21T10:08:44Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -93,9 +93,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "7f59a9f9098a68641b9fda73711cec35ec32faebbce24cb138dba7f90545458d",
-      "size": 40795,
-      "normalized_sha256": "7f59a9f9098a68641b9fda73711cec35ec32faebbce24cb138dba7f90545458d"
+      "sha256": "acf8d2d62555bb4f7d21074832af6e31c7397ee1b827847bd2a5bdfa434dcac5",
+      "size": 40843,
+      "normalized_sha256": "acf8d2d62555bb4f7d21074832af6e31c7397ee1b827847bd2a5bdfa434dcac5"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -591,9 +591,9 @@
     },
     "entry/src/main/ets/utils/ImmersiveUtil.ets": {
       "role": "index",
-      "sha256": "31ca1efc3d7123f5313e68e66b632fc6abe126b2559d033f9d2ad9c2b6bc1526",
-      "size": 15355,
-      "normalized_sha256": "31ca1efc3d7123f5313e68e66b632fc6abe126b2559d033f9d2ad9c2b6bc1526"
+      "sha256": "db8a8f86cfe6cad7c805c4f558de6a58fbe0dbcb1b0fbc1ae2aa0979af3f8b7b",
+      "size": 15616,
+      "normalized_sha256": "db8a8f86cfe6cad7c805c4f558de6a58fbe0dbcb1b0fbc1ae2aa0979af3f8b7b"
     },
     "entry/src/main/ets/utils/NotifyIdentity.ets": {
       "role": "index",

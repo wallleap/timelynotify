@@ -233,15 +233,19 @@ export const IMMERSIVE_SEARCH_TITLE_MODIFIER: AttributeModifier<RowAttribute> = 
   }
 };
 
-/** 通知页两个悬浮 Toggle 共用全页面交互材质；材质不可用时保留玻璃模糊外观。 */
+/** 通知页两个悬浮 Toggle 共用交互材质与两态底色，仅由图标区分分组状态。 */
 export const IMMERSIVE_GROUP_TOGGLE_MODIFIER: AttributeModifier<ToggleAttribute> = {
   applyNormalAttribute(instance: ToggleAttribute): void {
     const material = getEnabledSystemMaterial('groupToggle');
+    // 两态使用相同底色；先设置背景再应用材质，避免未选中态沿用系统默认填色。
+    const backgroundColor: ResourceColor = material === undefined ?
+      $r('app.color.color_bg_glass_control') : Color.Transparent;
+    instance.backgroundColor(backgroundColor);
+    instance.selectedColor(backgroundColor);
     if (deviceInfo.apiAvailable('26.0.0')) {
       instance.systemMaterial(material ?? materialCache['empty']);
     }
     if (material === undefined) {
-      instance.backgroundColor($r('app.color.color_bg_glass_control'));
       instance.backgroundBlurStyle(resolveBlurStyle('card'));
       instance.border({ width: 1, color: $r('app.color.color_border_glass') });
     }

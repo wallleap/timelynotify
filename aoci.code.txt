@@ -137,7 +137,7 @@ ThemeService.ets[DU6S]: F:持久化主题并即时应用颜色模式，保存沉
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/utils/===
 HttpUtil.ets[IN7S]: F:封装JSON GET POST DELETE请求、超时错误映射及HTTP资源释放 | R:- | A:HttpUtil、HttpResponse | S:连接异常code=0；仅2xx尝试JSON解析，非JSON仍保留状态但result为空；finally销毁请求
-ImmersiveUtil.ets[CU8M]: F:集中处理沉浸材质版本兼容、动态加载、实例复用与各表面降级 | R:code:entry/src/main/module.json5,code:.github/scripts/check-immersive-boundary.sh | A:ensureImmersiveMaterial、getDialogMaterial、getDialogBackgroundOptions | S:uiMaterial仅动态加载；低算力支持检查只诊断；弹窗模糊挂controller，内容透明；全局启用时undefined恢复默认，关闭需Material.empty
+ImmersiveUtil.ets[CU8M]: F:集中处理沉浸材质版本兼容、动态加载、实例复用与各表面降级 | R:code:entry/src/main/module.json5,code:.github/scripts/check-immersive-boundary.sh | A:ensureImmersiveMaterial、getDialogMaterial、getDialogBackgroundOptions | S:uiMaterial仅动态加载；低算力支持检查只诊断；弹窗模糊挂controller，内容透明；全局启用时undefined恢复默认，关闭需Material.empty；悬浮Toggle先统一两态底色再挂材质
 NotifyIdentity.ets[DM8T]: F:定义历史来源与通知复合身份、远端安全定位及跨服务器稳定排序 | R:code:entry/src/main/ets/model/ServerEntry.ets,code:entry/src/main/ets/model/NotifyMessage.ets | A:notifySourceKey、notifyIdentity、resolveCurrentRemoteServer、compareNotifyOrder | S:实例缺失用serverId隔离；只匹配服务器当前实例才可删远端，不猜旧裸Key来源；导出还原原Key
 PreferencesUtil.ets[PD7S]: F:统一Preferences字符串读写、键定义、Context解析与实例缓存 | R:code:entry/src/main/ets/common/AppContextStore.ets | A:putString、getString、has、delete | S:写入与删除后flush；缺Context或读失败返回默认值，写失败返回false
 ServerUrlUtil.ets[CU4T]: F:从服务器URL移除协议与路径提取含端口主机名 | R:- | A:extractHost | S:-
