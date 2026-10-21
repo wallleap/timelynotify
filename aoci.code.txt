@@ -145,7 +145,7 @@ TestPushExample.ets[CM6T]: F:共享推送测试参数并生成安全引用的GET
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/views/===
 MineView.ets[AU7M]: F:承载我的页通知权限、主题选择、信息与关于板块 | R:code:entry/src/main/ets/components/minesections/NotifySettingsSection.ets,code:entry/src/main/ets/components/minesections/AboutSection.ets | A:MineView | S:系统权限与订阅偏好分开；并发查询只采纳最新结果；API26设置窗口关闭后立即复查
-NotifyView.ets[AU9L]: F:编排本地通知展示搜索、分组分页、多选删除导出及推送详情定位 | R:code:entry/src/main/ets/services/MessageCacheStore.ets,code:entry/src/main/ets/services/NotifySyncService.ets,code:entry/src/main/ets/utils/NotifyIdentity.ets | A:NotifyView | S:搜索全库未过期历史且已完成搜索不随同步自动刷新；分组搜索保留原节点滚动位置；手动删解密失败项前暂停同步并核验实例，失败项保留重试
+NotifyView.ets[AU9L]: F:编排本地通知展示搜索、分组分页、多选删除导出及推送详情定位 | R:code:entry/src/main/ets/services/MessageCacheStore.ets,code:entry/src/main/ets/services/NotifySyncService.ets,code:entry/src/main/ets/utils/NotifyIdentity.ets | A:NotifyView | S:搜索全库未过期历史且已完成搜索不随同步自动刷新；分组搜索保留原节点滚动位置；手动删解密失败项前暂停同步并核验实例，失败项保留重试；跳底后须真实触摸并有效滚离当前底部才解除按钮屏蔽，分页追加后双向均可
 ServerView.ets[AU6M]: F:承载服务器列表、添加、推送测试和使用文档入口 | R:code:entry/src/main/ets/components/server/ServerList.ets,code:entry/src/main/ets/components/server/SampleCode.ets | A:ServerView | S:添加弹窗打开时构造以读取最新材质；Hds标题和添加按钮使用系统槽位
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/===

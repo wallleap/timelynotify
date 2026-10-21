@@ -2191,7 +2191,11 @@ export struct NotifyView {
     if (offset === undefined) {
       return;
     }
-    if (this.suppressBottomButtonUntilUserScroll && this.bottomButtonUserTouchStarted && scrollOffset < -0.5) {
+    // 分页追加后，继续向旧消息方向滚动也会离开原来的底部；不能只允许反向滚动解除屏蔽。
+    // 仍要求真实触摸、有效位移且已离开当前底部，避免自动贴底后的回弹重新显示按钮。
+    const atEnd: boolean = this.scroller.isAtEnd();
+    if (this.suppressBottomButtonUntilUserScroll && this.bottomButtonUserTouchStarted &&
+      !atEnd && Math.abs(scrollOffset) > 0.5) {
       this.suppressBottomButtonUntilUserScroll = false;
       this.bottomButtonUserTouchStarted = false;
     }
@@ -2203,7 +2207,7 @@ export struct NotifyView {
       this.setServerErrorBannerCollapsed(false);
       return;
     }
-    if (this.scroller.isAtEnd()) {
+    if (atEnd) {
       if (this.showScrollToBottom) {
         this.showScrollToBottom = false;
       }
