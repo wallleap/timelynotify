@@ -149,7 +149,6 @@ export struct NotifyView {
   // 导出选中消息：防重复触发
   @State exportingSelected: boolean = false;
   @State expandedGroups: string[] = [];
-  private flatExpandedGroups: string[] = [];
   @State groupCardHeights: Map<string, number> = new Map<string, number>();
   // 每个 group_key 的真实总数（含未加载到内存的部分），用于徽标显示和"加载更多"按钮
   @State groupTotals: Map<string, number> = new Map<string, number>();
@@ -665,7 +664,7 @@ export struct NotifyView {
     .zIndex(2);
   }
 
-  /** 输入关键词后才覆盖搜索结果；空关键词直接展示原列表，保持进入搜索前的滚动位置。 */
+  /** 分组模式下用独立平铺层承载搜索；底层分组 List 始终保留节点和滚动位置。 */
   @Builder
   private searchPreview() {
     Column() {
@@ -674,7 +673,23 @@ export struct NotifyView {
         ListItem() {
           Row().width('100%').height(this.getSearchPreviewTopInset());
         }
-        if (this.searchResults.length === 0) {
+        if (this.groupEnabled && this.searchQuery.trim().length === 0) {
+          // 未输入关键词时只平铺当前已加载的通知，不修改底层分组数据源。
+          ForEach(this.messages, (message: NotifyMessage) => {
+            ListItem() {
+              NotifyMessageCard({
+                message: message,
+                contentTransitionId: this.messages.length > 0 &&
+                  notifyIdentity(message) === notifyIdentity(this.messages[0]) ? `gmc:${message.group}` : '',
+                onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
+                onOpenUrl: (url: string) => this.openUrl(url),
+                onCopyCode: (code: string) => this.copyCode(code),
+                onCopyUrl: (url: string) => this.copyUrl(url)
+              });
+            }
+            .margin({ bottom: 16 });
+          }, (message: NotifyMessage) => notifyIdentity(message));
+        } else if (this.searchResults.length === 0) {
           ListItem() {
             Text(this.searchLoading ? '正在搜索…' : this.searchError ? '搜索失败，请重试' : '没有找到相关通知')
               .fontSize(16)
@@ -719,24 +734,31 @@ export struct NotifyView {
       .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       .onAppear(() => {
         this.searchPreviewMounted = true;
+        if (this.groupEnabled && this.searchQuery.trim().length === 0) {
+          this.searchScroller.scrollEdge(Edge.Top);
+        }
       })
       .onDisAppear(() => {
         this.searchPreviewMounted = false;
       })
-      .onReachEnd(() => this.loadMoreSearch());
+      .onReachEnd(() => {
+        if (this.searchQuery.trim().length > 0) {
+          this.loadMoreSearch();
+        }
+      });
     }
     .width('100%')
     .height('100%')
     .alignItems(HorizontalAlign.Center)
     .backgroundColor($r('app.color.color_bg_page'))
-    // 搜索激活时保持列表节点挂载；首字只切换可见性，避免 HDS 重绑滚动器导致输入框失焦。
-    .visibility(this.searchQuery.trim().length > 0 ? Visibility.Visible : Visibility.Hidden);
+    // 分组时平铺层一直可见；非分组时仍只在有关键词时覆盖原列表。
+    .visibility(this.groupEnabled || this.searchQuery.trim().length > 0 ? Visibility.Visible : Visibility.Hidden);
   }
 
   /** 输入防抖并废弃旧请求；搜索范围与当前通知视图一致。 */
   private scheduleSearch(): void {
-    // 先在旧结果仍挂载时回顶，避免新关键词继承旧列表偏移而只露出卡片下半段。
-    if (this.searchPreviewMounted && this.searchResults.length > 0) {
+    // 平铺层可能已有滚动位置；输入首字或切换关键词都让结果从顶部开始。
+    if (this.searchPreviewMounted && this.searchActive) {
       this.searchScroller.scrollEdge(Edge.Top);
     }
     this.searchSeq++;
@@ -903,8 +925,8 @@ export struct NotifyView {
       this.searchTimer = -1;
     }
     const exitSeq: number = this.searchSeq;
-    this.searchPreviewExiting = this.searchQuery.trim().length > 0;
-    // 先把原列表切回分组，并让 LazyForEach 完成布局；搜索结果暂时盖在其上，避免重载空帧可见。
+    this.searchPreviewExiting = this.searchQuery.trim().length > 0 || this.groupEnabled;
+    // 原分组列表没有被改写；短暂保留搜索层，等标题栏开始回收后直接交接。
     setTimeout(() => {
       if (this.searchActive || this.searchSeq !== exitSeq) {
         return;
@@ -923,7 +945,7 @@ export struct NotifyView {
       this.searchError = false;
     }, SEARCH_PREVIEW_HANDOFF_DURATION + 16);
     this.restoreSearchBaseOffset();
-    // 列表结构立即切回分组，不参与搜索胶囊的 animateTo；结果层在上方遮住首次布局。
+    // 只切换叠层可见性，不重建底层分组 List。
     this.searchActive = false;
     // 从输入框反向收回右侧图标，保留进入搜索前的列表滚动位置。
     if (this.searchCollapsed) {
@@ -1104,8 +1126,9 @@ export struct NotifyView {
       }
       .width('100%')
       .height('100%')
-      // 保留原列表节点及滚动位置，但搜索有关键词时不让它参与标题栏背后取色。
-      .visibility(this.searchActive && this.searchQuery.trim().length > 0 ? Visibility.Hidden : Visibility.Visible);
+      // 分组搜索始终隐藏但保留底层 List；平铺模式仅在有关键词时隐藏原列表。
+      .visibility(this.searchActive && (this.groupEnabled || this.searchQuery.trim().length > 0) ?
+        Visibility.Hidden : Visibility.Visible);
 
       if (this.serverErrorBanner.length > 0 && !shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
         this.serverErrorBannerView();
@@ -1382,13 +1405,12 @@ export struct NotifyView {
       messages: this.messages,
       isEditing: this.isEditing,
       selectedIds: this.selectedIds,
-      expandedGroups: this.searchActive ? this.flatExpandedGroups : this.expandedGroups,
+      expandedGroups: this.expandedGroups,
       groupCardHeights: this.groupCardHeights,
       groupTotals: this.groupTotals,
       selectedGroupCounts: this.selectedGroupCounts,
       groupLoadingMore: this.groupLoadingMore,
-      groupEnabled: this.groupEnabled && !this.searchActive,
-      searchUngrouped: this.groupEnabled && this.searchActive,
+      groupEnabled: this.groupEnabled,
       flatHasMore: !this.groupEnabled && this.totalCachedCount > this.messages.length,
       flatLoadingMore: this.flatLoadingMore,
       statusBarHeight: this.statusBarHeight,
