@@ -38,6 +38,10 @@
       {
         "name": "ohos.permission.GET_NETWORK_INFO",
         "reason": "$string:permission_network_reason"
+      },
+      {
+        // 智感握姿仅用于通知页控件左右跟手布局；系统授予，无运行时权限弹窗。
+        "name": "ohos.permission.DETECT_GESTURE"
       }
     ],
     "abilities": [

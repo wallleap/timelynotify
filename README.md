@@ -44,6 +44,7 @@ TODO:
 
 ## 功能说明
 
+- 通知页支持智感握姿：左手握持时顶部操作区和分组/跳底悬浮按钮靠左，右手握持时靠右；标题避让操作区，正文及搜索输入的阅读方向不变。双手、未握持及未知状态保持最近一侧，初始默认右侧；设备不支持或订阅失败时降级为右侧。握姿仅在通知页可见、应用前台时监听，离开后取消，不保存或上传传感器状态。需要系统授予的 `ohos.permission.DETECT_GESTURE` 权限，真实识别效果以支持设备的真机验证为准。
 - 底部「服务」页提供「使用指南」「推送参数」「常见问答」入口，均在应用内打开对应页面
 - 「服务 → 推送测试」可单独选择目标服务器（不改变通知列表当前服务器），查看或复制含该服务器地址与设备 Key 的多行 GET/POST
   `curl` 命令（GET 以原文展示标题与正文、保留 `?参数&参数` URL 形式，执行时需要 `jq` 编码路径；POST 使用 JSON
@@ -322,5 +323,7 @@ CLT: <https://developer.huawei.com/consumer/cn/download/command-line-tools-for-h
 
 **其它**
 
+- [智感握姿适配指南](https://developer.huawei.com/consumer/cn/doc/doccenter-multi-device/bpta-purax-guide)
+- [握持手状态变化监听](https://developer.huawei.com/consumer/cn/doc/doccenter-references/api/js-apis-awareness-motion#motiononholdinghandchanged-20)
 - [拉起指定类型的应用](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/specified-type-app-redirection)
 - [基于 Service Account 开放鉴权](https://developer.huawei.com/consumer/cn/doc/HMSCore-Guides/open-platform-service-account-0000001053509221)
