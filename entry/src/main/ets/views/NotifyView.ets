@@ -65,6 +65,7 @@ import { NotifyContentState } from '../components/notify/NotifyContentState';
 import { NotifyRefreshHeader } from '../components/notify/NotifyRefreshHeader';
 import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtils';
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
+import { NOTIFY_LIST_ROW_GAP } from '../components/notify/NotifyListDataSource';
 import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { NotifyExportService } from '../services/NotifyExportService';
 import {
@@ -119,6 +120,8 @@ const SEARCH_EXPAND_RANGE: number = 240;
 const SEARCH_SCROLL_SAMPLE_MS: number = 16;
 const SEARCH_PAGE_SIZE: number = 50;
 const SEARCH_DEBOUNCE_MS: number = 250;
+// 搜索列表长距离跳底也只平滑滚动最后五项，避免遍历全部结果的长动画。
+const SEARCH_BOTTOM_SMOOTH_RANGE: number = 5;
 
 
 // 通知页 - 展示接收到的 HTTP 推送消息列表
@@ -206,6 +209,8 @@ export struct NotifyView {
   @State listTop: number = -1;
   // 「跳到底部」浮动按钮显隐：上滑离开首屏时显示，下滑、在首屏或到达底部时隐藏。
   @State showScrollToBottom: boolean = false;
+  // 搜索层独立维护显隐，隐藏的普通列表回调不能改变当前搜索按钮。
+  @State showSearchScrollToBottom: boolean = false;
   // 「跳到底部」触发信号：每次自增传给列表，列表 Watch 后执行两段式定位滚动。
   @State scrollToBottomSignal: number = 0;
   // 「切换通知服务」弹窗：点击时（材质必已就绪）才构造，以便 systemMaterial 读取到最新就绪态
@@ -226,6 +231,14 @@ export struct NotifyView {
   // 搜索内容独立滚动；空状态也保持 List 挂载，供 HDS 标题栏正确采样。
   private searchScroller: Scroller = new Scroller();
   private searchPreviewMounted: boolean = false;
+  // 搜索列表的末项可视索引及两段式跳底状态；目标为 -1 时没有在途自动滚动。
+  private searchVisibleEndIndex: number = 0;
+  private searchAutoScrollTarget: number = -1;
+  private searchAutoScrollSmoothing: boolean = false;
+  private searchAutoScrollTimeout: number = -1;
+  // 自动贴底后的回弹不重新显示按钮，须由真实触摸将搜索列表滚离底部。
+  private suppressSearchBottomUntilUserScroll: boolean = false;
+  private searchBottomUserTouchStarted: boolean = false;
   private searchInputController: TextInputController = new TextInputController();
   private searchSeq: number = 0;
   private searchTimer: number = -1;
@@ -285,6 +298,7 @@ export struct NotifyView {
       });
     this.loadExpandedGroups();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
+      this.resetSearchBottomButton();
       this.suppressBottomButtonUntilUserScroll = false;
       this.bottomButtonUserTouchStarted = false;
       this.exitEditMode();
@@ -307,7 +321,7 @@ export struct NotifyView {
         this.groupLoadingMore = new Set<string>();
       }
       this.loadSeq++;
-      if (this.searchActive && this.searchQuery.trim().length > 0) {
+      if (this.isSearchPreviewVisible()) {
         this.scheduleSearch();
       }
       this.loadMessages();
@@ -316,6 +330,7 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    this.resetSearchBottomButton();
     this.searchPreviewMounted = false;
     this.suppressBottomButtonUntilUserScroll = false;
     this.bottomButtonUserTouchStarted = false;
@@ -673,23 +688,8 @@ export struct NotifyView {
         ListItem() {
           Row().width('100%').height(this.getSearchPreviewTopInset());
         }
-        if (this.groupEnabled && this.searchQuery.trim().length === 0) {
-          // 未输入关键词时只平铺当前已加载的通知，不修改底层分组数据源。
-          ForEach(this.messages, (message: NotifyMessage) => {
-            ListItem() {
-              NotifyMessageCard({
-                message: message,
-                contentTransitionId: this.messages.length > 0 &&
-                  notifyIdentity(message) === notifyIdentity(this.messages[0]) ? `gmc:${message.group}` : '',
-                onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
-                onOpenUrl: (url: string) => this.openUrl(url),
-                onCopyCode: (code: string) => this.copyCode(code),
-                onCopyUrl: (url: string) => this.copyUrl(url)
-              });
-            }
-            .margin({ bottom: 16 });
-          }, (message: NotifyMessage) => notifyIdentity(message));
-        } else if (this.searchResults.length === 0) {
+        // 空关键词也从独立平铺分页读取，不能拼接各组快照后把末条当作全局分页游标。
+        if (this.searchResults.length === 0) {
           ListItem() {
             Text(this.searchLoading ? '正在搜索…' : this.searchError ? '搜索失败，请重试' : '没有找到相关通知')
               .fontSize(16)
@@ -704,13 +704,17 @@ export struct NotifyView {
             ListItem() {
               NotifyMessageCard({
                 message: message,
+                // 保留分组空词预览首条的共享转场，底层分组数据源仍不改写。
+                contentTransitionId: this.groupEnabled && this.searchQuery.trim().length === 0 &&
+                  this.messages.length > 0 && notifyIdentity(message) === notifyIdentity(this.messages[0]) ?
+                  `gmc:${message.group}` : '',
                 onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
                 onOpenUrl: (url: string) => this.openUrl(url),
                 onCopyCode: (code: string) => this.copyCode(code),
                 onCopyUrl: (url: string) => this.copyUrl(url)
               });
             }
-            .margin({ bottom: 16 });
+            .margin({ bottom: NOTIFY_LIST_ROW_GAP });
           }, (message: NotifyMessage) => notifyIdentity(message));
           ListItem() {
             Text(this.searchLoading ? '加载中…' : this.searchError ? '加载失败，点击重试' :
@@ -735,16 +739,41 @@ export struct NotifyView {
       .onAppear(() => {
         this.searchPreviewMounted = true;
         if (this.groupEnabled && this.searchQuery.trim().length === 0) {
-          this.searchScroller.scrollEdge(Edge.Top);
+          this.scheduleSearch();
         }
       })
       .onDisAppear(() => {
         this.searchPreviewMounted = false;
+        this.resetSearchBottomButton();
+      })
+      .onDidScroll((scrollOffset: number, scrollState: ScrollState) => {
+        this.handleSearchResultScroll(scrollOffset, scrollState);
+      })
+      .onTouch((event: TouchEvent) => {
+        if (event.type === TouchType.Down && this.isSearchPreviewVisible()) {
+          this.finishSearchAutoScroll();
+          this.searchBottomUserTouchStarted = true;
+        }
+      })
+      .onScrollIndex((_first: number, last: number) => {
+        this.searchVisibleEndIndex = last;
+        if (this.searchAutoScrollTarget >= 0 && !this.searchAutoScrollSmoothing &&
+          last >= this.searchAutoScrollTarget - SEARCH_BOTTOM_SMOOTH_RANGE) {
+          this.startSearchBottomSmoothing();
+        }
+      })
+      .onScrollStop(() => {
+        // 瞬跳阶段的 stop 不代表两段式定位结束；只在平滑收尾之后解除屏蔽。
+        if (this.searchAutoScrollSmoothing) {
+          this.finishSearchAutoScroll();
+        }
+      })
+      .onReachStart(() => {
+        this.showSearchScrollToBottom = false;
       })
       .onReachEnd(() => {
-        if (this.searchQuery.trim().length > 0) {
-          this.loadMoreSearch();
-        }
+        this.showSearchScrollToBottom = false;
+        this.loadMoreSearch();
       });
     }
     .width('100%')
@@ -757,6 +786,7 @@ export struct NotifyView {
 
   /** 输入防抖并废弃旧请求；搜索范围与当前通知视图一致。 */
   private scheduleSearch(): void {
+    this.resetSearchBottomButton();
     // 平铺层可能已有滚动位置；输入首字或切换关键词都让结果从顶部开始。
     if (this.searchPreviewMounted && this.searchActive) {
       this.searchScroller.scrollEdge(Edge.Top);
@@ -769,7 +799,8 @@ export struct NotifyView {
     this.searchResults = [];
     this.searchHasMore = false;
     this.searchError = false;
-    if (this.searchQuery.trim().length === 0) {
+    // 平铺空词继续使用原列表；分组空词预览需要独立查询完整历史，支持触底分页。
+    if (this.searchQuery.trim().length === 0 && !this.groupEnabled) {
       this.searchLoading = false;
       return;
     }
@@ -784,7 +815,12 @@ export struct NotifyView {
   private async fetchSearchPage(seq: number, before: NotifyMessage | null): Promise<void> {
     const keys: string[] = this.getVisibleHistoryKeys();
     const query: string = this.searchQuery.trim();
-    const page: NotifyMessage[] | null = await MessageCacheStore.searchLocal(keys, query, before, SEARCH_PAGE_SIZE + 1);
+    // 空词沿用普通平铺每页 500 条；多读一条判断是否还有下一页，不修改分组快照。
+    const pageSize: number = query.length === 0 ? FLAT_PAGE_SIZE : SEARCH_PAGE_SIZE;
+    const page: NotifyMessage[] | null = query.length === 0 ?
+      (before ? await MessageCacheStore.loadAllFlatOlder(keys, before, pageSize + 1) :
+        await MessageCacheStore.loadAllFlatLatest(keys, pageSize + 1)) :
+      await MessageCacheStore.searchLocal(keys, query, before, pageSize + 1);
     if (seq !== this.searchSeq || !this.searchActive || query !== this.searchQuery.trim() ||
       keys.join('|') !== this.getVisibleHistoryKeys().join('|')) {
       return;
@@ -795,13 +831,15 @@ export struct NotifyView {
       return;
     }
     this.searchError = false;
-    this.searchHasMore = page.length > SEARCH_PAGE_SIZE;
-    const visible: NotifyMessage[] = page.slice(0, SEARCH_PAGE_SIZE);
+    this.searchHasMore = page.length > pageSize;
+    const visible: NotifyMessage[] = page.slice(0, pageSize);
+    // 新页改变末项索引，终止旧目标；保持贴底屏蔽，下一次真实滚动再允许显示按钮。
+    this.finishSearchAutoScroll();
     this.searchResults = before ? this.searchResults.concat(visible) : visible;
   }
 
   private loadMoreSearch(): void {
-    if (!this.searchActive || this.searchLoading || (!this.searchHasMore && !this.searchError) ||
+    if (!this.isSearchPreviewVisible() || this.searchLoading || (!this.searchHasMore && !this.searchError) ||
       this.searchResults.length === 0) {
       return;
     }
@@ -859,6 +897,7 @@ export struct NotifyView {
       this.pendingSearchAfterCollapse = true;
       return;
     }
+    this.resetSearchBottomButton();
     this.searchPreviewExiting = false;
     const offset: number | undefined = this.getListYOffset();
     if (offset !== undefined) {
@@ -918,6 +957,7 @@ export struct NotifyView {
     if (this.searchTransitioning) {
       return;
     }
+    this.resetSearchBottomButton();
     this.searchInputController.stopEditing();
     this.searchSeq++;
     if (this.searchTimer >= 0) {
@@ -1152,8 +1192,8 @@ export struct NotifyView {
         .width('100%')
         .layoutWeight(1);
 
-        // 右下角"跳到底部"浮动按钮：上滑离开首屏时出现，位于分组按钮上方
-        if (this.showScrollToBottom && !this.searchActive && !this.isEditing && this.messages.length > 0) {
+        // 右下角"跳到底部"浮动按钮：上滑离开首屏时出现，固定在分组按钮下方。
+        if (this.shouldShowScrollToBottom()) {
           this.scrollToBottomFab();
         }
 
@@ -1344,7 +1384,7 @@ export struct NotifyView {
           }
 
           // 非沉浸式分支的右下角「跳到底部」按钮
-          if (this.showScrollToBottom && !this.searchActive && !this.isEditing && this.messages.length > 0) {
+          if (this.shouldShowScrollToBottom()) {
             this.scrollToBottomFab();
           }
 
@@ -2112,7 +2152,8 @@ export struct NotifyView {
     .borderRadius(22)
     .selectedColor(Color.Transparent)
     .attributeModifier(IMMERSIVE_GROUP_TOGGLE_MODIFIER)
-    .margin({ right: 16, bottom: this.navBarHeight + 56 + 16 })
+    // 分组切换固定在上方，与下方 44vp 的跳底按钮间隔 12vp；跳底隐藏时也不移动。
+    .margin({ right: 16, bottom: this.navBarHeight + 72 + 44 + 12 })
     .onChange((isOn: boolean) => {
       if (this.groupEnabled === isOn || this.groupSwitchTimer >= 0) {
         return;
@@ -2127,7 +2168,7 @@ export struct NotifyView {
   }
 
   /**
-   * 右下角「跳到底部」浮动按钮：位于分组模式按钮上方，使用 select_more（向下箭头）图标。
+   * 右下角「跳到底部」浮动按钮：位于分组模式按钮下方，使用 select_more（向下箭头）图标。
    * 触发条件：上滑离开首屏时出现；下滑或回到首屏时隐藏。
    * 通过 if 条件渲染 + transition 实现淡入淡出 + 轻微上移的丝滑过渡。
    */
@@ -2152,17 +2193,17 @@ export struct NotifyView {
     .borderRadius(22)
     .selectedColor(Color.Transparent)
     .attributeModifier(IMMERSIVE_GROUP_TOGGLE_MODIFIER)
-    // 分组按钮 bottom = navBarHeight + 72；本按钮在其上方，留 12vp 间距 + 44vp 按钮高度。
-    .margin({ right: 16, bottom: this.navBarHeight + 72 + 44 + 12 })
+    // 普通与搜索列表均使用下方固定位置，不随分组按钮显隐而移动。
+    .margin({ right: 16, bottom: this.navBarHeight + 72 })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 16 }))
       .animation({ duration: 220, curve: Curve.EaseOut }))
     .onChange((isOn: boolean) => {
-      if (!isOn || this.isAutoScrolling || this.scrollToBottomTimer >= 0) {
+      if (!isOn || this.isCurrentListAutoScrolling() || this.scrollToBottomTimer >= 0) {
         return;
       }
       this.scrollToBottomTimer = setTimeout(() => {
         this.scrollToBottomTimer = -1;
-        if (this.showScrollToBottom && !this.isAutoScrolling) {
+        if (this.shouldShowScrollToBottom() && !this.isCurrentListAutoScrolling()) {
           this.scrollToBottom();
         }
       }, 0);
@@ -2178,6 +2219,9 @@ export struct NotifyView {
    * 「跳到底部」程序滚动期间整体屏蔽，否则动画产生的正向滚动会让按钮中途重现闪烁。
    */
   private handleListScroll(scrollOffset: number, scrollState: ScrollState): void {
+    if (this.isSearchPreviewVisible()) {
+      return;
+    }
     if (scrollOffset < -0.5) {
       this.searchMovingTowardTop = true;
     } else if (scrollOffset > 0.5) {
@@ -2374,11 +2418,117 @@ export struct NotifyView {
    * 滚动结束（onScrollStop）后列表回调 onAutoScrollEnd 解除屏蔽。
    */
   private scrollToBottom(): void {
+    if (this.isSearchPreviewVisible()) {
+      this.scrollSearchToBottom();
+      return;
+    }
     this.showScrollToBottom = false;
     this.suppressBottomButtonUntilUserScroll = true;
     this.bottomButtonUserTouchStarted = false;
     this.isAutoScrolling = true;
     this.scrollToBottomSignal++;
+  }
+
+  /** 空关键词的平铺模式仍展示原列表；分组预览及有关键词的结果使用独立搜索层。 */
+  private isSearchPreviewVisible(): boolean {
+    return this.searchActive && (this.groupEnabled || this.searchQuery.trim().length > 0);
+  }
+
+  /** 搜索预览和命中结果共用按钮，空结果不沿用底层普通列表的按钮。 */
+  private shouldShowScrollToBottom(): boolean {
+    if (this.isEditing) {
+      return false;
+    }
+    return this.isSearchPreviewVisible()
+      ? this.showSearchScrollToBottom && this.getSearchMessageCount() > 0
+      : this.showScrollToBottom && this.messages.length > 0;
+  }
+
+  /** 只检查当前可见列表的自动滚动，另一层的历史状态不拦截点击。 */
+  private isCurrentListAutoScrolling(): boolean {
+    return this.isSearchPreviewVisible() ? this.searchAutoScrollTarget >= 0 : this.isAutoScrolling;
+  }
+
+  /** 空词预览和关键词结果都由独立分页持有，只统计当前已加载的搜索层消息。 */
+  private getSearchMessageCount(): number {
+    return this.searchResults.length;
+  }
+
+  /** 搜索按钮沿用普通列表的方向规则，并允许分页后继续正向滚动解除贴底屏蔽。 */
+  private handleSearchResultScroll(scrollOffset: number, scrollState: ScrollState): void {
+    if (!this.isSearchPreviewVisible() || this.searchAutoScrollTarget >= 0 || scrollState === ScrollState.Idle) {
+      return;
+    }
+    const offset: number | undefined = this.searchScroller.currentOffset()?.yOffset;
+    if (offset === undefined) {
+      return;
+    }
+    const atEnd: boolean = this.searchScroller.isAtEnd();
+    if (this.suppressSearchBottomUntilUserScroll && this.searchBottomUserTouchStarted &&
+      !atEnd && Math.abs(scrollOffset) > 0.5) {
+      this.suppressSearchBottomUntilUserScroll = false;
+      this.searchBottomUserTouchStarted = false;
+    }
+    if (offset <= 0 || atEnd) {
+      this.showSearchScrollToBottom = false;
+      return;
+    }
+    if (!this.suppressSearchBottomUntilUserScroll) {
+      if (scrollOffset > 0) {
+        this.showSearchScrollToBottom = true;
+      } else if (scrollOffset < 0) {
+        this.showSearchScrollToBottom = false;
+      }
+    }
+  }
+
+  /** 定位搜索 List 的底部占位项；空词与关键词列表均含一项顶部占位和分页提示。 */
+  private scrollSearchToBottom(): void {
+    const count: number = this.getSearchMessageCount();
+    if (!this.searchPreviewMounted || count === 0) {
+      return;
+    }
+    this.showSearchScrollToBottom = false;
+    this.suppressSearchBottomUntilUserScroll = true;
+    this.searchBottomUserTouchStarted = false;
+    this.searchAutoScrollTarget = count + 2;
+    // 无位移或布局中断时 stop 可能不触发；超时仅收尾状态，不再发起新的滚动。
+    this.searchAutoScrollTimeout = setTimeout(() => this.finishSearchAutoScroll(), 1200);
+    if (this.searchAutoScrollTarget - this.searchVisibleEndIndex <= SEARCH_BOTTOM_SMOOTH_RANGE) {
+      this.startSearchBottomSmoothing();
+    } else {
+      this.searchScroller.scrollToIndex(this.searchAutoScrollTarget - SEARCH_BOTTOM_SMOOTH_RANGE,
+        false, ScrollAlign.END);
+    }
+  }
+
+  /** 长距离瞬跳到位后只平滑滚动末段，最后按底部占位项精确对齐。 */
+  private startSearchBottomSmoothing(): void {
+    this.searchAutoScrollSmoothing = true;
+    this.searchScroller.scrollToIndex(this.searchAutoScrollTarget, true, ScrollAlign.END);
+  }
+
+  /** 用户触摸、结果变化或动画结束时，释放搜索自动滚动状态与兜底定时器。 */
+  private finishSearchAutoScroll(): void {
+    this.searchAutoScrollTarget = -1;
+    this.searchAutoScrollSmoothing = false;
+    if (this.searchAutoScrollTimeout >= 0) {
+      clearTimeout(this.searchAutoScrollTimeout);
+      this.searchAutoScrollTimeout = -1;
+    }
+  }
+
+  /** 更换搜索内容或退出时清理旧按钮状态，防止旧回调滚动新结果或底层列表。 */
+  private resetSearchBottomButton(): void {
+    this.finishSearchAutoScroll();
+    this.showSearchScrollToBottom = false;
+    this.searchVisibleEndIndex = 0;
+    this.suppressSearchBottomUntilUserScroll = false;
+    this.searchBottomUserTouchStarted = false;
+    if (this.scrollToBottomTimer >= 0) {
+      clearTimeout(this.scrollToBottomTimer);
+      this.scrollToBottomTimer = -1;
+    }
   }
 
   /** 列表自动定位滚动结束（或用户手指滚动停止）回调：解除自动滚动屏蔽。 */
