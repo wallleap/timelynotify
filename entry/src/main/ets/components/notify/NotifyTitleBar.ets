@@ -7,6 +7,8 @@ export struct NotifyTitleBar {
   @Prop isEditing: boolean = false;
   @Prop statusBarHeight: number = 0;
   @Prop useHdsLayout: boolean = false;
+  // 仅交换标题与操作区的布局侧，标题文字仍按从左到右阅读。
+  @Prop holdingLeft: boolean = false;
   // 通知列表离开顶部时，为标题栏右侧的搜索图标按钮预留位置。
   @Prop searchCollapsed: boolean = false;
   onOpenSettings: () => void = () => {
@@ -24,6 +26,7 @@ export struct NotifyTitleBar {
         this.titleContent(true);
       }
       .width('100%')
+      .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
       .padding({
         left: 16,
         right: 16,
@@ -35,7 +38,9 @@ export struct NotifyTitleBar {
         Row() {
           this.titleContent(false);
         }
-        .layoutWeight(1).width(0).padding({ right: 48 }).alignItems(VerticalAlign.Center);
+        .layoutWeight(1).width(0)
+        .padding({ left: this.holdingLeft ? 48 : 0, right: this.holdingLeft ? 0 : 48 })
+        .alignItems(VerticalAlign.Center);
 
         this.selectionPill();
         this.deletePill();
@@ -44,6 +49,7 @@ export struct NotifyTitleBar {
         }
       }
       .width('100%')
+      .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
       .padding({
         left: 16,
         right: 16,
@@ -138,6 +144,8 @@ export struct NotifyTitleBar {
       .layoutWeight(1)
       .width(0)
       .alignItems(VerticalAlign.Center)
+      .direction(Direction.Ltr)
+      .justifyContent(this.holdingLeft ? FlexAlign.End : FlexAlign.Start)
       .onClick(() => this.onOpenSettings())
       .hitTestBehavior(reserveMenuSpace ? HitTestMode.None : HitTestMode.Default);
 
@@ -145,6 +153,7 @@ export struct NotifyTitleBar {
         Row().width(this.searchCollapsed ? 168 : 116).height(1).hitTestBehavior(HitTestMode.None);
       }
     }
-    .width('100%').alignItems(VerticalAlign.Center);
+    .width('100%').alignItems(VerticalAlign.Center)
+    .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr);
   }
 }

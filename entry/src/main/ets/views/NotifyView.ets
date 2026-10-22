@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { UIContext } from '@kit.ArkUI';
+import { LengthMetrics, UIContext } from '@kit.ArkUI';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { common, Want } from '@kit.AbilityKit';
 import { ServerEntry } from '../model/ServerEntry';
@@ -32,6 +32,7 @@ import {
 import {
   hdsMaterial,
   HdsNavigation,
+  HdsNavigationMenuItemOptions,
   HdsNavigationTitleMode,
   IconStyleMode,
   ScrollEffectType,
@@ -69,6 +70,7 @@ import { NOTIFY_LIST_ROW_GAP } from '../components/notify/NotifyListDataSource';
 import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
 import { ListStatusFooter } from '../components/ListStatusFooter';
 import { NotifyExportService } from '../services/NotifyExportService';
+import { HoldingHandService } from '../services/HoldingHandService';
 import {
   belongsToPushInstance,
   compareNotifyOrder,
@@ -129,6 +131,8 @@ const SEARCH_BOTTOM_SMOOTH_RANGE: number = 5;
 @Component
 export struct NotifyView {
   @State title: string = '';
+  // 智感握姿只控制操作区布局，首次或能力不可用时默认在右侧。
+  @State holdingLeft: boolean = false;
   @State @Watch('restoreVisibleExpandedGroups') messages: NotifyMessage[] = [];
   @State loading: boolean = false;
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgressText: string = '';
@@ -216,6 +220,9 @@ export struct NotifyView {
   @State scrollToBottomSignal: number = 0;
   // 「切换通知服务」弹窗：点击时（材质必已就绪）才构造，以便 systemMaterial 读取到最新就绪态
   private dialogController: CustomDialogController | null = null;
+  private holdingHandViewMounted: boolean = false;
+  // 搜索转场期间暂存新握姿，转场结束后再交换布局，避免改变动画端点。
+  private requestedHoldingLeft: boolean = false;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
   private loadSeq: number = 0;
   // 刷新时保持已浏览的平铺历史深度，避免同步新消息后把旧页截掉。
@@ -285,6 +292,8 @@ export struct NotifyView {
   private fixRenameController: CustomDialogController | null = null;
 
   aboutToAppear() {
+    this.holdingHandViewMounted = true;
+    this.updateHoldingHandSubscription();
     this.initAfterServerManagerReady();
     // 读取分组显示开关（默认开启分组）
     PreferencesUtil.getString(null, PreferencesUtil.KEY_GROUP_ENABLED, 'true')
@@ -331,6 +340,8 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    this.holdingHandViewMounted = false;
+    HoldingHandService.stop();
     this.resetSearchBottomButton();
     this.searchPreviewMounted = false;
     this.suppressBottomButtonUntilUserScroll = false;
@@ -355,6 +366,7 @@ export struct NotifyView {
   fallbackTitleBar() {
     NotifyTitleBar({
       title: this.title,
+      holdingLeft: this.holdingLeft,
       isEditing: this.isEditing,
       statusBarHeight: this.statusBarHeight,
       // 临时滚动胶囊接管搜索入口时，不再同时显示标题栏右侧的搜索图标。
@@ -384,6 +396,7 @@ export struct NotifyView {
     } else {
       NotifyTitleBar({
         title: this.title,
+        holdingLeft: this.holdingLeft,
         isEditing: this.isEditing,
         useHdsLayout: true,
         searchCollapsed: this.searchCollapsed,
@@ -463,6 +476,7 @@ export struct NotifyView {
     .width('100%')
     .height(SEARCH_BAR_HEIGHT)
     .padding({ left: 16, right: 16 })
+    .direction(Direction.Ltr)
     .opacity(this.searchTransitionVisible || this.searchCompactTransitionVisible ? 0 : 1);
   }
 
@@ -493,6 +507,7 @@ export struct NotifyView {
     .width('100%')
     .height(SEARCH_BAR_HEIGHT + SEARCH_BAR_GAP)
     .padding({ left: 16, right: 16, bottom: SEARCH_BAR_GAP })
+    .direction(Direction.Ltr)
     .opacity(this.searchTransitionVisible || this.searchCollapseTransitionVisible ? 0 : 1)
     .hitTestBehavior(this.searchTransitionVisible || this.searchCollapseTransitionVisible ?
       HitTestMode.None : HitTestMode.Default);
@@ -530,7 +545,7 @@ export struct NotifyView {
       this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET :
       Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + SEARCH_BAR_GAP })
     .translate({
-      x: (this.searchViewportWidth - 32 - (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
+      x: (this.holdingLeft ? 0 : this.searchViewportWidth - 32 - (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
         SEARCH_BAR_HEIGHT : 38)) * this.searchCollapseProgress,
       y: (this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
         (shouldUseSystemMaterialPath(this.immersiveLightEnabled) ?
@@ -870,7 +885,7 @@ export struct NotifyView {
       const progress: number = this.searchCollapseProgress;
       const entryY: number = materialPath ? this.statusBarHeight + SEARCH_ENTRY_TOP_OFFSET :
         Math.max(this.fallbackTitleBarBottom, this.statusBarHeight + 56) + SEARCH_BAR_GAP;
-      this.searchCompactStartX = 16 + (this.searchViewportWidth - 32 - compactSize) * progress;
+      this.searchCompactStartX = 16 + (this.holdingLeft ? 0 : this.searchViewportWidth - 32 - compactSize) * progress;
       this.searchCompactStartY = entryY + (this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET - entryY) * progress;
       this.searchCompactStartWidth = (this.searchViewportWidth - 32) * (1 - progress) + compactSize * progress;
       this.searchCompactStartHeight = SEARCH_BAR_HEIGHT - (materialPath ? 0 : 6) * progress;
@@ -879,7 +894,7 @@ export struct NotifyView {
       this.searchCompactStartIconSize = 20;
       return;
     }
-    this.searchCompactStartX = this.searchViewportWidth - 16 - compactSize;
+    this.searchCompactStartX = this.holdingLeft ? 16 : this.searchViewportWidth - 16 - compactSize;
     this.searchCompactStartY = this.statusBarHeight + SEARCH_TITLE_TOP_OFFSET -
       (materialPath ? SEARCH_COMPACT_HDS_TOP_CORRECTION : 0);
     this.searchCompactStartWidth = compactSize;
@@ -923,6 +938,7 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
+        this.applyHoldingHandSide();
         setTimeout(() => focusControl.requestFocus('notify_search_input'), 64);
       }, SEARCH_COMPACT_TRANSITION_DURATION);
       return;
@@ -939,6 +955,7 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchTransitionVisible = false;
         this.searchTransitioning = false;
+        this.applyHoldingHandSide();
         setTimeout(() => focusControl.requestFocus('notify_search_input'), 32);
       }, SEARCH_TRANSITION_DURATION);
       return;
@@ -999,6 +1016,7 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
+        this.applyHoldingHandSide();
         const currentOffset = this.getListYOffset();
         if (currentOffset === undefined) {
           return;
@@ -1025,6 +1043,7 @@ export struct NotifyView {
         setTimeout(() => {
           this.searchTransitionVisible = false;
           this.searchTransitioning = false;
+          this.applyHoldingHandSide();
         }, SEARCH_TRANSITION_DURATION);
       }, 16);
       return;
@@ -1183,22 +1202,55 @@ export struct NotifyView {
     .height('100%');
   }
 
+  /** 原生菜单按握姿排列；左侧时让搜索位于最外侧，与搜索动画端点一致。 */
+  private getTitleMenuItems(): HdsNavigationMenuItemOptions[] {
+    if (this.searchActive || this.searchTransitionVisible || this.searchCompactTransitionVisible) {
+      return [];
+    }
+    const items: HdsNavigationMenuItemOptions[] = [
+      {
+        content: {
+          label: this.isEditing ? '取消' : '多选',
+          type: TextStyleMode.NORMAL,
+          action: (): void => this.handleMultiSelectClicked()
+        }
+      },
+      {
+        content: {
+          icon: $r('app.media.trash'),
+          action: (): void => this.handleDeletePillClicked()
+        }
+      }
+    ];
+    if (this.searchCollapsed && !this.isEditing && !this.searchCollapseTransitionVisible) {
+      items.push({ content: { icon: $r('app.media.search'), action: (): void => this.enterSearch() } });
+    }
+    return this.holdingLeft ? items.reverse() : items;
+  }
+
+  /** 原生菜单图标 40vp、文字胶囊 64vp、项间隔 8vp；左侧通过端侧留白保持 16vp 边距。 */
+  private getTitleMenuEndPadding(): LengthMetrics {
+    const hasSearch: boolean = this.searchCollapsed && !this.isEditing && !this.searchCollapseTransitionVisible;
+    const menuWidth: number = 64 + 40 + 8 + (hasSearch ? 40 + 8 : 0);
+    return LengthMetrics.vp(this.holdingLeft ? Math.max(16, this.searchViewportWidth - 16 - menuWidth) : 16);
+  }
+
   @Builder
   viewportBody() {
     Column() {
-      Stack({ alignContent: Alignment.BottomEnd }) {
+      Stack({ alignContent: this.holdingLeft ? Alignment.BottomStart : Alignment.BottomEnd }) {
         Column() {
           this.refreshContentBody();
         }
         .width('100%')
         .layoutWeight(1);
 
-        // 右下角"跳到底部"浮动按钮：上滑离开首屏时出现，固定在分组按钮下方。
+        // 侧边"跳到底部"浮动按钮：上滑离开首屏时出现，固定在分组按钮下方。
         if (this.shouldShowScrollToBottom()) {
           this.scrollToBottomFab();
         }
 
-        // 右下角"分组/平铺"模式切换浮动按钮
+        // 侧边"分组/平铺"模式切换浮动按钮
         // 仅在非编辑模式、有消息时显示
         if (!this.searchActive && !this.isEditing && this.messages.length > 0) {
           this.groupModeToggleFab();
@@ -1213,7 +1265,8 @@ export struct NotifyView {
       }
     }
     .width('100%')
-    .height('100%');
+    .height('100%')
+    .direction(Direction.Ltr);
   }
 
   build() {
@@ -1223,6 +1276,11 @@ export struct NotifyView {
           this.viewportBody();
         }
         .titleBar({
+          // 原生菜单不响应外层 direction；用标题栏端侧留白定位，保留原生交互材质。
+          padding: {
+            start: LengthMetrics.vp(16),
+            end: this.getTitleMenuEndPadding()
+          },
           enableComponentSafeArea: true,
           avoidLayoutSafeArea: true,
           content: {
@@ -1245,52 +1303,7 @@ export struct NotifyView {
             },
             menu: {
               maxCount: 3,
-              value: this.searchActive || this.searchTransitionVisible || this.searchCompactTransitionVisible ? [] :
-                this.searchCollapsed && !this.isEditing && !this.searchCollapseTransitionVisible ? [
-                {
-                  content: {
-                    label: '多选',
-                    type: TextStyleMode.NORMAL,
-                    action: (): void => {
-                      this.handleMultiSelectClicked();
-                    }
-                  }
-                },
-                {
-                  content: {
-                    icon: $r('app.media.trash'),
-                    action: (): void => {
-                      this.handleDeletePillClicked();
-                    }
-                  }
-                },
-                {
-                  content: {
-                    icon: $r('app.media.search'),
-                    action: (): void => {
-                      this.enterSearch();
-                    }
-                  }
-                }
-              ] : [
-                {
-                  content: {
-                    label: this.isEditing ? '取消' : '多选',
-                    type: TextStyleMode.NORMAL,
-                    action: (): void => {
-                      this.handleMultiSelectClicked();
-                    }
-                  }
-                },
-                {
-                  content: {
-                    icon: $r('app.media.trash'),
-                    action: (): void => {
-                      this.handleDeletePillClicked();
-                    }
-                  }
-                }
-              ]
+              value: this.getTitleMenuItems()
             },
           },
           style: {
@@ -1355,7 +1368,7 @@ export struct NotifyView {
       });
     } else {
       Column() {
-        Stack({ alignContent: Alignment.BottomEnd }) {
+        Stack({ alignContent: this.holdingLeft ? Alignment.BottomStart : Alignment.BottomEnd }) {
           Stack({ alignContent: Alignment.Top }) {
             this.refreshContentBody();
             this.fallbackTitleBar();
@@ -1389,7 +1402,7 @@ export struct NotifyView {
             this.scrollToBottomFab();
           }
 
-          // 非沉浸式分支的右下角分组模式切换按钮
+          // 非沉浸式分支的跟随握姿的分组模式切换按钮
           if (!this.searchActive && !this.isEditing && this.messages.length > 0) {
             this.groupModeToggleFab();
           }
@@ -2128,7 +2141,7 @@ export struct NotifyView {
   }
 
   /**
-   * 右下角分组模式切换按钮：
+   * 跟随握姿的分组模式切换按钮：
    * - 当前分组模式：显示 group_expand 图标，点击切为平铺
    * - 当前平铺模式：显示 group_collapse 图标，点击切为分组
    */
@@ -2154,7 +2167,8 @@ export struct NotifyView {
     .selectedColor(Color.Transparent)
     .attributeModifier(IMMERSIVE_GROUP_TOGGLE_MODIFIER)
     // 分组切换固定在上方，与下方 44vp 的跳底按钮间隔 12vp；跳底隐藏时也不移动。
-    .margin({ right: 16, bottom: this.navBarHeight + 72 + 44 + 12 })
+    .margin({ left: this.holdingLeft ? 16 : 0, right: this.holdingLeft ? 0 : 16,
+      bottom: this.navBarHeight + 72 + 44 + 12 })
     .onChange((isOn: boolean) => {
       if (this.groupEnabled === isOn || this.groupSwitchTimer >= 0) {
         return;
@@ -2169,7 +2183,7 @@ export struct NotifyView {
   }
 
   /**
-   * 右下角「跳到底部」浮动按钮：位于分组模式按钮下方，使用 select_more（向下箭头）图标。
+   * 跟随握姿的「跳到底部」浮动按钮：位于分组模式按钮下方，使用 select_more（向下箭头）图标。
    * 触发条件：上滑离开首屏时出现；下滑或回到首屏时隐藏。
    * 通过 if 条件渲染 + transition 实现淡入淡出 + 轻微上移的丝滑过渡。
    */
@@ -2195,7 +2209,8 @@ export struct NotifyView {
     .selectedColor(Color.Transparent)
     .attributeModifier(IMMERSIVE_GROUP_TOGGLE_MODIFIER)
     // 普通与搜索列表均使用下方固定位置，不随分组按钮显隐而移动。
-    .margin({ right: 16, bottom: this.navBarHeight + 72 })
+    .margin({ left: this.holdingLeft ? 16 : 0, right: this.holdingLeft ? 0 : 16,
+      bottom: this.navBarHeight + 72 })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 16 }))
       .animation({ duration: 220, curve: Curve.EaseOut }))
     .onChange((isOn: boolean) => {
@@ -2405,6 +2420,7 @@ export struct NotifyView {
       }
       this.searchCollapseTransitionVisible = false;
       this.searchCollapseTransitioning = false;
+      this.applyHoldingHandSide();
       this.updateSearchCollapsedFromOffset();
       if (this.pendingSearchAfterCollapse) {
         this.pendingSearchAfterCollapse = false;
@@ -2711,6 +2727,7 @@ export struct NotifyView {
   }
 
   private onHomeTabIndexChanged(): void {
+    this.updateHoldingHandSubscription();
     if (this.isEditing) {
       this.exitEditMode();
     }
@@ -2721,8 +2738,28 @@ export struct NotifyView {
   }
 
   private onPageVisibleChanged(): void {
+    this.updateHoldingHandSubscription();
     if (this.indexPageVisible && this.homeTabIndex === 0) {
       this.onSyncRevisionChanged();
+    }
+  }
+
+  /** 只在通知 Tab 位于主页栈顶时订阅；前后台门禁由服务统一管理。 */
+  private updateHoldingHandSubscription(): void {
+    if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 0) {
+      HoldingHandService.stop();
+      return;
+    }
+    HoldingHandService.start((left: boolean): void => {
+      this.requestedHoldingLeft = left;
+      this.applyHoldingHandSide();
+    });
+  }
+
+  /** 不在搜索转场中途交换侧；列表正文不参与方向镜像，也不重建数据源。 */
+  private applyHoldingHandSide(): void {
+    if (this.holdingHandViewMounted && !this.searchTransitioning && !this.searchCollapseTransitioning) {
+      this.holdingLeft = this.requestedHoldingLeft;
     }
   }
 

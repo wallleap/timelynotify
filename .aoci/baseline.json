@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-21T01:31:40Z",
-  "updated_at": "2026-10-22T12:53:15Z",
+  "updated_at": "2026-10-22T13:42:06Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -81,9 +81,9 @@
     },
     "README.md": {
       "role": "index",
-      "sha256": "344a4a9f6e351481e4fd95f73c979aeb0a6b399b2c7ecdc6d6c05721896a939e",
-      "size": 37900,
-      "normalized_sha256": "344a4a9f6e351481e4fd95f73c979aeb0a6b399b2c7ecdc6d6c05721896a939e"
+      "sha256": "b0692984b898b8dd16ce749719ce4246edceb6e031bfff94cb9f679291934bd1",
+      "size": 38721,
+      "normalized_sha256": "b0692984b898b8dd16ce749719ce4246edceb6e031bfff94cb9f679291934bd1"
     },
     "SERVER_API.md": {
       "role": "index",
@@ -93,9 +93,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "dc60de98cb08b23b545b3dd423bac454d61cfa2bbfe0cd8da4f31cf0f5d8e9bc",
-      "size": 41575,
-      "normalized_sha256": "dc60de98cb08b23b545b3dd423bac454d61cfa2bbfe0cd8da4f31cf0f5d8e9bc"
+      "sha256": "881e1507de26958a6353b7fd8353fa5c6c9734292a8ef270ad8b25c2d7ce023f",
+      "size": 42278,
+      "normalized_sha256": "881e1507de26958a6353b7fd8353fa5c6c9734292a8ef270ad8b25c2d7ce023f"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -363,9 +363,9 @@
     },
     "entry/src/main/ets/components/notify/NotifyTitleBar.ets": {
       "role": "index",
-      "sha256": "e282d3dea99ffe20711227248cb4bcbb40947d78c5060c634102a8955c062139",
-      "size": 4382,
-      "normalized_sha256": "e282d3dea99ffe20711227248cb4bcbb40947d78c5060c634102a8955c062139"
+      "sha256": "c42dbbaa449d2bfe0d1d2cee52f96b513129445688c493931ed160441c85c36c",
+      "size": 4886,
+      "normalized_sha256": "c42dbbaa449d2bfe0d1d2cee52f96b513129445688c493931ed160441c85c36c"
     },
     "entry/src/main/ets/components/notify/NotifyViewTypes.ets": {
       "role": "index",
@@ -547,6 +547,12 @@
       "size": 3384,
       "normalized_sha256": "268e42d67ec5c9816cdfc38660820b613646a15a4040470fb0e15bd57363de83"
     },
+    "entry/src/main/ets/services/HoldingHandService.ets": {
+      "role": "index",
+      "sha256": "fc3fc03939a574b34489896cb9c9254b022d9205c09ceffd43c91c03807474a0",
+      "size": 5030,
+      "normalized_sha256": "fc3fc03939a574b34489896cb9c9254b022d9205c09ceffd43c91c03807474a0"
+    },
     "entry/src/main/ets/services/MessageCacheStore.ets": {
       "role": "index",
       "sha256": "75653bb76c7d574e1419c61e0c0facc553d2f4ed589b8ddf76d518d0e32bd95b",
@@ -633,9 +639,9 @@
     },
     "entry/src/main/ets/views/NotifyView.ets": {
       "role": "index",
-      "sha256": "86545c6749bb4f20c5012d899362c2459a7a87b1c524b754a9eca855b34b01e8",
-      "size": 154697,
-      "normalized_sha256": "86545c6749bb4f20c5012d899362c2459a7a87b1c524b754a9eca855b34b01e8"
+      "sha256": "d7304fd619b72fc546ab2c4d9a2c3f6e6f01b6e6cb6642889316b8e99c785a00",
+      "size": 156878,
+      "normalized_sha256": "d7304fd619b72fc546ab2c4d9a2c3f6e6f01b6e6cb6642889316b8e99c785a00"
     },
     "entry/src/main/ets/views/ServerView.ets": {
       "role": "index",
@@ -645,9 +651,9 @@
     },
     "entry/src/main/module.json5": {
       "role": "index",
-      "sha256": "5f6b162c791ddd2ed546bbf2578798a2f63b3bd286cbf31d1b6ef02977f7d607",
-      "size": 2806,
-      "normalized_sha256": "5f6b162c791ddd2ed546bbf2578798a2f63b3bd286cbf31d1b6ef02977f7d607"
+      "sha256": "945fdb48ebe56e1858325ba10963b1f3b3dbe7b373579fd780b0ab963a76e671",
+      "size": 2983,
+      "normalized_sha256": "945fdb48ebe56e1858325ba10963b1f3b3dbe7b373579fd780b0ab963a76e671"
     },
     "entry/src/main/resources/base/element/color.json": {
       "role": "index",
