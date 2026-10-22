@@ -61,6 +61,7 @@ DangerConfirmDialog.ets[CU5T]: F:提供删除清除操作的固定标题按钮�
 DecryptionSettingsDialog.ets[CU8L]: F:编辑每服务器解密算法模式与密钥并确认危险配置变更 | R:code:entry/src/main/ets/services/EncryptionConfigService.ets,code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:DecryptionSettingsDialog、loadConfig、onSave、onClear | S:配置在显示后异步加载；标题和底栏固定；更换既有密钥算法或清除须二次确认，随机Key保存前仅为候选
 ServerActionDialogs.ets[CU7L]: F:展示服务器操作菜单、重命名及重置还原设备 Key 弹窗 | R:code:entry/src/main/ets/components/DangerConfirmDialog.ets,code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:ServerActionMenuDialog、RenameServerDialog、ResetKeyDialog | S:目标服务器由外部持有；Key输入留空生成新Key，有值还原该Key
 showToast.ets[CU5T]: F:统一 Toast 显示并在沉浸材质不可用时降级 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:showToast | S:不得静态导入 uiMaterial，避免 API23 模块加载崩溃
+ListStatusFooter.ets[CU5T]: F:统一列表分页及空结果的加载、失败、更多与结束提示，支持定制业务文案 | R:- | A:ListStatusFooter、loading、hasMore、failed、rowHeight、loadingText/failureText/emptyText | S:仅展示状态，ListItem与点击由调用方保留；加载优先于失败，再判断是否有下一页
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/components/minesections/===
 AboutSection.ets[CU6M]: F:展示关于信息并处理更新确认、源码隐私跳转和反馈入口 | R:code:entry/src/main/ets/services/AppUpdateService.ets,code:entry/src/main/ets/services/AppInfoService.ets | A:AboutSection | S:有新版本先确认，取消不跳市场；静默检测只更新提示点
@@ -79,7 +80,7 @@ NotifyGroupVisuals.ets[CU4T]: F:复用通知加密过期计数标签及折叠分
 NotifyListDataSource.ets[CU7S]: F:将分组快照扁平为 LazyForEach 行并按稳定 Key 增删同步 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:buildNotifyListRows、NotifyListDataSource | S:展开收起避免全量重载；末项圆角变化需更新对应行Key，不能重建整组
 NotifyMessageCard.ets[CU5M]: F:展示单条通知标题正文图片及链接、复制和选择操作 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:NotifyMessageCard | S:-
 NotifyMessageDetail.ets[CU6M]: F:展示通知详情、分组抽屉及复制链接等交互 | R:code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/model/NotifyMessage.ets | A:NotifyMessageDetail | S:-
-NotifyMessageList.ets[CU7L]: F:渲染通知平铺与分组列表、局部分页及两段式跳到底部 | R:code:entry/src/main/ets/components/notify/NotifyListDataSource.ets,code:entry/src/main/ets/components/notify/NotifySelectionUtils.ets | A:NotifyMessageList、onLoadMoreInGroup、onLoadMoreFlat | S:Checkbox 属性回显须过滤；瞬跳后由可见索引驱动平滑收尾，数据重建中断自动滚动
+NotifyMessageList.ets[CU7L]: F:渲染通知平铺与分组列表、局部分页及两段式跳到底部 | R:code:entry/src/main/ets/components/notify/NotifyListDataSource.ets,code:entry/src/main/ets/components/notify/NotifySelectionUtils.ets,code:entry/src/main/ets/components/ListStatusFooter.ets | A:NotifyMessageList、onLoadMoreInGroup、onLoadMoreFlat | S:Checkbox 属性回显须过滤；瞬跳后由可见索引驱动平滑收尾，数据重建中断自动滚动
 NotifyRefreshHeader.ets[CU3T]: F:根据顶部遮挡距离显示通知下拉刷新指示器 | R:- | A:NotifyRefreshHeader | S:-
 NotifySelectionUtils.ets[CU6T]: F:不可变维护通知单条组选状态及删除后的可展开组集合 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets | A:setSelectedMessage、setGroupMessagesSelection、retainExpandableGroups | S:组选仅作用已加载通知；收起判断优先数据库总数，避免丢失历史加载入口
 NotifySwipeDelete.ets[CU3T]: F:提供通知行左滑删除按钮 | R:- | A:NotifySwipeDelete、onDelete | S:-
@@ -145,7 +146,7 @@ TestPushExample.ets[CM6T]: F:共享推送测试参数并生成安全引用的GET
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/views/===
 MineView.ets[AU7M]: F:承载我的页通知权限、主题选择、信息与关于板块 | R:code:entry/src/main/ets/components/minesections/NotifySettingsSection.ets,code:entry/src/main/ets/components/minesections/AboutSection.ets | A:MineView | S:系统权限与订阅偏好分开；并发查询只采纳最新结果；API26设置窗口关闭后立即复查
-NotifyView.ets[AU9L]: F:编排本地通知展示搜索、分组分页、多选删除导出及推送详情定位 | R:code:entry/src/main/ets/services/MessageCacheStore.ets,code:entry/src/main/ets/services/NotifySyncService.ets,code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyListDataSource.ets | A:NotifyView | S:搜索全库未过期历史，已完成搜索不随同步刷新；搜索控制器与跳底状态独立，取消时恢复主列表位置；空词分组预览按全局游标独立分页，不能用各组快照末条作游标；手动删解密失败项前暂停同步并核验实例，失败保留重试；跳底后须真实触摸且有效滚离当前底部才解除屏蔽，分页追加后双向均可
+NotifyView.ets[AU9L]: F:编排本地通知展示搜索、分组分页、多选删除导出及推送详情定位 | R:code:entry/src/main/ets/services/MessageCacheStore.ets,code:entry/src/main/ets/services/NotifySyncService.ets,code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyListDataSource.ets,code:entry/src/main/ets/components/ListStatusFooter.ets | A:NotifyView | S:搜索全库未过期历史，已完成搜索不随同步刷新；搜索控制器与跳底状态独立，取消时恢复主列表位置；空词分组预览按全局游标独立分页，不能用各组快照末条作游标；手动删解密失败项前暂停同步并核验实例，失败保留重试；跳底后须真实触摸且有效滚离当前底部才解除屏蔽，分页追加后双向均可
 ServerView.ets[AU6M]: F:承载服务器列表、添加、推送测试和使用文档入口 | R:code:entry/src/main/ets/components/server/ServerList.ets,code:entry/src/main/ets/components/server/SampleCode.ets | A:ServerView | S:添加弹窗打开时构造以读取最新材质；Hds标题和添加按钮使用系统槽位
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/===

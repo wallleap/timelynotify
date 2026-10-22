@@ -67,6 +67,7 @@ import { NotifyGroupStateUtils } from '../components/notify/NotifyGroupStateUtil
 import { NotifyMessageList } from '../components/notify/NotifyMessageList';
 import { NOTIFY_LIST_ROW_GAP } from '../components/notify/NotifyListDataSource';
 import { NotifyMessageCard } from '../components/notify/NotifyMessageCard';
+import { ListStatusFooter } from '../components/ListStatusFooter';
 import { NotifyExportService } from '../services/NotifyExportService';
 import {
   belongsToPushInstance,
@@ -691,14 +692,17 @@ export struct NotifyView {
         // 空关键词也从独立平铺分页读取，不能拼接各组快照后把末条当作全局分页游标。
         if (this.searchResults.length === 0) {
           ListItem() {
-            Text(this.searchLoading ? '正在搜索…' : this.searchError ? '搜索失败，请重试' : '没有找到相关通知')
-              .fontSize(16)
-              .fontColor($r('app.color.color_text_secondary'))
-              .width('100%')
-              .textAlign(TextAlign.Center)
-              .padding({ top: 40 })
-              .onClick(() => { if (this.searchError) this.scheduleSearch(); });
-          }
+            // 空结果与分页底栏共用视觉，仅定制搜索文案及原有顶部留白。
+            Column() {
+              ListStatusFooter({
+                loading: this.searchLoading,
+                failed: this.searchError,
+                loadingText: '正在搜索…',
+                failureText: '搜索失败，请重试',
+                emptyText: '没有找到相关通知'
+              });
+            }.width('100%').padding({ top: 40 });
+          }.onClick(() => { if (this.searchError) this.scheduleSearch(); });
         } else {
           ForEach(this.searchResults, (message: NotifyMessage) => {
             ListItem() {
@@ -717,15 +721,12 @@ export struct NotifyView {
             .margin({ bottom: NOTIFY_LIST_ROW_GAP });
           }, (message: NotifyMessage) => notifyIdentity(message));
           ListItem() {
-            Text(this.searchLoading ? '加载中…' : this.searchError ? '加载失败，点击重试' :
-              this.searchHasMore ? '加载更多' : '没有更多了')
-              .fontSize(14)
-              .fontColor($r('app.color.color_text_secondary'))
-              .width('100%')
-              .textAlign(TextAlign.Center)
-              .padding(16)
-              .onClick(() => this.loadMoreSearch());
-          }
+            ListStatusFooter({
+              loading: this.searchLoading,
+              hasMore: this.searchHasMore,
+              failed: this.searchError
+            });
+          }.onClick(() => this.loadMoreSearch());
         }
         ListItem() {
           Row().width('100%').height(this.navBarHeight + 72);

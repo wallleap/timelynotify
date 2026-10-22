@@ -6,6 +6,7 @@ import { NotifyGroupCard } from './NotifyGroupCard';
 import { NotifyGroupExpandedHeader } from './NotifyGroupExpandedHeader';
 import { NotifyGroupMessageRow } from './NotifyGroupMessageRow';
 import { NotifySwipeDelete } from './NotifySwipeDelete';
+import { ListStatusFooter } from '../ListStatusFooter';
 import {
   buildNotifyListRows,
   NOTIFY_LIST_ROW_GROUP_CARD,
@@ -247,16 +248,10 @@ export struct NotifyMessageList {
         }
       }, (row: NotifyListRow) => row.key);
       ListItem() {
-        Row() {
-          if (!this.groupEnabled && this.flatLoadingMore) {
-            LoadingProgress().width(16).height(16).color($r('app.color.color_brand'));
-            Text('加载中...').fontSize(13).fontColor($r('app.color.color_text_hint')).margin({ left: 6 });
-          } else if (!this.groupEnabled && this.flatHasMore) {
-            Text('加载更多').fontSize(13).fontColor($r('app.color.color_brand'));
-          } else {
-            Text('没有更多了').fontSize(13).fontColor($r('app.color.color_text_hint'));
-          }
-        }.width('100%').height(40).justifyContent(FlexAlign.Center);
+        ListStatusFooter({
+          loading: !this.groupEnabled && this.flatLoadingMore,
+          hasMore: !this.groupEnabled && this.flatHasMore
+        });
       }.onClick(() => {
         if (!this.groupEnabled && this.flatHasMore && !this.flatLoadingMore) {
           this.onLoadMoreFlat();
@@ -461,15 +456,8 @@ export struct NotifyMessageList {
 
   @Builder
   private groupLoadMoreFooter(section: NotifySection) {
-    Row() {
-      if (this.groupLoading(section)) {
-        LoadingProgress().width(16).height(16).color($r('app.color.color_brand'));
-        Text('加载中...').fontSize(13).fontColor($r('app.color.color_text_hint')).margin({ left: 6 });
-      } else {
-        Text('加载更多').fontSize(13).fontColor($r('app.color.color_brand'));
-      }
-    }
-    .width('100%').height(44).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center);
+    // 组内保留原有 44vp 高度，其余视觉规则统一复用分页状态组件。
+    ListStatusFooter({ loading: this.groupLoading(section), hasMore: true, rowHeight: 44 });
   }
 
   @Builder
