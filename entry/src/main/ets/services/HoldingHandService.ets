@@ -7,17 +7,17 @@ import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'HoldingHandService';
 
-/** 通知页专用的握姿订阅边界：前台监听，后台释放，不持久化传感器状态。 */
+/** 主页共用的握姿订阅边界：按页面注册、前台监听，不持久化传感器状态。 */
 export class HoldingHandService {
-  // 只有通知页可见时才持有回调；停止后的迟到事件不能再写页面状态。
-  private static listener: ((left: boolean) => void) | null = null;
+  // 页面独立持有回调，Tab 切换时旧页停止不能取消新页已注册的消费者。
+  private static listeners: Map<string, (left: boolean) => void> = new Map<string, (left: boolean) => void>();
   private static application: common.ApplicationContext | null = null;
   private static subscribed: boolean = false;
   private static foreground: boolean = true;
   private static left: boolean = false;
   // on/off 使用相同回调，避免误取消其它模块的握姿监听。
   private static holdingCallback = (status: motion.HoldingHandStatus): void => {
-    if (HoldingHandService.listener === null || !HoldingHandService.foreground) {
+    if (HoldingHandService.listeners.size === 0 || !HoldingHandService.foreground) {
       return;
     }
     if (status === motion.HoldingHandStatus.LEFT_HAND_HELD) {
@@ -28,7 +28,7 @@ export class HoldingHandService {
       // 双手、放下和未知状态不引起左右反复跳动。
       return;
     }
-    HoldingHandService.listener(HoldingHandService.left);
+    HoldingHandService.notifyListeners();
   };
   private static applicationCallback: ApplicationStateChangeCallback = {
     onApplicationForeground: (): void => {
@@ -41,9 +41,9 @@ export class HoldingHandService {
     }
   };
 
-  /** 页面可见时调用；重复启动只替换消费者，不重复订阅。 */
-  static start(listener: (left: boolean) => void): void {
-    HoldingHandService.listener = listener;
+  /** 页面可见时注册；默认 owner 保留原通知页接口，同页重复启动只替换自身回调。 */
+  static start(listener: (left: boolean) => void, owner: string = 'notify'): void {
+    HoldingHandService.listeners.set(owner, listener);
     listener(HoldingHandService.left);
     if (HoldingHandService.application !== null) {
       HoldingHandService.subscribeMotion();
@@ -66,16 +66,19 @@ export class HoldingHandService {
     }
   }
 
-  /** 切走通知页或组件销毁时释放；不删除其它消费者的生命周期监听。 */
-  static stop(): void {
-    HoldingHandService.listener = null;
+  /** 仅移除指定页面；最后一个消费者离开后才释放系统订阅与生命周期监听。 */
+  static stop(owner: string = 'notify'): void {
+    HoldingHandService.listeners.delete(owner);
+    if (HoldingHandService.listeners.size > 0) {
+      return;
+    }
     HoldingHandService.unsubscribeMotion();
     if (HoldingHandService.application !== null) {
       try {
         HoldingHandService.application.off('applicationStateChange', HoldingHandService.applicationCallback);
         HoldingHandService.application = null;
       } catch (err) {
-        // 保留引用，后续 start 不会重复注册；迟到的前台事件由 listener 门禁拦截。
+        // 保留引用，后续 start 不会重复注册；迟到的前台事件由消费者数量门禁拦截。
         HoldingHandService.logFailure('取消前后台监听失败', err as BusinessError);
       }
     }
@@ -83,7 +86,7 @@ export class HoldingHandService {
 
   /** 不支持设备或权限错误均降级为默认右侧，不打断通知操作。 */
   private static subscribeMotion(): void {
-    if (HoldingHandService.listener === null || !HoldingHandService.foreground || HoldingHandService.subscribed) {
+    if (HoldingHandService.listeners.size === 0 || !HoldingHandService.foreground || HoldingHandService.subscribed) {
       return;
     }
     try {
@@ -111,9 +114,14 @@ export class HoldingHandService {
   /** 降级通知沿用相同回调路径，确保标题栏和悬浮按钮总在同一侧。 */
   private static useDefaultSide(): void {
     HoldingHandService.left = false;
-    if (HoldingHandService.listener !== null) {
-      HoldingHandService.listener(false);
-    }
+    HoldingHandService.notifyListeners();
+  }
+
+  /** 广播同一握姿；Map 删除的页面不会再接收迟到的系统回调。 */
+  private static notifyListeners(): void {
+    HoldingHandService.listeners.forEach((listener: (left: boolean) => void): void => {
+      listener(HoldingHandService.left);
+    });
   }
 
   /** 只记录错误码，不记录传感器数据。 */

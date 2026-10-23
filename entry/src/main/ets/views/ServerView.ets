@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { LengthMetrics } from '@kit.ArkUI';
 import {
   getDialogMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
@@ -8,9 +9,10 @@ import {
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { ServerList } from '../components/server/ServerList';
 import { AddServerDialog } from '../components/server/AddServerDialog';
-import { DOMAIN } from '../common/Constant';
+import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../common/Constant';
 import { SampleCode } from '../components/server/SampleCode';
 import { ExternalLinkService, USE_DOCS_URL } from '../services/ExternalLinkService';
+import { HoldingHandService } from '../services/HoldingHandService';
 
 const TAG: string = 'ServerView';
 const PUSH_FIELDS_URL: string = `${USE_DOCS_URL}/fields/`;
@@ -19,6 +21,9 @@ const FAQ_URL: string = `${USE_DOCS_URL}/faq/`;
 // 服务页 - 直接展示服务器列表，右上角 + 走 HdsNavigation 系统 menu 槽位（材质由 HDS 自动渲染），点击弹窗添加服务器
 @Component
 export struct ServerView {
+  // 标题操作跟随握姿；正文与添加弹窗保持原有阅读方向。
+  @State holdingLeft: boolean = false;
+  @State viewportWidth: number = 400;
   @State fallbackTitleBarBottom: number = -1;
   @State scrollTop: number = -1;
   // 状态栏/导航条高度（vp），EntryAbility 沉浸式布局初始化时写入 AppStorage
@@ -26,10 +31,44 @@ export struct ServerView {
   @StorageProp('navBarHeight') navBarHeight: number = 0;
   // 沉浸光感开关值（API 26+ 生效）
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
+  @StorageProp(KEY_HOME_TAB_INDEX) @Watch('updateHoldingHandSubscription') homeTabIndex: number = 0;
+  @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('updateHoldingHandSubscription') indexPageVisible: boolean = true;
   // 官方结构：Scroll 绑定自己的 Scroller 实例，供 HdsNavigation.bindToScrollable 用
   private scroller: Scroller = new Scroller();
   // 添加服务器弹窗：点击时构造，保证材质读取最新就绪态
   private addServerController: CustomDialogController | null = null;
+  private holdingHandViewMounted: boolean = false;
+
+  aboutToAppear(): void {
+    this.holdingHandViewMounted = true;
+    this.updateHoldingHandSubscription();
+  }
+
+  aboutToDisappear(): void {
+    this.holdingHandViewMounted = false;
+    HoldingHandService.stop('server');
+  }
+
+  /** 仅服务 Tab 可见时持有消费者，切走时只释放自己的注册。 */
+  private updateHoldingHandSubscription(): void {
+    if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 1) {
+      HoldingHandService.stop('server');
+      return;
+    }
+    HoldingHandService.start((left: boolean): void => { this.holdingLeft = left; }, 'server');
+  }
+
+  /** 原生菜单仍由 Hds 绘制，标题只交换布局侧，不镜像文字。 */
+  @Builder
+  private customTitleContent() {
+    Row() {
+      Text('服务').fontSize(24).fontWeight(FontWeight.Bold)
+        .fontColor($r('app.color.color_text_primary'));
+    }
+    .width('100%')
+    .justifyContent(this.holdingLeft ? FlexAlign.End : FlexAlign.Start)
+    .padding(16);
+  }
 
   // 降级顶栏（API < 26）右侧 + 图标：自定义 plus.svg，无材质链式调用
   @Builder
@@ -64,6 +103,7 @@ export struct ServerView {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
+    .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
     .padding({
       left: 16,
       right: 16,
@@ -256,11 +296,16 @@ export struct ServerView {
         this.scrollBody();
       }
       .titleBar({
+        // Hds 原生 + 为 40vp；端侧留白让左手模式仍保留 16vp 边距。
+        padding: {
+          start: LengthMetrics.vp(16),
+          end: LengthMetrics.vp(this.holdingLeft ? Math.max(16, this.viewportWidth - 16 - 40) : 16)
+        },
         enableComponentSafeArea: true,
         // MINI 全屏页（Tab 内容）必须显式避让状态栏；MODAL 半模态自带窗口安全区可不开。
         avoidLayoutSafeArea: true,
         content: {
-          title: { mainTitle: '服务' },
+          stackBuilder: (): void => { this.customTitleContent(); },
           menu: {
             value: [
               {
@@ -290,6 +335,12 @@ export struct ServerView {
       .bindToScrollable([this.scroller])
       .width('100%')
       .height('100%')
+      .onAreaChange((_old: Area, area: Area) => {
+        const width: number = area.width as number;
+        if (width > 0 && width !== this.viewportWidth) {
+          this.viewportWidth = width;
+        }
+      })
       .backgroundColor($r('app.color.color_bg_page'));
     } else {
       // ─── API < 26: Stack + 手工顶栏叠层 ───
