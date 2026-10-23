@@ -7,7 +7,9 @@ import { ServerEntry } from '../main/ets/model/ServerEntry';
 import { NotifyExportService } from '../main/ets/services/NotifyExportService';
 import { retryDelayMs } from '../main/ets/services/NotifySyncService';
 import { AutoCopyService, AutoCopySelection, AutoCopySyncRound } from '../main/ets/services/AutoCopyService';
-import { buildNotifyCopyText, formatExpiryDescription, formatNotifyTime, isExpiringSoon } from '../main/ets/components/notify/NotifyViewTypes';
+import { buildNotifyCopyText, formatExpiryDescription, formatNotifyTime, isExpiringSoon,
+  NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment,
+  parseNotifyTextSegments } from '../main/ets/components/notify/NotifyViewTypes';
 import { areGroupMessagesSelected, retainExpandableGroups, setGroupMessagesSelection, setSelectedMessage, toggleGroupMessages, toggleSelectedMessage } from '../main/ets/components/notify/NotifySelectionUtils';
 import { belongsToPushInstance, notifyIdentity, notifySourceKey, originalDeviceKey,
   resolveCurrentRemoteServer } from '../main/ets/utils/NotifyIdentity';
@@ -127,6 +129,66 @@ export default function localUnitTest() {
       expect(buildNotifyCopyText(message)).assertEqual('普通正文');
       message.body = '';
       expect(buildNotifyCopyText(message)).assertEqual('');
+    });
+    it('recognizesVerificationCodeWithParenthesizedSuffix', 0, () => {
+      // 完整短信只标记验证码，括号、品牌与安全提示均保留为原文。
+      const text: string = '【新浪】790415（微博登录验证码），此验证码只用于登录你的微博，提供给他人可能导致微博被盗，请勿转发。';
+      const segments: NotifyTextSegment[] = parseNotifyTextSegments(text);
+      const codes: NotifyTextSegment[] = segments.filter((segment: NotifyTextSegment) =>
+        segment.type === NOTIFY_SEGMENT_CODE);
+      expect(codes.length).assertEqual(1);
+      expect(codes[0].text).assertEqual('790415');
+      expect(segments.map((segment: NotifyTextSegment) => segment.text).join('')).assertEqual(text);
+    });
+    it('recognizesVerificationCodeWithSeparatedSuffix', 0, () => {
+      // 中英文括号、普通空格与全角空格共用后置语义词规则。
+      const samples: string[] = [
+        '123456（登录验证码）', '123456(微博登录验证码)', '123456 快手验证码',
+        '123456　（ 微博登录验证码）', '123456 ( 登录验证码 )', '123456快手验证码'
+      ];
+      for (let i: number = 0; i < samples.length; i++) {
+        const codes: NotifyTextSegment[] = parseNotifyTextSegments(samples[i])
+          .filter((segment: NotifyTextSegment) => segment.type === NOTIFY_SEGMENT_CODE);
+        expect(codes.length).assertEqual(1);
+        expect(codes[0].text).assertEqual('123456');
+      }
+      const mixed: NotifyTextSegment[] = parseNotifyTextSegments('A1b2C3（登录验证码）')
+        .filter((segment: NotifyTextSegment) => segment.type === NOTIFY_SEGMENT_CODE);
+      expect(mixed.length).assertEqual(1);
+      expect(mixed[0].text).assertEqual('A1b2C3');
+    });
+    it('preservesVerificationCodeSemanticConstraints', 0, () => {
+      // 仍需明确语义词与至少一位数字，不截取手机号或长标识的末尾。
+      const ordinary: string[] = [
+        '订单号 123456，请等待验证码短信。', '联系电话 13800138000，请勿转发验证码。',
+        '2026-10-23 登录提醒：验证码稍后发送。', '验证码 Apple', '123456（订单编号）',
+        '13800138000（登录验证码）', 'ABCD1234567890（登录验证码）'
+      ];
+      for (let i: number = 0; i < ordinary.length; i++) {
+        const codes: NotifyTextSegment[] = parseNotifyTextSegments(ordinary[i])
+          .filter((segment: NotifyTextSegment) => segment.type === NOTIFY_SEGMENT_CODE);
+        expect(codes.length).assertEqual(0);
+      }
+      const existing: NotifyTextSegment[] = parseNotifyTextSegments('验证码为 123456，PIN7890')
+        .filter((segment: NotifyTextSegment) => segment.type === NOTIFY_SEGMENT_CODE);
+      expect(existing.length).assertEqual(2);
+      expect(existing[0].text).assertEqual('123456');
+      expect(existing[1].text).assertEqual('7890');
+    });
+    it('keepsVerificationCodeOutOfLinksAndSeparateSentences', 0, () => {
+      // 不跨句寻找语义词，也不得覆盖 URL 或邮箱片段。
+      const separated: string[] = [
+        '123456，微博登录验证码稍后发送', '123456（微博登录提醒），验证码稍后发送',
+        '123456这是超过十六个字符的普通说明文字不应视作品牌登录验证码'
+      ];
+      for (let i: number = 0; i < separated.length; i++) {
+        expect(parseNotifyTextSegments(separated[i])
+          .filter((segment: NotifyTextSegment) => segment.type === NOTIFY_SEGMENT_CODE).length).assertEqual(0);
+      }
+      const links: NotifyTextSegment[] = parseNotifyTextSegments(
+        'https://example.com/123456（登录验证码） 123456@example.com（登录验证码）');
+      expect(links.filter((segment: NotifyTextSegment) => segment.type === NOTIFY_SEGMENT_CODE).length).assertEqual(0);
+      expect(links.filter((segment: NotifyTextSegment) => segment.type === NOTIFY_SEGMENT_URL).length).assertEqual(2);
     });
     it('keepsGroupSelectionAndActionCountInSync', 0, () => {
       const first: NotifyMessage = new NotifyMessage();

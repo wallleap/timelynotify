@@ -11,7 +11,7 @@ export interface NotifyTextSegment {
 export const NOTIFY_SEGMENT_NORMAL: number = 0;
 /** 可打开的 HTTP(S) 链接或邮箱地址片段。 */
 export const NOTIFY_SEGMENT_URL: number = 1;
-/** 可复制的 4 至 8 位验证码片段。 */
+/** 可复制的 4 至 10 位验证码片段。 */
 export const NOTIFY_SEGMENT_CODE: number = 2;
 
 /** 通知列表的渲染分段：单条消息或一个可折叠分组。 */
@@ -72,7 +72,7 @@ function hasVerificationCodeDigit(code: string): boolean {
 
 /**
  * 将正文切为普通文本、链接、邮箱和验证码，供列表与详情复用。
- * 链接支持 HTTP(S)、无协议常见域名和 IPv4；邮箱可拉起邮件应用；验证码仅在明确的验证码语义词后识别，避免误判订单号/日期。
+ * 链接支持 HTTP(S)、无协议常见域名和 IPv4；邮箱可拉起邮件应用；验证码须有明确的前置或后置语义词，避免误判订单号/日期。
  */
 export function parseNotifyTextSegments(text: string): NotifyTextSegment[] {
   if (!text || text.length === 0) {
@@ -88,9 +88,9 @@ export function parseNotifyTextSegments(text: string): NotifyTextSegment[] {
     /[a-z0-9._%+-]+@(?:[a-z0-9-]+\.)+[a-z]{2,63}/gi;
   // 只识别有明确语义词引导的验证码：支持“验证码为 123456”与“123456 快手验证码”两种常见句式。
   // 捕获组 1/2 均为实际应复制的验证码：支持 4–10 位数字与字母混合，且必须至少含一个数字。
-  // 验证码后最多允许 16 个品牌名字符再出现验证码语义词。
+  // 后置语义词前允许空白、中英文左括号及最多 16 个品牌名字符，不跨逗号或句号匹配。
   const codePattern: RegExp =
-    /(?:验证码|校验码|动态码|动态口令|一次性密码|确认码|安全码|提取码|登录码|授权码|verification\s*code|verify\s*code|otp|pin)(?:\s*(?:为|是|:|：|-))*\s*([a-z0-9]{4,10})(?![a-z0-9])|([a-z0-9]{4,10})(?![a-z0-9])(?:[\u4e00-\u9fa5a-z]{0,16})(?:验证码|校验码|动态码|动态口令|一次性密码|确认码|安全码|提取码|登录码|授权码)/gi;
+    /(?:验证码|校验码|动态码|动态口令|一次性密码|确认码|安全码|提取码|登录码|授权码|verification\s*code|verify\s*code|otp|pin)(?:\s*(?:为|是|:|：|-))*\s*([a-z0-9]{4,10})(?![a-z0-9])|([a-z0-9]{4,10})(?![a-z0-9])\s*[（(]?\s*(?:[\u4e00-\u9fa5a-z]{0,16})(?:验证码|校验码|动态码|动态口令|一次性密码|确认码|安全码|提取码|登录码|授权码)/gi;
   let match: RegExpExecArray | null;
   while ((match = emailPattern.exec(text)) !== null) {
     matches.push({ text: match[0], type: NOTIFY_SEGMENT_URL, start: match.index, end: match.index + match[0].length });
@@ -113,6 +113,10 @@ export function parseNotifyTextSegments(text: string): NotifyTextSegment[] {
     }
     const codeOffset: number = match[0].lastIndexOf(code);
     const codeStart: number = match.index + codeOffset;
+    // 后置候选必须从完整编码起点开始，不能截取手机号或长字母数字标识的末尾。
+    if (match[2] && codeStart > 0 && /[a-z0-9]/i.test(text.charAt(codeStart - 1))) {
+      continue;
+    }
     let overlaps: boolean = false;
     for (let i = 0; i < matches.length; i++) {
       if (codeStart < matches[i].end && codeStart + code.length > matches[i].start) {

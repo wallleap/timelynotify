@@ -85,7 +85,7 @@ NotifyRefreshHeader.ets[CU3T]: F:根据顶部遮挡距离显示通知下拉刷�
 NotifySelectionUtils.ets[CU6T]: F:不可变维护通知单条组选状态及删除后的可展开组集合 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets | A:setSelectedMessage、setGroupMessagesSelection、retainExpandableGroups | S:组选仅作用已加载通知；收起判断优先数据库总数，避免丢失历史加载入口
 NotifySwipeDelete.ets[CU3T]: F:提供通知行左滑删除按钮 | R:- | A:NotifySwipeDelete、onDelete | S:-
 NotifyTitleBar.ets[CU5S]: F:渲染沉浸或降级通知标题与操作入口，按握姿交换标题和操作区布局侧 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:NotifyTitleBar、holdingLeft | S:Hds分支只绘标题并预留原生菜单位，降级分支自行绘制按钮；文字固定LTR
-NotifyViewTypes.ets[CU6M]: F:解析通知富文本、构造分组分段并格式化复制文本和过期时间 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets | A:parseNotifyTextSegments、buildNotifySections、formatExpiryDescription | S:分组Key包含数据库总数和已加载数以刷新复用节点；验证码须有语义词且含数字
+NotifyViewTypes.ets[CU6M]: F:解析通知富文本、构造分组分段并格式化复制文本和过期时间 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets | A:parseNotifyTextSegments、buildNotifySections、formatExpiryDescription | S:分组Key含总数和已加载数以刷新复用节点；验证码4–10位须含数字，后置词可隔空白/左括号，不截长标识，URL邮箱优先
 ServerSwitchDialog.ets[CU6M]: F:选择全部通知或单服务器视图并同步服务器变更回显 | R:code:entry/src/main/ets/services/ServerManager.ets | A:ServerSwitchDialog | S:仅控制视图范围；选单服务关闭聚合模式并异步切换，管理操作在服务页
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/components/server/===
@@ -225,7 +225,7 @@ module.json5[FQ4T]: F:声明设备测试entry_test特性模块及phone安装属�
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/test/===
 List.test.ets[TQ5T]: F:注册本地逻辑测试与推送示例测试套件 | R:code:entry/src/test/LocalUnit.test.ets,code:entry/src/test/TestPushExample.test.ets | A:testsuite | S:-
-LocalUnit.test.ets[TM7L]: F:验证通知身份选择分组、归档TTL、AES解密与自动复制和重试策略 | R:code:entry/src/main/ets/model/NotifyMessage.ets,code:entry/src/main/ets/services/MessageCryptoService.ets,code:entry/src/main/ets/services/AutoCopyService.ets | A:localUnitTest | S:含系统密码框架用例，不能仅以静态检查认定已执行；验证向量使用固定测试Key
+LocalUnit.test.ets[TM7L]: F:验证通知身份选择分组、归档TTL、AES解密、验证码边界、自动复制和重试策略 | R:code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/services/MessageCryptoService.ets,code:entry/src/main/ets/services/AutoCopyService.ets | A:localUnitTest | S:含系统密码框架用例，不能仅以静态检查认定已执行；验证向量使用固定测试Key
 TestPushExample.test.ets[TM6T]: F:验证GET/POST测试示例与实际载荷一致、目标切换及shell转义 | R:code:entry/src/main/ets/utils/TestPushExample.ets | A:testPushExampleTest | S:-
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/hvigor/===
