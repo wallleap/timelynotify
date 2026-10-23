@@ -4,6 +4,7 @@ import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ThemeService } from '../services/ThemeService';
+import { HoldingHandService } from '../services/HoldingHandService';
 import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../common/Constant';
 import {
   KEY_IMMERSIVE_LIGHT_ENABLED,
@@ -29,6 +30,8 @@ enum NotificationPermissionStatus {
 // 我的页 - 展示个人设置入口
 @Component
 export struct MineView {
+  // 握姿只交换标题与主题切换器的位置，不改变主题选项顺序。
+  @State holdingLeft: boolean = false;
   @State fallbackTitleBarBottom: number = -1;
   @State scrollTop: number = -1;
   // 顶部卡片展示的系统通知权限状态。
@@ -58,10 +61,27 @@ export struct MineView {
   private permissionQueryId: number = 0;
   // 防止重复点击权限卡片同时拉起多个系统设置窗口。
   private notificationSettingsOpening: boolean = false;
+  private holdingHandViewMounted: boolean = false;
 
   aboutToAppear() {
+    this.holdingHandViewMounted = true;
+    this.updateHoldingHandSubscription();
     this.refreshColorMode();
     this.refreshNotificationPermission();
+  }
+
+  aboutToDisappear(): void {
+    this.holdingHandViewMounted = false;
+    HoldingHandService.stop('mine');
+  }
+
+  /** 我的 Tab 可见时注册，关闭其它页面的监听不会影响当前消费者。 */
+  private updateHoldingHandSubscription(): void {
+    if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 2) {
+      HoldingHandService.stop('mine');
+      return;
+    }
+    HoldingHandService.start((left: boolean): void => { this.holdingLeft = left; }, 'mine');
   }
 
   // 系统通知权限卡片：点击整张卡片进入系统设置。
@@ -131,6 +151,7 @@ export struct MineView {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
+    .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
     .padding({
       left: 16,
       right: 16,
@@ -173,6 +194,8 @@ export struct MineView {
       }, (_icon: Resource, idx: number) => `color_mode_${idx}`)
     }
     .alignItems(VerticalAlign.Center)
+    // 容器换侧时仍保持深色、浅色、跟随系统的原有排列。
+    .direction(Direction.Ltr)
   }
 
   // HDS 顶栏自定义内容（塞入 HdsNavigation.titleBar.content.stackBuilder）。
@@ -192,6 +215,7 @@ export struct MineView {
     }
     .width('100%')
     .alignItems(VerticalAlign.Center)
+    .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
     .padding({
       left: 16,
       right: 16,
@@ -306,6 +330,7 @@ export struct MineView {
 
   // 切回“我的”Tab 时重新查询系统权限。
   private onHomeTabIndexChanged(): void {
+    this.updateHoldingHandSubscription();
     if (this.homeTabIndex === 2 && this.indexPageVisible) {
       this.refreshNotificationPermission();
     }
@@ -313,6 +338,7 @@ export struct MineView {
 
   // 从系统设置或其他页面回到应用时重新查询系统权限。
   private onIndexPageVisibleChanged(): void {
+    this.updateHoldingHandSubscription();
     if (this.indexPageVisible && this.homeTabIndex === 2) {
       this.refreshNotificationPermission();
     }
