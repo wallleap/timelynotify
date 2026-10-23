@@ -5,7 +5,7 @@
 .gitignore[FC5T]: F:排除依赖、构建输出、本地环境与签名材料目录 | R:- | A:- | S:AOCI 主机集成配置仅供本机使用，不纳入版本控制
 AGENTS.md[SG8L]: F:规定 ArkTS 项目架构、修改授权、验证、Git 与 AOCI 认知治理规范 | R:- | A:- | S:源码改动须先提供文档并确认；Git提交推送及依赖配置修改需明确授权
 LICENSE[SG4T]: F:声明 MIT 授权、版权保留义务与免责条件 | R:- | A:- | S:-
-README.md[SG7M]: F:说明通知功能、注册同步、启动诊断、加密、握姿与搜索跳底过渡、发版和防伪校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:客户端本地历史迁移后删除远程副本，不能照通用 Gotify 缓存策略清空历史
+README.md[SG7M]: F:说明通知同步诊断、加密、握姿能力门禁与开关预览、搜索跳底过渡、发版和防伪校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:客户端本地历史迁移后删除远程副本，不能照通用 Gotify 缓存策略清空历史
 SERVER_API.md[SN8L]: F:定义推送、设备注册、Gotify 消息与删除流水以及服务运维接口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:HTTP API、鉴权与加密载荷约定 | S:文档通用删除协议消费 ids/purges/reset；本客户端迁移链路另有只消费 extraIds 的约束
 build-profile.json5[FV8T]: F:配置 Harmony 产品、SDK 兼容范围、签名与 entry 模块 | R:code:entry/build-profile.json5,code:AppScope/app.json5 | A:default/release 产品 | S:target26兼容API23；CI剥离本地调试签名后整体重签，不复用本机加密材料
 code-linter.json5[FQ5T]: F:定义 ArkTS lint 范围、性能规则与密码算法安全规则 | R:- | A:files、ignore、ruleSet | S:-
@@ -99,6 +99,7 @@ SettingCell.ets[CU5T]: F:统一设置行文本留白图标及右侧控件槽位 
 SettingDivider.ets[CU3T]: F:提供设置卡片内分隔线样式 | R:- | A:SettingDivider | S:-
 SettingGroup.ets[CU4T]: F:提供圆角毛玻璃设置卡片容器与内容槽位 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:SettingGroup、content | S:-
 SettingGroupTitle.ets[CU3T]: F:统一设置分组标题字体颜色及留白 | R:- | A:SettingGroupTitle | S:-
+HoldingHandSettingsCard.ets[CU6M]: F:提供默认开启的智感握姿开关、左右布局动态演示与关闭静态预览和简短说明 | R:code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/components/settings/SettingGroup.ets | A:HoldingHandSettingsCard、KEY_HOLDING_HAND_PREVIEW_VISIBLE | S:演示不订阅握姿；仅开启且页面与视口可见时循环，离页按代次废弃回调；写盘失败恢复开关
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/config/===
 ApiConfig.ets[FC6T]: F:声明生产与局域网 API 地址、环境开关及注册平台常量 | R:code:entry/src/main/ets/services/ServerManager.ets | A:ApiConfig.baseURL、REGISTER_PATH | S:当前 USE_PRODUCTION=false；设备 localhost 指设备自身，联调需宿主局域网地址
@@ -113,7 +114,7 @@ ServerEntry.ets[DD7T]: F:描述服务器配置、设备鉴权、数据库实例�
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/pages/===
 Index.ets[AU7S]: F:承载通知服务我的三Tab，协调导航视觉、编辑返回与页可见信号 | R:code:entry/src/main/ets/views/NotifyView.ets,code:entry/src/main/ets/views/ServerView.ets,code:entry/src/main/ets/views/MineView.ets | A:Index、onBackPress | S:Hds底栏视觉在动画开始更新，业务Tab状态待切换完成；多选态返回先退出编辑
-PersonalizationSettings.ets[CU6M]: F:提供主题、沉浸光感与加密通知重发偏好页面 | R:code:entry/src/main/ets/services/ThemeService.ets,code:entry/src/main/ets/services/EncryptedNotificationResendService.ets | A:PersonalizationSettings | S:重发开关先确认再保存，只影响后续同步且不改变isArchive留存策略
+PersonalizationSettings.ets[CU6M]: F:按外观、通知行为和末尾鸿蒙特性展示偏好，检测握姿支持后显示卡片并控制预览可见性 | R:code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/services/EncryptedNotificationResendService.ets,code:entry/src/main/ets/components/settings/HoldingHandSettingsCard.ets | A:PersonalizationSettings、onPageShow、onPageHide | S:未确认握姿支持时连同空分组隐藏，临时检测失败再次进入可重试；重发开关先确认再保存，不改变isArchive留存策略
 SharePage.ets[CU6M]: F:承载内嵌网页、下拉刷新、历史返回、分享与沉浸标题栏 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:SharePage、路由url/title参数 | S:强制联网应使用CacheMode.Online，None仍优先缓存；返回先走Web历史
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/services/===
@@ -135,13 +136,13 @@ NotifyMessageService.ets[IM8L]: F:封装带设备鉴权的消息拉取删除、�
 NotifySyncService.ets[AM9L]: F:按前台生命周期编排多服务器注册重试、分页迁移、退避与同步信号 | R:code:entry/src/main/ets/services/MessageCacheStore.ets,code:entry/src/main/ets/services/NotifyMessageService.ets,code:entry/src/main/ets/services/DecryptedNotificationService.ets,code:entry/src/main/ets/services/DeviceRegisterService.ets | A:startForeground、pause、requestSync、beginManualDeletion | S:每页100、服务并发2、删除并发6；未注册也退避重试，与Ability共享注册；注册改变版本后续拉，不能提前完成首次历史播种；仅消费extraIds，忽略ids/purges，reset仅告警；本地事务及必要补发成功才删远端，后台暂停后续页
 ServerManager.ets[DD9L]: F:管理内置自定义服务器、设备鉴权、视图范围、实例历史及变更通知 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/ets/services/DeviceRegisterService.ets,code:entry/src/main/ets/config/ApiConfig.ets | A:ensureLoaded、switchTo、addServer、deleteServer、rememberHistory | S:读取前等初始化；内置地址动态来自ApiConfig，Key与Token单独持久化；至少保留一个服务器，旧来源不明记录仅聚合展示
 ThemeService.ets[DU6S]: F:持久化主题并即时应用颜色模式，保存沉浸偏好和重启应用 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/ets/common/AppContextStore.ets | A:applyColorMode、setImmersiveLightEnabled、restartApp | S:沉浸偏好只写盘，重启后生效，不能原地重建Tabs；重启不依赖onDestroy
-HoldingHandService.ets[IU6S]: F:按页面共享握姿订阅，编排前后台启停与能力失败降级 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/module.json5 | A:HoldingHandService.start、stop | S:owner默认notify，停止只移除自身，末个消费者离开才释放；双手放下未知保留最近侧，初始与失败默认右；取消失败留标记防重复
+HoldingHandService.ets[IU6M]: F:检测系统与实际握姿能力，保存独立开关偏好，共享页面订阅并协调前后台与右侧降级 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start、stop、isEnabled、setEnabled、checkSupport | S:缺能力/801才缓存不支持；默认开启偏好独立，读完再订阅、写成才生效；检测复用订阅，无需监听即退；owner共享末个释放；取消失败留标记
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/utils/===
 HttpUtil.ets[IN7S]: F:封装JSON请求、总时限取消、网络错误分类与耗时及HTTP资源释放 | R:- | A:HttpUtil、HttpResponse、formatNetworkFailure | S:连接异常code=0且保留系统码；默认总时限10s，放宽读取同步延长；到限终止且仅释放一次，迟到结果不回写；仅2xx解析JSON，非JSON留空
 ImmersiveUtil.ets[CU8M]: F:集中处理沉浸材质版本兼容、动态加载、实例复用与各表面降级 | R:code:entry/src/main/module.json5,code:.github/scripts/check-immersive-boundary.sh | A:ensureImmersiveMaterial、getDialogMaterial、getDialogBackgroundOptions | S:uiMaterial仅动态加载；低算力支持检查只诊断；弹窗模糊挂controller，内容透明；全局启用时undefined恢复默认，关闭需Material.empty；悬浮Toggle先统一两态底色再挂材质
 NotifyIdentity.ets[DM8T]: F:定义历史来源与通知复合身份、远端安全定位及跨服务器稳定排序 | R:code:entry/src/main/ets/model/ServerEntry.ets,code:entry/src/main/ets/model/NotifyMessage.ets | A:notifySourceKey、notifyIdentity、resolveCurrentRemoteServer、compareNotifyOrder | S:实例缺失用serverId隔离；只匹配服务器当前实例才可删远端，不猜旧裸Key来源；导出还原原Key
-PreferencesUtil.ets[PD7S]: F:统一Preferences字符串读写、键定义、Context解析与实例缓存 | R:code:entry/src/main/ets/common/AppContextStore.ets | A:putString、getString、has、delete | S:写入与删除后flush；缺Context或读失败返回默认值，写失败返回false
+PreferencesUtil.ets[PD7S]: F:统一Preferences字符串读写、含握姿开关的偏好键定义、Context解析与实例缓存 | R:code:entry/src/main/ets/common/AppContextStore.ets | A:putString、getString、has、delete、KEY_HOLDING_HAND_ENABLED | S:写入与删除后flush；缺Context或读失败返回默认值，写失败返回false
 ServerUrlUtil.ets[CU4T]: F:从服务器URL移除协议与路径提取含端口主机名 | R:- | A:extractHost | S:-
 TestPushExample.ets[CM6T]: F:共享推送测试参数并生成安全引用的GET与POST curl命令 | R:code:entry/src/main/ets/components/server/SampleCode.ets | A:createTestPushPayload、buildTestGetCode、buildTestPostCode | S:示例和实际测试共用载荷；GET用jq编码标题正文路径，shell参数单引号转义
 

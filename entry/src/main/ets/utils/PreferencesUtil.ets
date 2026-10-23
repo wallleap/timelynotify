@@ -55,6 +55,8 @@ export class PreferencesUtil {
   static readonly KEY_COLOR_MODE: string = 'color_mode';
   /** 沉浸光感开关：'true'（开启，默认）/ 'false'（关闭，走 blur 降级）。仅 API 26+ 生效 */
   static readonly KEY_IMMERSIVE_LIGHT_ENABLED: string = 'immersive_light_enabled';
+  /** 智感握姿开关：缺失时开启，关闭后首页操作区固定在右侧。 */
+  static readonly KEY_HOLDING_HAND_ENABLED: string = 'holding_hand_enabled';
   /** 通知列表是否按 group 分组显示：'true'（分组，默认）/ 'false'（平铺不分组） */
   static readonly KEY_GROUP_ENABLED: string = 'group_enabled';
   /** 用户主动展开的通知分组 group_key 列表，JSON 字符串；同名分组跨服务器共用展开状态。 */

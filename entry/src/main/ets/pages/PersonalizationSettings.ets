@@ -10,13 +10,15 @@ import { AppearanceSection } from '../components/minesections/AppearanceSection'
 import { SettingGroup } from '../components/settings/SettingGroup';
 import { SettingGroupTitle } from '../components/settings/SettingGroupTitle';
 import { SettingCell } from '../components/settings/SettingCell';
+import { HoldingHandSettingsCard, KEY_HOLDING_HAND_PREVIEW_VISIBLE } from '../components/settings/HoldingHandSettingsCard';
 import { ThemeService } from '../services/ThemeService';
 import { EncryptedNotificationResendService } from '../services/EncryptedNotificationResendService';
+import { HoldingHandService } from '../services/HoldingHandService';
 import showToast from '../components/showToast';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
 /**
- * 个性化设置页：承载主题、加密通知重发偏好，支持系统材质时额外显示沉浸光感。
+ * 个性化设置页：承载主题、智感握姿及加密通知重发偏好，支持系统材质时额外显示沉浸光感。
  * 主题模式与 MineView 共用 color_mode 页面状态；沉浸光感的持久化和重启逻辑仍由 AppearanceSection 处理。
  */
 @Entry
@@ -31,6 +33,8 @@ struct PersonalizationSettings {
   @State encryptedResendEnabled: boolean = false;
   @State encryptedResendLoaded: boolean = false;
   @State encryptedResendSaving: boolean = false;
+  // 未确认支持前不渲染卡片和空分组，避免不支持设备出现入口闪现。
+  @State holdingHandSupported: boolean = false;
   private readonly colorModeKeys: string[] = ['system', 'light', 'dark'];
   private readonly colorModeLabels: string[] = ['跟随系统', '浅色模式', '深色模式'];
   private scroller: Scroller = new Scroller();
@@ -136,6 +140,16 @@ struct PersonalizationSettings {
       }
       .width('100%')
       .margin({ top: 8 });
+
+      // 当前仅有握姿卡片，不支持时连同空的鸿蒙特性分组一起隐藏。
+      if (this.holdingHandSupported) {
+        Column({ space: 12 }) {
+          SettingGroupTitle({ title: '鸿蒙特性' });
+          HoldingHandSettingsCard();
+        }
+        .width('100%')
+        .margin({ top: 8 });
+      }
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: shouldUseSystemMaterialPath(this.immersiveLightEnabled) ? 16 : 0,
@@ -169,6 +183,17 @@ struct PersonalizationSettings {
 
   aboutToAppear(): void {
     this.loadEncryptedResend();
+  }
+
+  /** 预览只在当前页面前台可见时播放，不改变首页的握姿订阅门禁。 */
+  onPageShow(): void {
+    // 支持结果与持久化开关独立；权限或临时服务错误可在再次进入时重新检测。
+    this.holdingHandSupported = HoldingHandService.checkSupport();
+    AppStorage.setOrCreate(KEY_HOLDING_HAND_PREVIEW_VISIBLE, true);
+  }
+
+  onPageHide(): void {
+    AppStorage.setOrCreate(KEY_HOLDING_HAND_PREVIEW_VISIBLE, false);
   }
 
   /** 进入页面时恢复持久化开关；读完前禁用 Toggle，避免默认关闭态覆盖已保存的开启态。 */
