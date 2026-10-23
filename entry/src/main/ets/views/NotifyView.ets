@@ -257,7 +257,6 @@ export struct NotifyView {
   // 自动贴底后的回弹不重新显示按钮，须由真实触摸将搜索列表滚离底部。
   private suppressSearchBottomUntilUserScroll: boolean = false;
   private searchBottomUserTouchStarted: boolean = false;
-  private searchInputController: TextInputController = new TextInputController();
   private searchSeq: number = 0;
   private searchTimer: number = -1;
   // 原列表在关键词搜索期间隐藏；记录首次隐藏前的偏移以便清空或取消时恢复。
@@ -429,7 +428,7 @@ export struct NotifyView {
         .objectFit(ImageFit.Contain)
         .fillColor($r('app.color.color_text_hint'))
         .draggable(false);
-      TextInput({ placeholder: '搜索通知', text: this.searchQuery, controller: this.searchInputController })
+      TextInput({ placeholder: '搜索通知', text: this.searchQuery })
         .id('notify_search_input')
         .layoutWeight(1)
         .height(SEARCH_BAR_HEIGHT)
@@ -988,7 +987,8 @@ export struct NotifyView {
       return;
     }
     this.resetSearchBottomButton();
-    this.searchInputController.stopEditing();
+    // 将焦点交回当前页面根节点，结束输入并收起键盘，无需额外创建文本控制器。
+    this.getUIContext().getFocusController().clearFocus();
     this.searchSeq++;
     if (this.searchTimer >= 0) {
       clearTimeout(this.searchTimer);
