@@ -133,6 +133,12 @@ export struct NotifyView {
   @State title: string = '';
   // 智感握姿只控制操作区布局，首次或能力不可用时默认在右侧。
   @State holdingLeft: boolean = false;
+  // 换侧时先淡出自绘操作区，再在新侧淡入；原生菜单另用连续位置进度。
+  @State handOpacity: number = 1;
+  // 标题等原生菜单到位后再淡入，避免移动过程中遮挡新标题。
+  @State handTitleOpacity: number = 1;
+  @State handMenuProgress: number = 0;
+  @State handSwitching: boolean = false;
   @State @Watch('restoreVisibleExpandedGroups') messages: NotifyMessage[] = [];
   @State loading: boolean = false;
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgressText: string = '';
@@ -221,6 +227,10 @@ export struct NotifyView {
   // 「切换通知服务」弹窗：点击时（材质必已就绪）才构造，以便 systemMaterial 读取到最新就绪态
   private dialogController: CustomDialogController | null = null;
   private holdingHandViewMounted: boolean = false;
+  private handInitialized: boolean = false;
+  // 代次使离页后的动画结束回调失效；单帧定时器只用于换侧后的布局提交。
+  private handAnimationGeneration: number = 0;
+  private handFrameTimer: number = -1;
   // 搜索转场期间暂存新握姿，转场结束后再交换布局，避免改变动画端点。
   private requestedHoldingLeft: boolean = false;
   private onChange: ((list: ServerEntry[], curId: string) => void) | null = null;
@@ -341,6 +351,7 @@ export struct NotifyView {
 
   aboutToDisappear() {
     this.holdingHandViewMounted = false;
+    this.cancelHoldingHandAnimation();
     HoldingHandService.stop();
     this.resetSearchBottomButton();
     this.searchPreviewMounted = false;
@@ -377,9 +388,9 @@ export struct NotifyView {
       onDelete: () => this.handleDeletePillClicked(),
       onSearch: () => this.enterSearch()
     })
-      .opacity(this.searchActive ? 0 : this.searchCompactTransitionVisible ?
-        1 - this.searchCompactTransitionProgress : 1)
-      .hitTestBehavior(this.searchActive || this.searchCompactTransitionVisible ?
+      .opacity((this.searchActive ? 0 : this.searchCompactTransitionVisible ?
+        1 - this.searchCompactTransitionProgress : 1) * this.handTitleOpacity)
+      .hitTestBehavior(this.searchActive || this.searchCompactTransitionVisible || this.handSwitching ?
         HitTestMode.None : HitTestMode.Default)
       .onAreaChange((_old: Area, area: Area) => {
         const bottom: number = (area.globalPosition.y as number) + (area.height as number);
@@ -402,8 +413,9 @@ export struct NotifyView {
         searchCollapsed: this.searchCollapsed,
         onOpenSettings: () => this.handleMoreClicked()
       })
-        .opacity(this.searchTransitionVisible ? 0 : this.searchCompactTransitionVisible ?
-          1 - this.searchCompactTransitionProgress : 1);
+        .opacity((this.searchTransitionVisible ? 0 : this.searchCompactTransitionVisible ?
+          1 - this.searchCompactTransitionProgress : 1) * this.handTitleOpacity)
+        .hitTestBehavior(this.handSwitching ? HitTestMode.None : HitTestMode.Default);
     }
   }
 
@@ -906,7 +918,7 @@ export struct NotifyView {
 
   /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
   private enterSearch(): void {
-    if (this.searchActive || this.isEditing || this.searchTransitioning) {
+    if (this.searchActive || this.isEditing || this.searchTransitioning || this.handSwitching) {
       return;
     }
     if (this.searchCollapseTransitioning) {
@@ -972,7 +984,7 @@ export struct NotifyView {
 
   /** 取消搜索仅恢复 UI；原列表节点与滚动控制器始终保留。 */
   private cancelSearch(): void {
-    if (this.searchTransitioning) {
+    if (this.searchTransitioning || this.handSwitching) {
       return;
     }
     this.resetSearchBottomButton();
@@ -1211,6 +1223,7 @@ export struct NotifyView {
       {
         content: {
           label: this.isEditing ? '取消' : '多选',
+          isEnabled: !this.handSwitching,
           type: TextStyleMode.NORMAL,
           action: (): void => this.handleMultiSelectClicked()
         }
@@ -1218,12 +1231,14 @@ export struct NotifyView {
       {
         content: {
           icon: $r('app.media.trash'),
+          isEnabled: !this.handSwitching,
           action: (): void => this.handleDeletePillClicked()
         }
       }
     ];
     if (this.searchCollapsed && !this.isEditing && !this.searchCollapseTransitionVisible) {
-      items.push({ content: { icon: $r('app.media.search'), action: (): void => this.enterSearch() } });
+      items.push({ content: { icon: $r('app.media.search'), isEnabled: !this.handSwitching,
+        action: (): void => this.enterSearch() } });
     }
     return this.holdingLeft ? items.reverse() : items;
   }
@@ -1232,7 +1247,7 @@ export struct NotifyView {
   private getTitleMenuEndPadding(): LengthMetrics {
     const hasSearch: boolean = this.searchCollapsed && !this.isEditing && !this.searchCollapseTransitionVisible;
     const menuWidth: number = 64 + 40 + 8 + (hasSearch ? 40 + 8 : 0);
-    return LengthMetrics.vp(this.holdingLeft ? Math.max(16, this.searchViewportWidth - 16 - menuWidth) : 16);
+    return LengthMetrics.vp(16 + Math.max(0, this.searchViewportWidth - 32 - menuWidth) * this.handMenuProgress);
   }
 
   @Builder
@@ -2169,6 +2184,11 @@ export struct NotifyView {
     // 分组切换固定在上方，与下方 44vp 的跳底按钮间隔 12vp；跳底隐藏时也不移动。
     .margin({ left: this.holdingLeft ? 16 : 0, right: this.holdingLeft ? 0 : 16,
       bottom: this.navBarHeight + 72 + 44 + 12 })
+    .opacity(this.handOpacity)
+    .translate({ x: (this.holdingLeft ? -64 : 64) * (1 - this.handOpacity) })
+    .hitTestBehavior(this.handSwitching ? HitTestMode.None : HitTestMode.Default)
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ x: this.holdingLeft ? -64 : 64 }))
+      .animation({ duration: 220, curve: Curve.EaseOut }))
     .onChange((isOn: boolean) => {
       if (this.groupEnabled === isOn || this.groupSwitchTimer >= 0) {
         return;
@@ -2211,7 +2231,10 @@ export struct NotifyView {
     // 普通与搜索列表均使用下方固定位置，不随分组按钮显隐而移动。
     .margin({ left: this.holdingLeft ? 16 : 0, right: this.holdingLeft ? 0 : 16,
       bottom: this.navBarHeight + 72 })
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 16 }))
+    .opacity(this.handOpacity)
+    .translate({ x: (this.holdingLeft ? -64 : 64) * (1 - this.handOpacity) })
+    .hitTestBehavior(this.handSwitching ? HitTestMode.None : HitTestMode.Default)
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ x: this.holdingLeft ? -64 : 64 }))
       .animation({ duration: 220, curve: Curve.EaseOut }))
     .onChange((isOn: boolean) => {
       if (!isOn || this.isCurrentListAutoScrolling() || this.scrollToBottomTimer >= 0) {
@@ -2747,20 +2770,89 @@ export struct NotifyView {
   /** 只在通知 Tab 位于主页栈顶时订阅；前后台门禁由服务统一管理。 */
   private updateHoldingHandSubscription(): void {
     if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 0) {
+      this.cancelHoldingHandAnimation();
       HoldingHandService.stop();
       return;
     }
     HoldingHandService.start((left: boolean): void => {
-      this.requestedHoldingLeft = left;
-      this.applyHoldingHandSide();
+      this.receiveHoldingHand(left);
     });
   }
 
-  /** 不在搜索转场中途交换侧；列表正文不参与方向镜像，也不重建数据源。 */
-  private applyHoldingHandSide(): void {
-    if (this.holdingHandViewMounted && !this.searchTransitioning && !this.searchCollapseTransitioning) {
-      this.holdingLeft = this.requestedHoldingLeft;
+  /** 初次订阅直接同步；只有可见期间真正的握姿变化才播放换侧动画。 */
+  private receiveHoldingHand(left: boolean): void {
+    this.requestedHoldingLeft = left;
+    if (!this.handInitialized) {
+      this.handInitialized = true;
+      // 搜索入场/收起仍持有原端点时，交由其收尾回调应用暂存握姿。
+      if (this.searchTransitioning || this.searchCollapseTransitioning) return;
+      this.holdingLeft = left;
+      this.handMenuProgress = left ? 1 : 0;
+      return;
     }
+    this.applyHoldingHandSide();
+  }
+
+  /** 淡出后换侧，并合并快速连续握姿；搜索转场期间由原有收尾回调继续。 */
+  private applyHoldingHandSide(): void {
+    if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 0 ||
+      this.handSwitching || this.searchTransitioning || this.searchCollapseTransitioning || this.holdingLeft === this.requestedHoldingLeft) {
+      return;
+    }
+    const generation: number = ++this.handAnimationGeneration;
+    this.handSwitching = true;
+    this.getUIContext().animateTo({ duration: 120, curve: Curve.EaseIn, onFinish: () => {
+      if (generation !== this.handAnimationGeneration) return;
+      this.holdingLeft = this.requestedHoldingLeft;
+      // 先提交不可见的新侧布局，再播放进入，避免按钮从旧侧横穿正文。
+      this.handFrameTimer = setTimeout(() => {
+        this.handFrameTimer = -1;
+        if (generation !== this.handAnimationGeneration) return;
+        // 降级顶栏完全自绘，无需等待不存在的 Hds 原生菜单移动。
+        if (!shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
+          this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut, onFinish: () => {
+            if (generation !== this.handAnimationGeneration) return;
+            this.handSwitching = false;
+            this.applyHoldingHandSide();
+          } }, () => {
+            this.handTitleOpacity = 1;
+            this.handOpacity = 1;
+            this.handMenuProgress = this.holdingLeft ? 1 : 0;
+          });
+          return;
+        }
+        this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut, onFinish: () => {
+          if (generation !== this.handAnimationGeneration) return;
+          // Hds 菜单的连续位移动画结束后，才显示新侧标题。
+          this.getUIContext().animateTo({ duration: 100, curve: Curve.EaseOut, onFinish: () => {
+            if (generation !== this.handAnimationGeneration) return;
+            this.handSwitching = false;
+            this.applyHoldingHandSide();
+          } }, () => { this.handTitleOpacity = 1; });
+        } }, () => {
+          this.handOpacity = 1;
+          this.handMenuProgress = this.holdingLeft ? 1 : 0;
+        });
+      }, 16);
+    } }, () => {
+      this.handOpacity = 0;
+      this.handTitleOpacity = 0;
+    });
+  }
+
+  /** 离页取消待提交布局并恢复可见性，旧回调不得修改返回后的页面。 */
+  private cancelHoldingHandAnimation(): void {
+    this.handAnimationGeneration++;
+    if (this.handFrameTimer >= 0) {
+      clearTimeout(this.handFrameTimer);
+      this.handFrameTimer = -1;
+    }
+    this.handSwitching = false;
+    // 返回页面时直接同步最新侧，不播放离页期间累积的变化。
+    this.handInitialized = false;
+    this.handOpacity = 1;
+    this.handTitleOpacity = 1;
+    this.handMenuProgress = this.holdingLeft ? 1 : 0;
   }
 
   private onSyncRevisionChanged(): void {

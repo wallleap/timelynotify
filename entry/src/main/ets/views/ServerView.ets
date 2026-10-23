@@ -23,6 +23,10 @@ const FAQ_URL: string = `${USE_DOCS_URL}/faq/`;
 export struct ServerView {
   // 标题操作跟随握姿；正文与添加弹窗保持原有阅读方向。
   @State holdingLeft: boolean = false;
+  // 标题等原生菜单到位后再淡入，避免移动过程中遮挡新标题。
+  @State handTitleOpacity: number = 1;
+  @State handMenuProgress: number = 0;
+  @State handSwitching: boolean = false;
   @State viewportWidth: number = 400;
   @State fallbackTitleBarBottom: number = -1;
   @State scrollTop: number = -1;
@@ -38,6 +42,11 @@ export struct ServerView {
   // 添加服务器弹窗：点击时构造，保证材质读取最新就绪态
   private addServerController: CustomDialogController | null = null;
   private holdingHandViewMounted: boolean = false;
+  private requestedHoldingLeft: boolean = false;
+  private handInitialized: boolean = false;
+  // 代次使离页后的动画结束回调失效；单帧定时器只用于换侧后的布局提交。
+  private handAnimationGeneration: number = 0;
+  private handFrameTimer: number = -1;
 
   aboutToAppear(): void {
     this.holdingHandViewMounted = true;
@@ -46,16 +55,88 @@ export struct ServerView {
 
   aboutToDisappear(): void {
     this.holdingHandViewMounted = false;
+    this.cancelHoldingHandAnimation();
     HoldingHandService.stop('server');
   }
 
   /** 仅服务 Tab 可见时持有消费者，切走时只释放自己的注册。 */
   private updateHoldingHandSubscription(): void {
     if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 1) {
+      this.cancelHoldingHandAnimation();
       HoldingHandService.stop('server');
       return;
     }
-    HoldingHandService.start((left: boolean): void => { this.holdingLeft = left; }, 'server');
+    HoldingHandService.start((left: boolean): void => { this.receiveHoldingHand(left); }, 'server');
+  }
+
+  /** 初次订阅直接同步；只有可见期间真正的握姿变化才播放换侧动画。 */
+  private receiveHoldingHand(left: boolean): void {
+    this.requestedHoldingLeft = left;
+    if (!this.handInitialized) {
+      this.handInitialized = true;
+      this.holdingLeft = left;
+      this.handMenuProgress = left ? 1 : 0;
+      return;
+    }
+    this.applyHoldingHandSide();
+  }
+
+  /** 淡出后换侧，并合并快速连续握姿，始终收敛到最新一侧。 */
+  private applyHoldingHandSide(): void {
+    if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 1 ||
+      this.handSwitching || this.holdingLeft === this.requestedHoldingLeft) {
+      return;
+    }
+    const generation: number = ++this.handAnimationGeneration;
+    this.handSwitching = true;
+    this.getUIContext().animateTo({ duration: 120, curve: Curve.EaseIn, onFinish: () => {
+      if (generation !== this.handAnimationGeneration) return;
+      this.holdingLeft = this.requestedHoldingLeft;
+      // 先提交不可见的新侧布局，再播放进入，避免按钮从旧侧横穿正文。
+      this.handFrameTimer = setTimeout(() => {
+        this.handFrameTimer = -1;
+        if (generation !== this.handAnimationGeneration) return;
+        // 降级顶栏完全自绘，无需等待不存在的 Hds 原生菜单移动。
+        if (!shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
+          this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut, onFinish: () => {
+            if (generation !== this.handAnimationGeneration) return;
+            this.handSwitching = false;
+            this.applyHoldingHandSide();
+          } }, () => {
+            this.handTitleOpacity = 1;
+            this.handMenuProgress = this.holdingLeft ? 1 : 0;
+          });
+          return;
+        }
+        this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut, onFinish: () => {
+          if (generation !== this.handAnimationGeneration) return;
+          // Hds 菜单的连续位移动画结束后，才显示新侧标题。
+          this.getUIContext().animateTo({ duration: 100, curve: Curve.EaseOut, onFinish: () => {
+            if (generation !== this.handAnimationGeneration) return;
+            this.handSwitching = false;
+            this.applyHoldingHandSide();
+          } }, () => { this.handTitleOpacity = 1; });
+        } }, () => {
+          this.handMenuProgress = this.holdingLeft ? 1 : 0;
+        });
+      }, 16);
+    } }, () => {
+      this.handTitleOpacity = 0;
+    });
+  }
+
+  /** 离页取消待提交布局并恢复可见性，旧回调不得修改返回后的页面。 */
+  private cancelHoldingHandAnimation(): void {
+    this.handAnimationGeneration++;
+    if (this.handFrameTimer >= 0) {
+      clearTimeout(this.handFrameTimer);
+      this.handFrameTimer = -1;
+    }
+    this.handSwitching = false;
+    // 返回页面时直接同步最新侧，不播放离页期间累积的变化。
+    this.handInitialized = false;
+    this.handTitleOpacity = 1;
+    this.handMenuProgress = this.holdingLeft ? 1 : 0;
   }
 
   /** 原生菜单仍由 Hds 绘制，标题只交换布局侧，不镜像文字。 */
@@ -67,6 +148,7 @@ export struct ServerView {
     }
     .width('100%')
     .justifyContent(this.holdingLeft ? FlexAlign.End : FlexAlign.Start)
+    .opacity(this.handTitleOpacity)
     .padding(16);
   }
 
@@ -104,6 +186,8 @@ export struct ServerView {
     .width('100%')
     .alignItems(VerticalAlign.Center)
     .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
+    .opacity(this.handTitleOpacity)
+    .hitTestBehavior(this.handSwitching ? HitTestMode.None : HitTestMode.Default)
     .padding({
       left: 16,
       right: 16,
@@ -299,7 +383,7 @@ export struct ServerView {
         // Hds 原生 + 为 40vp；端侧留白让左手模式仍保留 16vp 边距。
         padding: {
           start: LengthMetrics.vp(16),
-          end: LengthMetrics.vp(this.holdingLeft ? Math.max(16, this.viewportWidth - 16 - 40) : 16)
+          end: LengthMetrics.vp(16 + Math.max(0, this.viewportWidth - 32 - 40) * this.handMenuProgress)
         },
         enableComponentSafeArea: true,
         // MINI 全屏页（Tab 内容）必须显式避让状态栏；MODAL 半模态自带窗口安全区可不开。
@@ -311,6 +395,7 @@ export struct ServerView {
               {
                 content: {
                   icon: $r('app.media.plus'),
+                  isEnabled: !this.handSwitching,
                   action: (): void => {
                     this.openAddServerDialog();
                   }
@@ -357,6 +442,7 @@ export struct ServerView {
 
   // 打开添加服务器弹窗
   private openAddServerDialog(): void {
+    if (this.handSwitching) return;
     try {
       // 背板与「服务器操作」「切换通知服务」弹窗统一：API 26+ 且开关开启即传 THICK 材质，
       // 不以设备 supported 结果拦截，材质分支透明；旧系统或开关关闭走系统容器轻量模糊。
