@@ -2288,9 +2288,10 @@ export struct NotifyView {
     .margin({ left: this.holdingLeft ? 16 : 0, right: this.holdingLeft ? 0 : 16,
       bottom: this.navBarHeight + 72 })
     .opacity(this.handOpacity)
+    // 握姿换侧仍由 handOpacity 驱动横向退出/进入，与滚动显隐的纵向过渡独立。
     .translate({ x: (this.holdingLeft ? -64 : 64) * (1 - this.handOpacity) })
     .hitTestBehavior(this.handSwitching ? HitTestMode.None : HitTestMode.Default)
-    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ x: this.holdingLeft ? -64 : 64 }))
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: 16 }))
       .animation({ duration: 220, curve: Curve.EaseOut }))
     .onChange((isOn: boolean) => {
       if (!isOn || this.isCurrentListAutoScrolling() || this.scrollToBottomTimer >= 0) {

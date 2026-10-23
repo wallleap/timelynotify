@@ -5,7 +5,7 @@
 .gitignore[FC5T]: F:排除依赖、构建输出、本地环境与签名材料目录 | R:- | A:- | S:AOCI 主机集成配置仅供本机使用，不纳入版本控制
 AGENTS.md[SG8L]: F:规定 ArkTS 项目架构、修改授权、验证、Git 与 AOCI 认知治理规范 | R:- | A:- | S:源码改动须先提供文档并确认；Git提交推送及依赖配置修改需明确授权
 LICENSE[SG4T]: F:声明 MIT 授权、版权保留义务与免责条件 | R:- | A:- | S:-
-README.md[SG7M]: F:说明通知功能、注册同步、启动连接诊断、加密、握姿与搜索过渡、发版和防伪校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:客户端本地历史迁移后删除远程副本，不能照通用 Gotify 缓存策略清空历史
+README.md[SG7M]: F:说明通知功能、注册同步、启动诊断、加密、握姿与搜索跳底过渡、发版和防伪校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:客户端本地历史迁移后删除远程副本，不能照通用 Gotify 缓存策略清空历史
 SERVER_API.md[SN8L]: F:定义推送、设备注册、Gotify 消息与删除流水以及服务运维接口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:HTTP API、鉴权与加密载荷约定 | S:文档通用删除协议消费 ids/purges/reset；本客户端迁移链路另有只消费 extraIds 的约束
 build-profile.json5[FV8T]: F:配置 Harmony 产品、SDK 兼容范围、签名与 entry 模块 | R:code:entry/build-profile.json5,code:AppScope/app.json5 | A:default/release 产品 | S:target26兼容API23；CI剥离本地调试签名后整体重签，不复用本机加密材料
 code-linter.json5[FQ5T]: F:定义 ArkTS lint 范围、性能规则与密码算法安全规则 | R:- | A:files、ignore、ruleSet | S:-
@@ -147,7 +147,7 @@ TestPushExample.ets[CM6T]: F:共享推送测试参数并生成安全引用的GET
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/views/===
 MineView.ets[AU7L]: F:承载我的页通知权限、主题选择、信息与关于板块，标题操作区随握姿淡出换侧再淡入 | R:code:entry/src/main/ets/components/minesections/NotifySettingsSection.ets,code:entry/src/main/ets/components/minesections/AboutSection.ets,code:entry/src/main/ets/services/HoldingHandService.ets | A:MineView | S:权限与订阅分开；查询只采纳最新；API26设置关闭复查；mine仅可见时订阅；主题项固定LTR；握姿先淡出再换侧，离页废弃回调、返回直接同步
-NotifyView.ets[AU9L]: F:编排通知本地加载与远端状态、搜索分组分页、多选删除导出、详情定位及握姿过渡 | R:code:entry/src/main/ets/services/MessageCacheStore.ets,code:entry/src/main/ets/services/NotifySyncService.ets,code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyListDataSource.ets,code:entry/src/main/ets/components/ListStatusFooter.ets,code:entry/src/main/ets/services/HoldingHandService.ets | A:NotifyView | S:全屏loading只等本地，syncing与loadInFlight负责远端及并发，未注册失败也展示；搜索查全库未过期历史且不随同步刷新，独立滚动跳底，取消清焦点恢复原列表；空词快照禁作游标，首屏等动画结束，旧请求按代次来源废弃；手动删解密失败项先暂停同步验实例，失败保留；贴底须真实触摸离底解屏蔽；握姿等搜索结束，Hds菜单端侧留白到位后淡入标题，悬浮按钮先退再换侧，离页废弃旧回调
+NotifyView.ets[AU9L]: F:编排通知本地加载与远端状态、搜索分组分页、多选删除导出、详情定位及握姿和跳底动画 | R:code:entry/src/main/ets/services/MessageCacheStore.ets,code:entry/src/main/ets/services/NotifySyncService.ets,code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyListDataSource.ets,code:entry/src/main/ets/components/ListStatusFooter.ets,code:entry/src/main/ets/services/HoldingHandService.ets | A:NotifyView | S:全屏加载只等本地，远端状态独立且加载并发去重，未注册错误也展示；搜索查全库未过期历史且不随同步刷新，独立滚动，取消恢复原列表；空词快照禁作游标，首屏等入场结束，旧请求按代次来源废弃；手动删解密失败项先停同步验实例，失败保留；贴底须真实触摸离底才解屏蔽；跳底滚动显隐纵向，握姿横向；握姿等搜索结束，Hds菜单位到位再显标题，先退后换侧，离页废弃回调
 ServerView.ets[AU6L]: F:承载服务器列表、添加、推送测试与文档入口，标题和添加操作随握姿过渡换侧 | R:code:entry/src/main/ets/components/server/ServerList.ets,code:entry/src/main/ets/components/server/SampleCode.ets,code:entry/src/main/ets/services/HoldingHandService.ets | A:ServerView | S:添加弹窗点击时构造以取最新材质；server仅可见时订阅；Hds原生菜单由端侧留白动画定位，到位后才淡入标题；离页使旧回调失效，返回直接同步握姿
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/===
