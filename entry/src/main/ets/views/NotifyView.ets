@@ -92,6 +92,13 @@ interface ManualDeleteResult {
   localFailed: boolean;
 }
 
+/** 入场期间先暂存空词首屏，待共享内容过渡结束后按原请求身份交接。 */
+interface SearchEntryPage {
+  seq: number;
+  historyKeys: string;
+  messages: NotifyMessage[] | null;
+}
+
 // 收缩错误胶囊与标题栏之间保留的呼吸间距。
 const COMPACT_BANNER_TOP_GAP: number = 8;
 // 平铺态先读取最近 500 条，触底后每次再从本地缓存读取 500 条。
@@ -259,6 +266,9 @@ export struct NotifyView {
   private searchBottomUserTouchStarted: boolean = false;
   private searchSeq: number = 0;
   private searchTimer: number = -1;
+  // 临时预览不能提供分页游标；完整首屏与入场动画都就绪后才解除加载状态。
+  private searchEntryPreview: boolean = false;
+  private pendingSearchEntryPage: SearchEntryPage | null = null;
   // 原列表在关键词搜索期间隐藏；记录首次隐藏前的偏移以便清空或取消时恢复。
   private searchBaseOffset: number = 0;
   private searchBaseOffsetSaved: boolean = false;
@@ -354,6 +364,13 @@ export struct NotifyView {
     HoldingHandService.stop();
     this.resetSearchBottomButton();
     this.searchPreviewMounted = false;
+    this.searchSeq++;
+    this.pendingSearchEntryPage = null;
+    this.searchEntryPreview = false;
+    if (this.searchTimer >= 0) {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = -1;
+    }
     this.suppressBottomButtonUntilUserScroll = false;
     this.bottomButtonUserTouchStarted = false;
     if (this.groupSwitchTimer >= 0) {
@@ -765,9 +782,6 @@ export struct NotifyView {
       .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       .onAppear(() => {
         this.searchPreviewMounted = true;
-        if (this.groupEnabled && this.searchQuery.trim().length === 0) {
-          this.scheduleSearch();
-        }
       })
       .onDisAppear(() => {
         this.searchPreviewMounted = false;
@@ -811,8 +825,8 @@ export struct NotifyView {
     .visibility(this.groupEnabled || this.searchQuery.trim().length > 0 ? Visibility.Visible : Visibility.Hidden);
   }
 
-  /** 输入防抖并废弃旧请求；搜索范围与当前通知视图一致。 */
-  private scheduleSearch(): void {
+  /** 输入继续防抖；点击入口时立即准备快照与首屏查询，不在挂载结果层时清空动画目标。 */
+  private scheduleSearch(preserveEntryPreview: boolean = false): void {
     this.resetSearchBottomButton();
     // 平铺层可能已有滚动位置；输入首字或切换关键词都让结果从顶部开始。
     if (this.searchPreviewMounted && this.searchActive) {
@@ -823,7 +837,10 @@ export struct NotifyView {
       clearTimeout(this.searchTimer);
       this.searchTimer = -1;
     }
-    this.searchResults = [];
+    this.pendingSearchEntryPage = null;
+    this.searchEntryPreview = preserveEntryPreview && this.groupEnabled && this.searchQuery.trim().length === 0;
+    // 分组快照只供入场显示，完整首屏返回前不允许拿快照尾项翻页。
+    this.searchResults = this.searchEntryPreview ? this.messages.slice(0, FLAT_PAGE_SIZE).sort(compareNotifyOrder) : [];
     this.searchHasMore = false;
     this.searchError = false;
     // 平铺空词继续使用原列表；分组空词预览需要独立查询完整历史，支持触底分页。
@@ -836,7 +853,7 @@ export struct NotifyView {
     this.searchTimer = setTimeout(() => {
       this.searchTimer = -1;
       this.fetchSearchPage(seq, null);
-    }, SEARCH_DEBOUNCE_MS);
+    }, preserveEntryPreview ? 0 : SEARCH_DEBOUNCE_MS);
   }
 
   private async fetchSearchPage(seq: number, before: NotifyMessage | null): Promise<void> {
@@ -852,8 +869,23 @@ export struct NotifyView {
       keys.join('|') !== this.getVisibleHistoryKeys().join('|')) {
       return;
     }
+    if (this.searchEntryPreview && this.searchTransitioning && before === null) {
+      // 查询较快时也不能在共享节点移动途中替换整页数据。
+      this.pendingSearchEntryPage = { seq, historyKeys: keys.join('|'), messages: page };
+      return;
+    }
+    this.applySearchPage(page, before, pageSize);
+  }
+
+  /** 数据交接与分页共用提交逻辑；失败后撤下临时快照，重试从完整首屏开始。 */
+  private applySearchPage(page: NotifyMessage[] | null, before: NotifyMessage | null, pageSize: number): void {
+    const wasEntryPreview: boolean = this.searchEntryPreview;
+    this.searchEntryPreview = false;
     this.searchLoading = false;
     if (page === null) {
+      if (wasEntryPreview) {
+        this.searchResults = [];
+      }
       this.searchError = true;
       return;
     }
@@ -863,6 +895,17 @@ export struct NotifyView {
     // 新页改变末项索引，终止旧目标；保持贴底屏蔽，下一次真实滚动再允许显示按钮。
     this.finishSearchAutoScroll();
     this.searchResults = before ? this.searchResults.concat(visible) : visible;
+  }
+
+  /** 动画收尾时提交已到达的首屏；取消、输入或切换服务器后旧结果不得回写。 */
+  private finishSearchEntryPreview(): void {
+    const pending: SearchEntryPage | null = this.pendingSearchEntryPage;
+    this.pendingSearchEntryPage = null;
+    if (!pending || !this.searchActive || pending.seq !== this.searchSeq ||
+      this.searchQuery.trim().length > 0 || pending.historyKeys !== this.getVisibleHistoryKeys().join('|')) {
+      return;
+    }
+    this.applySearchPage(pending.messages, null, FLAT_PAGE_SIZE);
   }
 
   private loadMoreSearch(): void {
@@ -935,10 +978,12 @@ export struct NotifyView {
     this.stopSearchScrollSampling();
     // 降级搜索栏上移前清除普通入口的旧坐标，首项占位先使用目标位置，随后再以实测底边校准。
     this.fallbackSearchBarBottom = -1;
+    this.scheduleSearch(true);
+    // 两种布局都持有入场门禁，首屏即使先返回也等动画结束后交接。
+    this.searchTransitioning = true;
     // 收起状态从右侧图标原位展开，结束后再挂载输入框和键盘。
     if (this.searchCollapsed) {
       this.prepareSearchCompactTransition(this.searchCollapseTransitionVisible);
-      this.searchTransitioning = true;
       this.searchCompactTransitionProgress = 0;
       this.searchCollapseTransitionVisible = false;
       this.searchCompactTransitionVisible = true;
@@ -949,6 +994,7 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
+        this.finishSearchEntryPreview();
         this.applyHoldingHandSide();
         setTimeout(() => focusControl.requestFocus('notify_search_input'), 64);
       }, SEARCH_COMPACT_TRANSITION_DURATION);
@@ -956,7 +1002,6 @@ export struct NotifyView {
     }
     this.searchCollapseTransitionVisible = false;
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
-      this.searchTransitioning = true;
       this.searchTransitionProgress = 0;
       this.searchTransitionVisible = true;
       this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseOut }, () => {
@@ -966,6 +1011,7 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchTransitionVisible = false;
         this.searchTransitioning = false;
+        this.finishSearchEntryPreview();
         this.applyHoldingHandSide();
         setTimeout(() => focusControl.requestFocus('notify_search_input'), 32);
       }, SEARCH_TRANSITION_DURATION);
@@ -975,6 +1021,9 @@ export struct NotifyView {
       this.searchActive = true;
     });
     setTimeout(() => {
+      this.searchTransitioning = false;
+      this.finishSearchEntryPreview();
+      this.applyHoldingHandSide();
       if (this.searchActive) {
         focusControl.requestFocus('notify_search_input');
       }
@@ -990,6 +1039,8 @@ export struct NotifyView {
     // 将焦点交回当前页面根节点，结束输入并收起键盘，无需额外创建文本控制器。
     this.getUIContext().getFocusController().clearFocus();
     this.searchSeq++;
+    this.pendingSearchEntryPage = null;
+    this.searchEntryPreview = false;
     if (this.searchTimer >= 0) {
       clearTimeout(this.searchTimer);
       this.searchTimer = -1;
