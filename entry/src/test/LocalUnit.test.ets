@@ -15,6 +15,8 @@ import { belongsToPushInstance, notifyIdentity, notifySourceKey, originalDeviceK
   resolveCurrentRemoteServer } from '../main/ets/utils/NotifyIdentity';
 import { buildNotifyListRows } from '../main/ets/components/notify/NotifyListDataSource';
 import { buildNotifySections } from '../main/ets/components/notify/NotifyViewTypes';
+import { formatNetworkFailure } from '../main/ets/utils/HttpUtil';
+import { toShortSyncError } from '../main/ets/services/NotifyMessageService';
 
 class RawMessageExtras extends Object {
   ciphertext: string = '';
@@ -114,6 +116,30 @@ export default function localUnitTest() {
       // Defines a variety of assertion methods, which are used to declare expected boolean conditions.
       expect(a).assertContain(b);
       expect(a).assertEqual(a);
+    });
+    it('preservesNetworkFailureCategoriesAndCodes', 0, () => {
+      // 相同安装包的设备错误必须可区分，不能只剩通用连接失败。
+      expect(formatNetworkFailure(2300006)).assertContain('域名解析失败');
+      expect(formatNetworkFailure(2300007)).assertContain('无法建立服务器连接');
+      expect(formatNetworkFailure(2300028)).assertContain('请求超时');
+      const tlsCodes: number[] = [2300058, 2300059, 2300060];
+      for (let i: number = 0; i < tlsCodes.length; i++) {
+        expect(formatNetworkFailure(tlsCodes[i])).assertContain('安全连接校验失败');
+        expect(formatNetworkFailure(tlsCodes[i])).assertContain(String(tlsCodes[i]));
+      }
+      expect(formatNetworkFailure(2300016)).assertContain('HTTP/2');
+      expect(formatNetworkFailure(2300099)).assertContain('2300099');
+      expect(formatNetworkFailure(0)).assertEqual('无法连接到服务器，请稍后重试');
+    });
+    it('preservesNetworkFailureCategoriesInServerStatus', 0, () => {
+      // 简短状态与通知页保持同一诊断含义，且原有鉴权状态仍可用。
+      expect(toShortSyncError(formatNetworkFailure(2300006))).assertEqual('域名解析失败');
+      expect(toShortSyncError(formatNetworkFailure(2300060))).assertEqual('安全连接失败');
+      expect(toShortSyncError(formatNetworkFailure(2300028))).assertEqual('连接超时');
+      expect(toShortSyncError('获取推送标识失败，请重试')).assertEqual('推送标识未就绪');
+      expect(toShortSyncError('设备注册失败，请重试')).assertEqual('设备注册失败');
+      expect(toShortSyncError('客户端 Token 无效')).assertEqual('客户端 Token 错误');
+      expect(toShortSyncError('设备未注册')).assertEqual('设备 Key 未注册');
     });
     it('copiesVisibleNotificationText', 0, () => {
       const message: NotifyMessage = new NotifyMessage();

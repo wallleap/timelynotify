@@ -8,6 +8,41 @@ export class HttpResponse<T extends Object> {
   code: number = 0;
   result: T | null = null;
   message: string = '';
+  // HTTP code=0 时保留系统网络错误码，供页面诊断；不包含 URL、鉴权或响应正文。
+  networkErrorCode: number = 0;
+  elapsedMs: number = 0;
+}
+
+/** 将系统连接错误转换为可展示的安全文案，未知错误仍保留数字码供设备间比对。 */
+export function formatNetworkFailure(code: number): string {
+  let message: string = '无法连接到服务器，请稍后重试';
+  if (code === 2300005 || code === 2300006) {
+    message = '服务器域名解析失败，请稍后重试';
+  } else if (code === 2300007) {
+    message = '无法建立服务器连接，请稍后重试';
+  } else if (code === 2300028) {
+    message = '服务器请求超时，请重试';
+  } else if (code === 2300058 || code === 2300059 || code === 2300060) {
+    message = '服务器安全连接校验失败，请检查证书与设备时间';
+  } else if (code === 2300016) {
+    message = '服务器 HTTP/2 连接异常，请重试';
+  }
+  return code > 0 ? `${message}（错误码 ${code}）` : message;
+}
+
+/** 总时限使用与系统超时一致的错误码，不能依赖原生请求一定会自行结束。 */
+class HttpDeadlineError extends Error {
+  code: number = 2300028;
+}
+
+/** BusinessError 可能继承 Error，必须先取 code，不能只取 Error.message。 */
+function networkErrorCode(err: Object): number {
+  if (err && typeof err === 'object') {
+    const value: Object = (err as Record<string, Object>)['code'];
+    const code: number = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(code) && code > 0 ? code : 0;
+  }
+  return 0;
 }
 
 // 兼容 ArkTS catch 语法限制：NetworkKit 抛错通常不是 Error 子类，
@@ -54,7 +89,7 @@ export class HttpUtil {
     return HttpUtil.request<T>(fullURL, http.RequestMethod.POST, headers, JSON.stringify(body));
   }
 
-  // GET 请求（无 body）；readTimeoutMs 可自定义读超时（全量导出等长耗时请求需要放宽，默认 10s）
+  // GET 请求（无 body）；默认总时限 10s，显式放宽读超时也同步放宽总时限。
   static async get<T extends Object>(
     fullURL: string,
     headers?: Record<string, string>,
@@ -81,6 +116,19 @@ export class HttpUtil {
     const httpRequest = http.createHttp();
     const url: string = fullURL;
     const result = new HttpResponse<T>();
+    const startedAt: number = Date.now();
+    let deadlineTimer: number = -1;
+    let destroyed: boolean = false;
+    // 超时与 finally 共用一次释放，避免取消回调触发后重复销毁原生对象。
+    const destroyRequest = (): void => {
+      if (destroyed) return;
+      destroyed = true;
+      try {
+        httpRequest.destroy();
+      } catch (_err) {
+        hilog.warn(DOMAIN, TAG, 'HTTP 请求资源释放失败');
+      }
+    };
 
     const mergedHeaders: Record<string, string> = {};
     mergedHeaders['Accept'] = 'application/json';
@@ -107,7 +155,15 @@ export class HttpUtil {
     }
 
     try {
-      const response = await httpRequest.request(url, options);
+      const totalTimeoutMs: number = Math.max(HttpUtil.TIMEOUT_MS, readTimeoutMs);
+      const deadline: Promise<http.HttpResponse> = new Promise<http.HttpResponse>((_resolve, reject) => {
+        deadlineTimer = setTimeout(() => {
+          // 先结束等待再中止原生请求，取消产生的异常由 race 同时接管。
+          reject(new HttpDeadlineError('HTTP request deadline exceeded'));
+          destroyRequest();
+        }, totalTimeoutMs);
+      });
+      const response: http.HttpResponse = await Promise.race([httpRequest.request(url, options), deadline]);
 
       if (response.responseCode >= 200 && response.responseCode < 300) {
         result.code = response.responseCode;
@@ -125,12 +181,16 @@ export class HttpUtil {
         result.message = `HTTP ${response.responseCode}`;
       }
     } catch (err) {
-      const msg: string = formatError(err);
       result.code = 0;
-      result.message = `请求失败：${msg}`;
-      hilog.error(DOMAIN, TAG, '%{public}s', result.message);
+      result.networkErrorCode = networkErrorCode(err);
+      result.message = formatNetworkFailure(result.networkErrorCode);
+      // 不记录请求 URL/路径、Header、Token 或原始错误文本，避免 SDK 回显敏感参数。
+      hilog.error(DOMAIN, TAG, 'HTTP 连接失败：code=%{public}d elapsedMs=%{public}d',
+        result.networkErrorCode, Date.now() - startedAt);
     } finally {
-      httpRequest.destroy();
+      if (deadlineTimer >= 0) clearTimeout(deadlineTimer);
+      result.elapsedMs = Date.now() - startedAt;
+      destroyRequest();
     }
     return result;
   }

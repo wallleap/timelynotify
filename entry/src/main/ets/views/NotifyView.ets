@@ -148,6 +148,8 @@ export struct NotifyView {
   @State handSwitching: boolean = false;
   @State @Watch('restoreVisibleExpandedGroups') messages: NotifyMessage[] = [];
   @State loading: boolean = false;
+  // 全屏加载仅用于本地读盘；远端同步单独展示，飞行中门禁不依赖 UI 的 loading。
+  @State syncing: boolean = false;
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgressText: string = '';
   @StorageProp(KEY_NOTIFY_SYNC_FEEDBACK) syncFeedbackText: string = '';
   @StorageProp(KEY_NOTIFY_SYNC_REVISION) @Watch('onSyncRevisionChanged') syncRevision: number = 0;
@@ -245,6 +247,7 @@ export struct NotifyView {
   // 刷新时保持已浏览的平铺历史深度，避免同步新消息后把旧页截掉。
   private flatLoadedLimit: number = FLAT_PAGE_SIZE;
   private loadQueued: boolean = false;
+  private loadInFlight: boolean = false;
   private forceRefreshQueued: boolean = false;
   // Toggle 状态回调结束后再切换列表，避免同步清空消息时卸载正在响应事件的组件。
   private groupSwitchTimer: number = -1;
@@ -2187,6 +2190,8 @@ export struct NotifyView {
         NotifyContentState({ mode: 'loading' });
       } else if (this.errorMsg.length > 0 && this.messages.length === 0) {
         NotifyContentState({ mode: 'error', errorMsg: this.errorMsg, onRetry: () => this.loadMessages(true) });
+      } else if (this.syncing && this.messages.length === 0) {
+        NotifyContentState({ mode: 'connecting' });
       } else if (this.messages.length === 0) {
         NotifyContentState({ mode: 'empty' });
       } else {
@@ -2673,22 +2678,29 @@ export struct NotifyView {
 
   /** aboutToAppear 是同步签名，这里 fire-and-forget 初始化链 */
   private async initAfterServerManagerReady(): Promise<void> {
+    this.loadInFlight = true;
     this.loading = true;
+    this.syncing = true;
     try {
       await ServerManager.getInstance().ensureLoaded();
       this.viewAll = ServerManager.getInstance().getViewAllMode();
       this.visibleDeviceKeys = this.getAllDeviceKeys().join('|');
       this.refresh();
       await this.refreshVisibleAfterSyncPage(++this.loadSeq);
+      this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
+      this.updateSyncErrorPresentation();
+      this.loading = false;
       await NotifySyncService.getInstance().requestSync();
       await this.refreshVisibleAfterSyncPage(this.loadSeq);
       this.updateSyncErrorPresentation();
-      this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
+      this.errorMsg = '通知初始化失败，请重试';
     } finally {
       this.loading = false;
+      this.syncing = false;
+      this.loadInFlight = false;
       if (this.loadQueued) {
         this.loadQueued = false;
         const queuedForce: boolean = this.forceRefreshQueued;
@@ -2925,7 +2937,8 @@ export struct NotifyView {
       }
       return;
     }
-    const servers: ServerEntry[] = this.getAllRegisteredServers();
+    // 未注册服务的连接/Token 获取失败也必须展示，不能被当成没有通知。
+    const servers: ServerEntry[] = ServerManager.getInstance().getList();
     let errorText: string = '';
     let bannerText: string = '';
     let failed: number = 0;
@@ -3579,13 +3592,15 @@ export struct NotifyView {
   }
 
   private async loadMessages(forceAll: boolean = false): Promise<void> {
-    if (this.loading) {
+    if (this.loadInFlight) {
       this.refreshing = false;
       this.loadQueued = true;
       this.forceRefreshQueued = this.forceRefreshQueued || forceAll;
       return;
     }
     this.loading = true;
+    this.loadInFlight = true;
+    this.syncing = true;
     const seq: number = ++this.loadSeq;
     this.errorMsg = '';
     try {
@@ -3596,10 +3611,11 @@ export struct NotifyView {
         this.groupTotals = new Map<string, number>();
       }
       await this.refreshVisibleAfterSyncPage(seq);
+      this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
+      this.loading = false;
       await NotifySyncService.getInstance().requestSync(forceAll);
       await this.refreshVisibleAfterSyncPage(seq);
       this.updateSyncErrorPresentation();
-      this.hasClientToken = await NotifyMessageService.getInstance().hasEffectiveClientToken();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'loadMessages 异常：%{public}s', msg);
@@ -3608,6 +3624,8 @@ export struct NotifyView {
       }
     } finally {
       this.loading = false;
+      this.syncing = false;
+      this.loadInFlight = false;
       this.refreshing = false;
       if (this.loadQueued) {
         this.loadQueued = false;
@@ -3622,7 +3640,7 @@ export struct NotifyView {
 
   /** 点击目标未必属于当前单服务器；按实例身份先查本地，再同步候选服务器。 */
   private async processPendingPushNotice(): Promise<void> {
-    if (this.openingPushNotice || !this.openRequest || this.loading || this.loadQueued) {
+    if (this.openingPushNotice || !this.openRequest || this.loadInFlight || this.loadQueued) {
       return;
     }
     this.openingPushNotice = true;

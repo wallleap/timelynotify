@@ -9,6 +9,7 @@ import { EncryptedNotificationResendService } from './EncryptedNotificationResen
 import { MessageCacheStore } from './MessageCacheStore';
 import { MessageListResult, NotifyMessageService } from './NotifyMessageService';
 import { ServerManager } from './ServerManager';
+import { DeviceRegisterService } from './DeviceRegisterService';
 
 const TAG: string = 'NotifySync';
 const PAGE_SIZE: number = 100;
@@ -219,9 +220,7 @@ export class NotifySyncService {
     let delay: number = Number.MAX_SAFE_INTEGER;
     const servers: ServerEntry[] = ServerManager.getInstance().getList();
     for (let i: number = 0; i < servers.length; i++) {
-      if (!servers[i].deviceKey) {
-        continue;
-      }
+      // 尚未注册的服务同样参与退避重试，首次失败不能永久停在空列表。
       const nextRetryAt: number = this.stateFor(servers[i].id).nextRetryAt;
       delay = Math.min(delay, Math.max(0, nextRetryAt - now));
     }
@@ -274,6 +273,8 @@ export class NotifySyncService {
     this.processed = 0;
     AppStorage.setOrCreate(KEY_NOTIFY_SYNC_FEEDBACK, '');
     let round: AutoCopySyncRound | null = null;
+    // 首次注册会变更服务器版本并排队续拉，不能把这一轮视为完整历史播种。
+    let allTargetsCurrent: boolean = true;
     try {
       await ServerManager.getInstance().ensureLoaded();
       const configured: ServerEntry[] = ServerManager.getInstance().getList();
@@ -288,8 +289,7 @@ export class NotifySyncService {
       }
       const now: number = Date.now();
       const servers: ServerEntry[] = configured.filter(
-        (server: ServerEntry) => server.deviceKey.length > 0 &&
-          (forceAll || this.stateFor(server.id).nextRetryAt <= now));
+        (server: ServerEntry) => forceAll || this.stateFor(server.id).nextRetryAt <= now);
       if (servers.length === 0 || !this.foreground || epoch !== this.epoch) {
         return;
       }
@@ -307,8 +307,22 @@ export class NotifySyncService {
             server.instanceId = current.instanceId;
             server.historyKeys = [...current.historyKeys];
             try {
-              const error: string = await this.syncServer(server, epoch, round!, version);
+              let error: string = '';
+              if (!server.deviceKey) {
+                // 与 Ability 启动注册共享同一目标任务，失败进入原有错误展示与退避链路。
+                const registration: DeviceRegisterService = DeviceRegisterService.getInstance();
+                const key: string | null = await registration.syncKeyForServer(null, server.id, server.baseURL, '');
+                if (!key) {
+                  error = registration.getRegistrationError(server.id, server.baseURL, '');
+                } else {
+                  server.deviceKey = key;
+                }
+              }
+              if (error.length === 0) {
+                error = await this.syncServer(server, epoch, round!, version);
+              }
               if (state.version !== version || !this.foreground || epoch !== this.epoch) {
+                allTargetsCurrent = false;
                 continue;
               }
               this.recordServerResult(server.id, error);
@@ -330,7 +344,8 @@ export class NotifySyncService {
     } finally {
       AppStorage.setOrCreate(KEY_NOTIFY_SYNC_PROGRESS, '');
       // 首次历史播种只有完整扫完且无错误才算结束；空服务或后台中断不能提前开启自动复制。
-      if (round && (!round.firstSync || (this.foreground && epoch === this.epoch && this.errors.size === 0))) {
+      if (round && (!round.firstSync ||
+        (allTargetsCurrent && this.foreground && epoch === this.epoch && this.errors.size === 0))) {
         try {
           await AutoCopyService.finishSyncRound(round, null);
         } catch (err) {

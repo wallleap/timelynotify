@@ -14,6 +14,10 @@ export struct NotifyContentState {
       } else if (this.mode === 'loading') {
         LoadingProgress().width(40).height(40).color($r('app.color.color_brand'));
         Text('加载中…').fontSize(13).fontColor($r('app.color.color_text_hint'));
+      } else if (this.mode === 'connecting') {
+        // 本地加载已结束，远端同步以独立状态呈现，不再用全屏转圈冒充页面加载。
+        Text('正在连接服务器…').fontSize(15).fontColor($r('app.color.color_text_hint'));
+        Text('连接完成后自动显示通知').fontSize(13).fontColor($r('app.color.color_text_hint'));
       } else if (this.mode === 'error') {
         Text(this.errorMsg).fontSize(14).fontColor($r('app.color.color_error')).textAlign(TextAlign.Center).width('80%');
         Text('下拉重试').fontSize(13).fontColor($r('app.color.color_brand')).padding(8).onClick(() => this.onRetry());

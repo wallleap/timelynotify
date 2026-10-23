@@ -71,6 +71,12 @@ export function toShortSyncError(error: string, client_token: string = ''): stri
   if (error.includes('不存在')) {
     return '设备 Key 不存在';
   }
+  // 服务列表的简短状态也保留连接类别，不能把详细诊断再次压成同一句连接失败。
+  if (error.includes('域名解析')) return '域名解析失败';
+  if (error.includes('安全连接')) return '安全连接失败';
+  if (error.includes('超时')) return '连接超时';
+  if (error.includes('推送标识')) return '推送标识未就绪';
+  if (error.includes('设备注册')) return '设备注册失败';
   return '连接失败';
 }
 
@@ -317,10 +323,9 @@ export class NotifyMessageService {
       return result;
     }
     if (resp.code < 200 || resp.code >= 300) {
-      // code=0 为连接层异常（网络超时、DNS 失败、服务器无响应、地址错误等），
-      // 用用户可理解的文案替代技术性的 "HTTP 0"，引导同时排查网络与服务器
+      // 连接层保留统一封装的分类文案和错误码，便于定位部分设备的失败原因。
       result.errorMsg = resp.code === 0
-        ? '无法连接到服务器，请检查网络或服务器地址'
+        ? resp.message
         : `请求失败（HTTP ${resp.code}）`;
       return result;
     }
@@ -460,7 +465,7 @@ export class NotifyMessageService {
       }
       if (resp.code < 200 || resp.code >= 300) {
         return resp.code === 0
-          ? '无法连接到服务器，请检查网络或服务器地址'
+          ? resp.message
           : `删除失败（HTTP ${resp.code}）`;
       }
       hilog.info(DOMAIN, TAG, '消息 %{public}d 删除成功', messageId);
@@ -538,7 +543,7 @@ export class NotifyMessageService {
       }
       if (resp.code < 200 || resp.code >= 300) {
         return resp.code === 0
-          ? '无法连接到服务器，请检查网络或服务器地址'
+          ? resp.message
           : `清空失败（HTTP ${resp.code}）`;
       }
       hilog.info(DOMAIN, TAG, '全部消息清空成功');
@@ -563,9 +568,9 @@ export class NotifyMessageService {
     try {
       const resp: HttpResponse<PushEnvelope> = await HttpUtil.post<PushEnvelope, TestPushPayload>(fullURL, req);
       if (resp.code < 200 || resp.code >= 300) {
-        // code=0 为连接层异常，用用户可理解的文案替代技术性错误详情
+        // 连接层沿用统一分类文案，不丢弃系统错误码。
         return resp.code === 0
-          ? '无法连接到服务器，请检查网络或服务器地址'
+          ? resp.message
           : `推送失败（HTTP ${resp.code}）`;
       }
       if (!resp.result) {
