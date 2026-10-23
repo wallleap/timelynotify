@@ -32,6 +32,9 @@ enum NotificationPermissionStatus {
 export struct MineView {
   // 握姿只交换标题与主题切换器的位置，不改变主题选项顺序。
   @State holdingLeft: boolean = false;
+  // 换侧时先淡出标题与主题切换器，再在新侧淡入。
+  @State handOpacity: number = 1;
+  @State handSwitching: boolean = false;
   @State fallbackTitleBarBottom: number = -1;
   @State scrollTop: number = -1;
   // 顶部卡片展示的系统通知权限状态。
@@ -62,6 +65,11 @@ export struct MineView {
   // 防止重复点击权限卡片同时拉起多个系统设置窗口。
   private notificationSettingsOpening: boolean = false;
   private holdingHandViewMounted: boolean = false;
+  private requestedHoldingLeft: boolean = false;
+  private handInitialized: boolean = false;
+  // 代次使离页后的动画结束回调失效；单帧定时器只用于换侧后的布局提交。
+  private handAnimationGeneration: number = 0;
+  private handFrameTimer: number = -1;
 
   aboutToAppear() {
     this.holdingHandViewMounted = true;
@@ -72,16 +80,68 @@ export struct MineView {
 
   aboutToDisappear(): void {
     this.holdingHandViewMounted = false;
+    this.cancelHoldingHandAnimation();
     HoldingHandService.stop('mine');
   }
 
   /** 我的 Tab 可见时注册，关闭其它页面的监听不会影响当前消费者。 */
   private updateHoldingHandSubscription(): void {
     if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 2) {
+      this.cancelHoldingHandAnimation();
       HoldingHandService.stop('mine');
       return;
     }
-    HoldingHandService.start((left: boolean): void => { this.holdingLeft = left; }, 'mine');
+    HoldingHandService.start((left: boolean): void => { this.receiveHoldingHand(left); }, 'mine');
+  }
+
+  /** 初次订阅直接同步；只有可见期间真正的握姿变化才播放换侧动画。 */
+  private receiveHoldingHand(left: boolean): void {
+    this.requestedHoldingLeft = left;
+    if (!this.handInitialized) {
+      this.handInitialized = true;
+      this.holdingLeft = left;
+      return;
+    }
+    this.applyHoldingHandSide();
+  }
+
+  /** 淡出后换侧，并合并快速连续握姿，始终收敛到最新一侧。 */
+  private applyHoldingHandSide(): void {
+    if (!this.holdingHandViewMounted || !this.indexPageVisible || this.homeTabIndex !== 2 ||
+      this.handSwitching || this.holdingLeft === this.requestedHoldingLeft) {
+      return;
+    }
+    const generation: number = ++this.handAnimationGeneration;
+    this.handSwitching = true;
+    this.getUIContext().animateTo({ duration: 120, curve: Curve.EaseIn, onFinish: () => {
+      if (generation !== this.handAnimationGeneration) return;
+      this.holdingLeft = this.requestedHoldingLeft;
+      // 先提交不可见的新侧布局，再播放进入，避免按钮从旧侧横穿正文。
+      this.handFrameTimer = setTimeout(() => {
+        this.handFrameTimer = -1;
+        if (generation !== this.handAnimationGeneration) return;
+        this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut, onFinish: () => {
+          if (generation !== this.handAnimationGeneration) return;
+          this.handSwitching = false;
+          this.applyHoldingHandSide();
+        } }, () => {
+          this.handOpacity = 1;
+        });
+      }, 16);
+    } }, () => { this.handOpacity = 0; });
+  }
+
+  /** 离页取消待提交布局并恢复可见性，旧回调不得修改返回后的页面。 */
+  private cancelHoldingHandAnimation(): void {
+    this.handAnimationGeneration++;
+    if (this.handFrameTimer >= 0) {
+      clearTimeout(this.handFrameTimer);
+      this.handFrameTimer = -1;
+    }
+    this.handSwitching = false;
+    // 返回页面时直接同步最新侧，不播放离页期间累积的变化。
+    this.handInitialized = false;
+    this.handOpacity = 1;
   }
 
   // 系统通知权限卡片：点击整张卡片进入系统设置。
@@ -152,6 +212,8 @@ export struct MineView {
     .width('100%')
     .alignItems(VerticalAlign.Center)
     .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
+    .opacity(this.handOpacity)
+    .hitTestBehavior(this.handSwitching ? HitTestMode.None : HitTestMode.Default)
     .padding({
       left: 16,
       right: 16,
@@ -216,6 +278,8 @@ export struct MineView {
     .width('100%')
     .alignItems(VerticalAlign.Center)
     .direction(this.holdingLeft ? Direction.Rtl : Direction.Ltr)
+    .opacity(this.handOpacity)
+    .hitTestBehavior(this.handSwitching ? HitTestMode.None : HitTestMode.Default)
     .padding({
       left: 16,
       right: 16,
