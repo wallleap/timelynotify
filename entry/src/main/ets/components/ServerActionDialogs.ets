@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
+import { KEY_ANTI_PEEP_BLUR } from '../services/AntiPeepService';
 import { getDialogBackgroundOptions, shouldUseSystemMaterialPath } from '../utils/ImmersiveUtil';
 import { DangerConfirmDialog } from './DangerConfirmDialog';
 
@@ -236,6 +237,8 @@ export struct ServerActionMenuDialog {
 // 重命名弹窗
 @CustomDialog
 export struct ServerRenameDialog {
+  // 域名说明与底层服务器列表同步保护，不模糊弹窗背板。
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   controller: CustomDialogController = new CustomDialogController({
     builder: emptyActionBuilder(),
     autoCancel: true,
@@ -263,6 +266,8 @@ export struct ServerRenameDialog {
         .textAlign(TextAlign.Center);
 
       Text(`服务器名称仅用于界面展示，不设置/留空将显示服务器的域名（${this.serverDomain}）`)
+        .blur(this.antiPeepBlur ? 22 : 0)
+        .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
         .fontSize(12)
         .fontColor($r('app.color.color_text_hint'))
         .width('100%')

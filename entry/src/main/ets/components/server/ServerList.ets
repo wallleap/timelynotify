@@ -3,6 +3,7 @@ import { pasteboard } from '@kit.BasicServicesKit';
 import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
 import { DeviceRegisterService } from '../../services/DeviceRegisterService';
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { ServerKeyDialog, ServerRenameDialog } from '../ServerActionDialogs';
 import { ClientTokenDialog, DEPLOY_DOCS_URL } from '../ClientTokenDialog';
 import { EncryptionConfig } from '../../model/EncryptionConfig';
@@ -43,6 +44,8 @@ function extractHost(url: string): string {
 // 服务器列表组件（仅展示列表 + 切换/删除/操作菜单，不含添加表单与 viewAll 开关）
 @Component
 export struct ServerList {
+  // 与通知共用保护状态，仅模糊地址文字并阻止地址操作。
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   @State serverList: ServerEntry[] = [];
   @State currentId: string = '';
   // 当前操作目标服务器
@@ -113,12 +116,14 @@ export struct ServerList {
         }
 
         Text(s.name && s.name.length > 0 ? s.name : extractHost(s.baseURL))
+          .blur(this.antiPeepBlur && !s.name ? 22 : 0)
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_primary'))
           .width('100%');
 
         Text(s.baseURL)
+          .blur(this.antiPeepBlur ? 22 : 0)
           .fontSize(12)
           .fontColor($r('app.color.color_text_hint'))
           .maxLines(1)
@@ -139,6 +144,8 @@ export struct ServerList {
     .padding(16)
     .backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius(10)
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
     .onClick(() => {
       this.openDetail(s);
     });
@@ -227,6 +234,7 @@ export struct ServerList {
         Column({ space: 4 }) {
           Text(this.selectedServer.name && this.selectedServer.name.length > 0
             ? this.selectedServer.name : extractHost(this.selectedServer.baseURL))
+            .blur(this.antiPeepBlur && !this.selectedServer.name ? 22 : 0)
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.color_text_primary'))
@@ -235,6 +243,7 @@ export struct ServerList {
             .width('100%');
 
           Text(this.selectedServer.baseURL)
+            .blur(this.antiPeepBlur ? 22 : 0)
             .fontSize(14)
             .fontColor($r('app.color.color_text_secondary'))
             .maxLines(2)
@@ -243,6 +252,7 @@ export struct ServerList {
         }
         .width('100%')
         .alignItems(HorizontalAlign.Start)
+        .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
         .padding({ left: 16, right: 16, bottom: 12 });
 
         this.detailContent()
@@ -307,6 +317,9 @@ export struct ServerList {
     // 无固定/百分比高度：FIT_CONTENT 下 Scroll 随内容包裹（自适应生效）；
     // 拖到 LARGE 全屏档时根 Column 获得确定高度，内容超高由此 Scroll 内部滚动
     .scrollBar(BarState.Off)
+    // 已打开详情时也阻止复制或继续打开含敏感地址的操作，关闭按钮仍可用。
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
     .align(Alignment.Top);
   }
 
@@ -659,6 +672,7 @@ export struct ServerList {
   }
 
   private async handleCopy(): Promise<void> {
+    if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
       showToast(this.getUIContext(), '服务器信息缺失');
@@ -677,6 +691,8 @@ export struct ServerList {
       return;
     }
     const text: string = `${server.baseURL}/${key}`;
+    // 注册等待期间可能进入防窥，写入剪贴板前再次检查。
+    if (this.antiPeepBlur) return;
     const ok: boolean = await this.copyText(text);
     showToast(this.getUIContext(), ok ? '已复制地址和 Key' : '复制失败', ok ? 1200 : undefined);
   }

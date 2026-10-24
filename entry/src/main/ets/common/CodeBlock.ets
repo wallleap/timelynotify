@@ -13,6 +13,8 @@ export struct CodeBlock {
   @Prop code: string;
   @Prop paddingTop: number = 16;
   @Prop paddingBottom: number = 16;
+  // 调用方控制敏感示例的文字保护，背景和滚动容器不参与模糊。
+  @Prop concealed: boolean = false;
 
   private tokenizeBash(input: string): Token[] {
     const result: Token[] = [];
@@ -62,6 +64,8 @@ export struct CodeBlock {
               .fontSize(14)
           }, (item: Token, index: number) => `${this.code}:${index}`)
         }
+          .blur(this.concealed ? 22 : 0)
+          .accessibilityLevel(this.concealed ? 'no-hide-descendants' : 'auto')
           .fontFamily('monospace')
           .lineHeight(20)
           .fontSize(14)

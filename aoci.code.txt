@@ -5,7 +5,7 @@
 .gitignore[FC5T]: F:排除依赖、构建输出、本地环境与签名材料目录 | R:- | A:- | S:AOCI 主机集成配置仅供本机使用，不纳入版本控制
 AGENTS.md[SG8L]: F:规定 ArkTS 项目架构、修改授权、验证、Git 与 AOCI 认知治理规范 | R:- | A:- | S:源码改动须先提供文档并确认；Git提交推送及依赖配置修改需明确授权
 LICENSE[SG4T]: F:声明 MIT 授权、版权保留义务与免责条件 | R:- | A:- | S:-
-README.md[SG7M]: F:说明通知同步、加密、握姿与防窥开关预览、逐文本保护、权限接入及发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程副本，不能按通用Gotify策略清空本地历史；防窥声明还需签名ACL，缺失可致安装失败
+README.md[SG7M]: F:说明通知同步、加密、握姿、防窥预览及通知和服务地址逐文本保护、权限接入和发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程副本，不能按通用Gotify策略清空本地历史；防窥声明还需签名ACL，缺失可致安装失败
 SERVER_API.md[SN8L]: F:定义推送、设备注册、Gotify 消息与删除流水以及服务运维接口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:HTTP API、鉴权与加密载荷约定 | S:文档通用删除协议消费 ids/purges/reset；本客户端迁移链路另有只消费 extraIds 的约束
 build-profile.json5[FV8T]: F:配置 Harmony 产品、SDK 兼容范围、签名与 entry 模块 | R:code:entry/build-profile.json5,code:AppScope/app.json5 | A:default/release 产品 | S:target26兼容API23；CI剥离本地调试签名后整体重签，不复用本机加密材料
 code-linter.json5[FQ5T]: F:定义 ArkTS lint 范围、性能规则与密码算法安全规则 | R:- | A:files、ignore、ruleSet | S:-
@@ -52,14 +52,14 @@ RemoteNotificationExtAbility.ets[EM7T]: F:为未来远程通知扩展解密推�
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/common/===
 AppContextStore.ets[CG7T]: F:单例保存主 Ability 注入的应用 Context，供全局服务读取 | R:code:entry/src/main/ets/abilities/EntryAbility.ets | A:getInstance、setContext、getContext | S:注入前返回 null，消费者不可假设冷启动声明期 Context 已就绪
-CodeBlock.ets[CU4T]: F:将 Bash 示例分词着色并提供横向滚动代码展示 | R:- | A:CodeBlock | S:-
+CodeBlock.ets[CU4T]: F:将Bash示例分词着色并横向滚动，按调用方参数保护代码文字 | R:- | A:CodeBlock、concealed | S:concealed默认关，仅模糊富文本父Text并屏蔽朗读，背景保持清晰
 Constant.ets[CG7T]: F:集中声明主页导航、通知同步、编辑态及更新提示的 AppStorage 键信号 | R:- | A:KEY_NOTIFY_OPEN_REQUEST、KEY_NOTIFY_SYNC_REVISION | S:通知点击请求含实例ID、消息ID及唯一序号，none 请求附第四项
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/components/===
 ClientTokenDialog.ets[CU6S]: F:提供服务器 Client Token 输入、保存与部署文档入口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:ClientTokenDialog、saveToken、onOpenDocs | S:跳文档先关自身；服务页可接管回调同步收起详情 Sheet
 DangerConfirmDialog.ets[CU5T]: F:提供删除清除操作的固定标题按钮及滚动说明确认弹窗 | R:- | A:DangerConfirmDialog、onResult | S:关闭由持有 controller 的创建方完成，组件只返回用户选择
 DecryptionSettingsDialog.ets[CU8L]: F:编辑每服务器解密算法模式与密钥并确认危险配置变更 | R:code:entry/src/main/ets/services/EncryptionConfigService.ets,code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:DecryptionSettingsDialog、loadConfig、onSave、onClear | S:配置在显示后异步加载；标题和底栏固定；更换既有密钥算法或清除须二次确认，随机Key保存前仅为候选
-ServerActionDialogs.ets[CU7L]: F:展示服务器操作菜单、重命名及重置还原设备 Key 弹窗 | R:code:entry/src/main/ets/components/DangerConfirmDialog.ets,code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:ServerActionMenuDialog、RenameServerDialog、ResetKeyDialog | S:目标服务器由外部持有；Key输入留空生成新Key，有值还原该Key
+ServerActionDialogs.ets[CU7L]: F:展示服务器操作、重命名及Key重置还原弹窗，重命名域名说明响应防窥 | R:code:entry/src/main/ets/components/DangerConfirmDialog.ets,code:entry/src/main/ets/utils/ImmersiveUtil.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:ServerActionMenuDialog、ServerRenameDialog、ServerKeyDialog | S:目标由外部持有；Key留空二次确认后生成新Key，有值还原；重命名仅说明文字模糊并屏蔽朗读，背景清晰
 showToast.ets[CU5T]: F:统一 Toast 显示并在沉浸材质不可用时降级 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:showToast | S:不得静态导入 uiMaterial，避免 API23 模块加载崩溃
 ListStatusFooter.ets[CU5T]: F:统一列表分页及空结果的加载、失败、更多与结束提示，支持定制业务文案 | R:- | A:ListStatusFooter、loading、hasMore、failed、rowHeight、loadingText/failureText/emptyText | S:仅展示状态，ListItem与点击由调用方保留；加载优先于失败，再判断是否有下一页
 
@@ -89,9 +89,9 @@ NotifyViewTypes.ets[CU6M]: F:解析通知富文本、构造分组分段并格式
 ServerSwitchDialog.ets[CU6M]: F:选择全部通知或单服务器视图并同步服务器变更回显 | R:code:entry/src/main/ets/services/ServerManager.ets | A:ServerSwitchDialog | S:仅控制视图范围；选单服务关闭聚合模式并异步切换，管理操作在服务页
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/components/server/===
-AddServerDialog.ets[CU5S]: F:校验服务器 URL 与名称并添加服务器和可选 Client Token | R:code:entry/src/main/ets/services/ServerManager.ets | A:AddServerDialog、onAdded | S:-
-SampleCode.ets[CU6L]: F:独立选择推送测试服务器，展示复制 GET/POST 示例并发送测试 | R:code:entry/src/main/ets/utils/TestPushExample.ets,code:entry/src/main/ets/services/DeviceRegisterService.ets | A:SampleCode | S:卡片目标不改变全局当前服务；同一服务缺Key时并发复用注册请求
-ServerList.ets[AU7L]: F:管理服务器列表详情、设备Key、Token、加密配置及删除重命名 | R:code:entry/src/main/ets/services/ServerManager.ets,code:entry/src/main/ets/services/NotifySyncService.ets,code:entry/src/main/ets/components/DecryptionSettingsDialog.ets | A:ServerList | S:详情Sheet自适应根节点不可强制填满；打开解密弹窗前不读配置，通过打开后的回调加载
+AddServerDialog.ets[CU5S]: F:校验并添加服务器URL、名称与可选Token，地址输入响应防窥 | R:code:entry/src/main/ets/services/ServerManager.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:AddServerDialog、onAdded | S:地址槽背景独立；保护时透明输入控件模糊且禁编辑复制朗读，其它字段不受影响
+SampleCode.ets[CU6L]: F:独立选择服务器展示复制GET/POST示例并发送测试，防窥保护代码与菜单host | R:code:entry/src/main/ets/utils/TestPushExample.ets,code:entry/src/main/ets/services/DeviceRegisterService.ets,code:entry/src/main/ets/common/CodeBlock.ets | A:SampleCode | S:目标不改全局服务，缺Key并发复用注册；防窥逐Text模糊并禁复制朗读，取Key后复查以阻止迟到复制；卡片背景清晰
+ServerList.ets[AU7L]: F:管理服务器列表详情、鉴权加密配置和删除重命名，防窥保护URL及回退host | R:code:entry/src/main/ets/services/ServerManager.ets,code:entry/src/main/ets/components/DecryptionSettingsDialog.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:ServerList | S:详情根不可强制填满；解密配置打开后读；防窥只模糊地址Text，自定义名清晰，禁操作朗读；复制取Key后复查，详情关闭仍可用
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/components/settings/===
 SettingArrow.ets[CU3T]: F:提供设置行统一右侧箭头图标 | R:- | A:SettingArrow | S:-

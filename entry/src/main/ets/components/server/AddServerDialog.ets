@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import showToast from '../showToast';
 import { DOMAIN } from '../../common/Constant';
 
@@ -13,6 +14,7 @@ function emptyBuilder(): void {
 // 添加服务器弹窗：URL + 名称 + 客户端 Token，校验后调用 ServerManager.addServer
 @CustomDialog
 export struct AddServerDialog {
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   controller: CustomDialogController = new CustomDialogController({
     builder: emptyBuilder(),
     autoCancel: true,
@@ -29,23 +31,33 @@ export struct AddServerDialog {
 
   // 带标题标签的输入项
   @Builder
-  labeledInput(label: string, placeholder: string, value: string, onChanged: (v: string) => void) {
+  labeledInput(label: string, placeholder: string, value: string, onChanged: (v: string) => void,
+    sensitiveAddress: boolean = false) {
     Column({ space: 6 }) {
       Text(label)
         .fontSize(13)
         .fontColor($r('app.color.color_text_secondary'))
         .width('100%');
 
-      TextInput({ placeholder: placeholder, text: value })
-        .width('100%')
-        .height(42)
-        .backgroundColor($r('app.color.color_bg_input_glass'))
-        .borderRadius(8)
-        .padding({ left: 12, right: 12 })
-        .enabled(!this.adding)
-        .onChange((val: string) => {
-          onChanged(val);
-        });
+      // 背板独立绘制，防窥仅模糊透明输入控件中的地址，保持输入槽轮廓清晰。
+      Stack() {
+        TextInput({ placeholder: placeholder, text: value })
+          .width('100%')
+          .height(42)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(8)
+          .padding({ left: 12, right: 12 })
+          .blur(sensitiveAddress && this.antiPeepBlur ? 22 : 0)
+          .enabled(!this.adding && !(sensitiveAddress && this.antiPeepBlur))
+          .copyOption(sensitiveAddress && this.antiPeepBlur ? CopyOptions.None : CopyOptions.LocalDevice)
+          .selectionMenuHidden(sensitiveAddress && this.antiPeepBlur)
+          .accessibilityLevel(sensitiveAddress && this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
+          .onChange((val: string) => {
+            onChanged(val);
+          });
+      }
+      .width('100%').height(42).borderRadius(8)
+      .backgroundColor($r('app.color.color_bg_input_glass'));
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start);
@@ -63,7 +75,7 @@ export struct AddServerDialog {
       Scroll() {
         Column({ space: 12 }) {
           this.labeledInput('服务器地址', 'http://host:port 或域名', this.inputURL,
-            (v: string) => { this.inputURL = v; });
+            (v: string) => { this.inputURL = v; }, true);
 
           this.labeledInput('名称（可选）', '输入服务器名称', this.inputName,
             (v: string) => { this.inputName = v; });

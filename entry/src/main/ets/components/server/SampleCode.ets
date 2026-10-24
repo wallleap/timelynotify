@@ -5,6 +5,7 @@ import { ServerManager } from '../../services/ServerManager';
 import { DeviceRegisterService } from '../../services/DeviceRegisterService';
 import { NotifyMessageService } from '../../services/NotifyMessageService';
 import { ClipboardService } from '../../services/ClipboardService';
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { buildTestGetCode, buildTestPostCode } from '../../utils/TestPushExample';
 import { getEnabledSystemMaterial, withImmersiveMenuMaterial } from '../../utils/ImmersiveUtil';
 import { DOMAIN } from '../../common/Constant';
@@ -15,6 +16,8 @@ const TAG: string = 'SampleCode';
 // 推送测试卡片独立选择目标服务器，不改变通知列表的当前服务器。
 @Component
 export struct SampleCode {
+  // 地址、host 与示例代码响应全局防窥；卡片材质和固定操作标签保持清晰。
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   @State serverList: ServerEntry[] = [];
   @State selectedId: string = '';
   @State requestMethod: string = 'GET';
@@ -75,6 +78,7 @@ export struct SampleCode {
       Stack({ alignContent: Alignment.TopStart }) {
         CodeBlock({
           code: this.codeText,
+          concealed: this.antiPeepBlur,
           paddingTop: 52,
           paddingBottom: 14
         })
@@ -117,6 +121,7 @@ export struct SampleCode {
           .padding({ left: 10, right: 10, top: 14, bottom: 14 })
           .justifyContent(FlexAlign.Center)
           .alignItems(VerticalAlign.Center)
+          .enabled(!this.antiPeepBlur)
           .onClick(() => {
             this.copyCode();
           });
@@ -139,7 +144,7 @@ export struct SampleCode {
             .fontColor($r('app.color.color_text_primary'))
             .backgroundColor(Color.Transparent)
             .borderRadius(0)
-            .enabled(this.serverList.length > 0)
+            .enabled(this.serverList.length > 0 && !this.antiPeepBlur)
             .onClick(() => {
               this.copyKey();
             });
@@ -158,7 +163,7 @@ export struct SampleCode {
           .width(34)
           .height(44)
           .justifyContent(FlexAlign.Center)
-          .enabled(this.serverList.length > 0)
+          .enabled(this.serverList.length > 0 && !this.antiPeepBlur)
           .bindMenu(this.copyMenu(), this.menuOptions());
         }
         .layoutWeight(1)
@@ -306,15 +311,27 @@ export struct SampleCode {
   }
 
   @Builder
+  private serverMenuLabel(server: ServerEntry) {
+    // 自定义菜单文字，避免将 MenuItem 背景一起模糊。
+    Text(this.hostOf(server.baseURL))
+      .fontSize(16)
+      .fontColor(server.id === this.selectedId ? $r('app.color.color_brand') :
+        $r('app.color.color_text_primary'))
+      .padding({ left: 12, right: 12, top: 12, bottom: 12 })
+      .blur(this.antiPeepBlur ? 22 : 0)
+      .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto');
+  }
+
+  @Builder
   private serverMenu() {
     Menu() {
       if (this.serverList.length === 0) {
         MenuItem({ content: '暂无服务器' }).enabled(false);
       }
       ForEach(this.serverList, (server: ServerEntry) => {
-        MenuItem({ content: this.hostOf(server.baseURL) })
-          .contentFontColor(server.id === this.selectedId ? $r('app.color.color_brand') :
-            $r('app.color.color_text_primary'))
+        MenuItem(this.serverMenuLabel(server))
+          .enabled(!this.antiPeepBlur)
+          .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
           .backgroundColor(server.id === this.selectedId ? $r('app.color.color_bg_selected_glass') :
             Color.Transparent)
           .onClick(() => {
@@ -333,10 +350,10 @@ export struct SampleCode {
     Menu() {
       MenuItem({ content: '复制地址' }).onClick(() => {
         this.copyAddress();
-      });
+      }).enabled(!this.antiPeepBlur);
       MenuItem({ content: '复制地址和 Key' }).onClick(() => {
         this.copyAddressAndKey();
-      });
+      }).enabled(!this.antiPeepBlur);
     }
     .backgroundBlurStyle(getEnabledSystemMaterial('menu') ? BlurStyle.NONE : BlurStyle.COMPONENT_THICK)
     .backgroundColor(getEnabledSystemMaterial('menu') ? Color.Transparent :
@@ -345,6 +362,7 @@ export struct SampleCode {
 
   // 复制当前展示模式的完整、可执行命令。
   private async copyCode(): Promise<void> {
+    if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
       showToast(this.getUIContext(), '暂无可用服务器');
@@ -357,12 +375,15 @@ export struct SampleCode {
     }
     const code: string = this.requestMethod === 'POST' ?
       buildTestPostCode(server.baseURL, key) : buildTestGetCode(server.baseURL, key);
+    // 异步取 Key 后重新检查，防止保护开始后仍复制明文地址。
+    if (this.antiPeepBlur) return;
     const ok: boolean = await ClipboardService.copyText(code);
     showToast(this.getUIContext(), ok ? '代码已复制' : '复制失败');
   }
 
   // 复制卡片选中服务器的推送地址与设备 Key。
   private async copyAddressAndKey(): Promise<void> {
+    if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
       showToast(this.getUIContext(), '暂无可用服务器');
@@ -374,12 +395,14 @@ export struct SampleCode {
       return;
     }
     const baseURL: string = server.baseURL.replace(/\/+$/, '');
+    if (this.antiPeepBlur) return;
     const ok: boolean = await ClipboardService.copyText(`${baseURL}/${key}`);
     showToast(this.getUIContext(), ok ? '已复制地址和 Key' : '复制失败');
   }
 
   // 单独复制服务器地址，不依赖设备 Key 是否已注册。
   private async copyAddress(): Promise<void> {
+    if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
       showToast(this.getUIContext(), '暂无可用服务器');
@@ -391,6 +414,7 @@ export struct SampleCode {
 
   // 单独复制当前服务器的设备 Key；缺失时先复用原有注册流程获取。
   private async copyKey(): Promise<void> {
+    if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
       showToast(this.getUIContext(), '暂无可用服务器');
@@ -401,6 +425,7 @@ export struct SampleCode {
       showToast(this.getUIContext(), '未获取到设备 Key');
       return;
     }
+    if (this.antiPeepBlur) return;
     const ok: boolean = await ClipboardService.copyText(key);
     showToast(this.getUIContext(), ok ? '已复制 Key' : '复制失败');
   }
