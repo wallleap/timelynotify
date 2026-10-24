@@ -33,6 +33,8 @@ struct Index {
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgress: string = '';
   private hdsController: HdsTabsController = new HdsTabsController();
   private hdsSelectedIndex: number = 0;
+  // 独立路由覆盖主页时不启用防窥；Sheet/弹窗不离开主页，继续跟随当前 Tab。
+  private pageVisible: boolean = false;
   // Tab 数据
   private tabs: TabItem[] = [
     {
@@ -105,8 +107,9 @@ struct Index {
     NotifySyncService.getInstance().setTabIndex(this.currentIndex);
   }
 
-  /** 根页面销毁时释放防窥；路由隐藏不停止，确保设置页等窗口内容仍能被保护。 */
+  /** 根页面销毁时释放应用生命周期，独立路由显隐通过页面范围暂停防窥。 */
   aboutToDisappear(): void {
+    this.pageVisible = false;
     AntiPeepService.stop();
   }
 
@@ -114,21 +117,31 @@ struct Index {
   // 返回/回前台时触发 onPageShow。Tab 内子组件感知不到页面级显隐（不会触发 aboutToDisappear），
   // 经 AppStorage 同步给 NotifyView 用于刷新可见数据；同步本身由 Ability 生命周期管理。
   onPageShow(): void {
+    this.pageVisible = true;
+    this.updateAntiPeepScope(this.currentIndex);
     AppStorage.setOrCreate(KEY_INDEX_PAGE_VISIBLE, true);
   }
 
   onPageHide(): void {
+    this.pageVisible = false;
+    this.updateAntiPeepScope(this.currentIndex);
     AppStorage.setOrCreate(KEY_INDEX_PAGE_VISIBLE, false);
   }
 
   /** AppStorage 外部切换 Tab 时同步 HdsTabs 的控制器，降级 Tabs 则由 index 属性响应。 */
   private onTabRequested(): void {
     this.barSelectedIndex = this.currentIndex;
+    this.updateAntiPeepScope(this.currentIndex);
     NotifySyncService.getInstance().setTabIndex(this.currentIndex);
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled) && this.hdsSelectedIndex !== this.currentIndex) {
       this.hdsSelectedIndex = this.currentIndex;
       this.hdsController.changeIndex(this.currentIndex);
     }
+  }
+
+  /** 仅通知和服务 Tab 启用防窥；我的、设置及 SharePage 均排除。 */
+  private updateAntiPeepScope(index: number): void {
+    AntiPeepService.setPageActive(this.pageVisible && (index === 0 || index === 1));
   }
 
   // 系统返回拦截：通知页多选编辑态时，返回键/侧滑先退出多选而不是离开页面；
@@ -162,10 +175,13 @@ struct Index {
         .onSelected((index: number) => {
           // 手势确定目标后即更新底栏；不提前触发通知同步等业务状态切换。
           this.barSelectedIndex = index;
+          // 视觉切向“我的”时就暂停，避免等待 Tab 动画期间仍弹出蒙层。
+          this.updateAntiPeepScope(index);
         })
         .onChange((index: number) => {
           this.hdsSelectedIndex = index;
           this.barSelectedIndex = index;
+          this.updateAntiPeepScope(index);
           this.currentIndex = index;
           NotifySyncService.getInstance().setTabIndex(index);
         })
@@ -187,6 +203,7 @@ struct Index {
         .barBackgroundColor($r('app.color.color_bg_glass'))
         .onChange((index: number) => {
           this.barSelectedIndex = index;
+          this.updateAntiPeepScope(index);
           this.currentIndex = index;
           NotifySyncService.getInstance().setTabIndex(index);
         })

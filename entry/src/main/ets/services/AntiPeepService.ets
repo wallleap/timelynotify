@@ -7,7 +7,7 @@ import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 
-/** 通知组件只读取保护状态，不接触系统感知接口或持久化偏好。 */
+/** 通知与服务组件只读取保护状态，不接触系统感知接口或持久化偏好。 */
 export const KEY_ANTI_PEEP_BLUR: string = 'antiPeepBlur';
 export const KEY_ANTI_PEEP_ERROR: string = 'antiPeepError';
 export const KEY_ANTI_PEEP_PREVIEW_VISIBLE: string = 'antiPeepPreviewVisible';
@@ -21,13 +21,15 @@ export class AntiPeepSettings {
   mode: string = ANTI_PEEP_MODE_BLUR;
 }
 
-/** 应用前台防窥服务：独立检测能力、监听 HIDE/PASS，并按所选模式保护当前窗口。 */
+/** 防窥服务：仅在应用前台的指定页面监听 HIDE/PASS，并按所选模式保护当前窗口。 */
 export class AntiPeepService {
   private static settings: AntiPeepSettings = new AntiPeepSettings();
   private static loading: Promise<void> | null = null;
   private static supported: boolean | null = null;
   private static running: boolean = false;
   private static foreground: boolean = true;
+  // 默认不保护任何页面，由主页按当前可见路由及 Tab 明确启用。
+  private static pageActive: boolean = false;
   private static subscribed: boolean = false;
   private static application: common.ApplicationContext | null = null;
   private static generation: number = 0;
@@ -38,7 +40,7 @@ export class AntiPeepService {
   private static maskRequestSequence: number = 0;
   private static error: string = '';
   private static callback = (status: dlpAntiPeep.DlpAntiPeepStatus): void => {
-    if (!AntiPeepService.running || !AntiPeepService.foreground || !AntiPeepService.settings.enabled) return;
+    if (!AntiPeepService.shouldProtect()) return;
     AntiPeepService.applyStatus(status);
   };
   private static applicationCallback: ApplicationStateChangeCallback = {
@@ -119,7 +121,24 @@ export class AntiPeepService {
     return AntiPeepService.error;
   }
 
-  /** 从主页初始化应用级生命周期；路由到设置或 Web 页面时仍保护当前应用窗口。 */
+  /** 主页显隐及 Tab 切换调用；离开范围立即清除模糊并废弃迟到的系统请求。 */
+  static setPageActive(active: boolean): void {
+    if (AntiPeepService.pageActive === active) return;
+    AntiPeepService.pageActive = active;
+    AntiPeepService.generation++;
+    AntiPeepService.maskRequestSequence++;
+    AntiPeepService.maskRequested = false;
+    AntiPeepService.hide = false;
+    if (!active) {
+      AntiPeepService.unsubscribe();
+      AntiPeepService.publishBlur(false);
+    } else if (AntiPeepService.running && AntiPeepService.foreground) {
+      // 返回保护页必须重新读取系统初值，不能沿用离开前的 PASS/HIDE。
+      AntiPeepService.refresh();
+    }
+  }
+
+  /** 初始化应用前后台协调；是否监听和请求蒙层仍受当前页面范围限制。 */
   static start(): void {
     if (!AntiPeepService.running) AntiPeepService.foreground = true;
     AntiPeepService.running = true;
@@ -139,6 +158,7 @@ export class AntiPeepService {
   /** 主页实例销毁才整体释放，切 Tab 或路由隐藏不调用此方法。 */
   static stop(): void {
     AntiPeepService.running = false;
+    AntiPeepService.pageActive = false;
     AntiPeepService.generation++;
     AntiPeepService.unsubscribe();
     AntiPeepService.publishBlur(false);
@@ -183,13 +203,13 @@ export class AntiPeepService {
     return true;
   }
 
-  /** 前台恢复时先重新查询开关与当前状态，再订阅实时状态；代次拦截后台或旧配置结果。 */
+  /** 仅保护页恢复时查询开关和初值；代次拦截后台、路由离开或旧配置结果。 */
   private static async refresh(): Promise<void> {
     const generation: number = ++AntiPeepService.generation;
     AntiPeepService.maskRequested = false;
     await AntiPeepService.load();
     if (generation !== AntiPeepService.generation) return;
-    if (!AntiPeepService.running || !AntiPeepService.foreground || !AntiPeepService.settings.enabled) {
+    if (!AntiPeepService.shouldProtect()) {
       AntiPeepService.unsubscribe();
       AntiPeepService.publishBlur(false);
       return;
@@ -230,6 +250,7 @@ export class AntiPeepService {
 
   /** PASS 解除应用内容模糊；HIDE 全屏模式在系统蒙层完成前同样先保护通知。 */
   private static applyStatus(status: dlpAntiPeep.DlpAntiPeepStatus): void {
+    if (!AntiPeepService.shouldProtect()) return;
     AntiPeepService.hide = status === dlpAntiPeep.DlpAntiPeepStatus.HIDE;
     AntiPeepService.publishBlur(AntiPeepService.hide);
     if (!AntiPeepService.hide) {
@@ -251,8 +272,7 @@ export class AntiPeepService {
     try {
       const currentWindow = await window.getLastWindow(context);
       if (generation !== AntiPeepService.generation || requestSequence !== AntiPeepService.maskRequestSequence ||
-        !AntiPeepService.running ||
-        !AntiPeepService.foreground || !AntiPeepService.settings.enabled || !AntiPeepService.hide ||
+        !AntiPeepService.shouldProtect() || !AntiPeepService.hide ||
         AntiPeepService.settings.mode !== ANTI_PEEP_MODE_FULLSCREEN) return;
       await dlpAntiPeep.setAntiPeepMaskLayer(currentWindow.getWindowProperties().id);
     } catch (err) {
@@ -260,6 +280,12 @@ export class AntiPeepService {
         AntiPeepService.recordFailure(err as BusinessError);
       }
     }
+  }
+
+  /** 设置页仍可保存偏好和播放预览，但不会因此激活真实监听或系统蒙层。 */
+  private static shouldProtect(): boolean {
+    return AntiPeepService.running && AntiPeepService.foreground &&
+      AntiPeepService.pageActive && AntiPeepService.settings.enabled;
   }
 
   /** 取消只指定本服务回调；失败保留标记，避免前台恢复时重复订阅。 */
