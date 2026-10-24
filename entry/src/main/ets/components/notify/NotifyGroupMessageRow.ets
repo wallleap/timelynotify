@@ -1,3 +1,4 @@
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { NotifyMessage } from '../../model/NotifyMessage';
 import { notifyIdentity } from '../../utils/NotifyIdentity';
 import { formatNotifyTime, isExpiringSoon, NOTIFY_SEGMENT_CODE, NOTIFY_SEGMENT_URL, NotifyTextSegment, parseNotifyTextSegments } from './NotifyViewTypes';
@@ -6,6 +7,7 @@ import { NotifyEncryptionBadge, NotifyExpiryBadge } from './NotifyGroupVisuals';
 /** 展开分组内的一条消息行，保留共享元素转场、富文本与选择交互。 */
 @Component
 export struct NotifyGroupMessageRow {
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   @Prop message: NotifyMessage = new NotifyMessage();
   @Prop isLast: boolean = false;
   @Prop isEditing: boolean = false;
@@ -63,12 +65,12 @@ export struct NotifyGroupMessageRow {
       Column() {
         ForEach(this.message.inboxContent, (line: string, index: number) => {
           if (index < 4) {
-            Text() { this.spans(line) }.width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21);
+            Text() { this.spans(line) }.blur(this.antiPeepBlur ? 22 : 0).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21);
           }
         }, (line: string, index: number) => `${index}_${line}`)
       }.width('100%').margin({ top: 4 });
     } else if (this.message.body.length > 0) {
-      Text() { this.spans(this.message.body) }.width('100%').maxLines(4).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21).margin({ top: 4 });
+      Text() { this.spans(this.message.body) }.blur(this.antiPeepBlur ? 22 : 0).width('100%').maxLines(4).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21).margin({ top: 4 });
     }
   }
 
@@ -95,18 +97,18 @@ export struct NotifyGroupMessageRow {
               // 标题和时间共用首行，组内行与普通通知卡信息层级保持一致。
               Row({ space: 8 }) {
                 if (this.message.title.length > 0) {
-                  Text(this.message.title).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.color_text_primary')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
+                  Text(this.message.title).blur(this.antiPeepBlur ? 22 : 0).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.color_text_primary')).layoutWeight(1).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
                 } else { Blank().layoutWeight(1); }
                 if (isExpiringSoon(this.message.expiresAt)) {
                   NotifyExpiryBadge();
                 }
-                Text(formatNotifyTime(this.message.timestamp)).fontSize(11).fontColor($r('app.color.color_text_hint')).flexShrink(0);
+                Text(formatNotifyTime(this.message.timestamp)).blur(this.antiPeepBlur ? 22 : 0).fontSize(11).fontColor($r('app.color.color_text_hint')).flexShrink(0);
               }.width('100%').alignItems(VerticalAlign.Center);
               // 正文与内容图共用第二行，避免内容图挤占标题的可读宽度。
               Row({ space: 8 }) {
                 Column() {
                   if (this.message.subtitle.length > 0) {
-                    Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.color_brand')).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
+                    Text(this.message.subtitle).blur(this.antiPeepBlur ? 22 : 0).fontSize(13).fontColor($r('app.color.color_brand')).width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis });
                   }
                   this.body();
                 }.layoutWeight(1).alignItems(HorizontalAlign.Start);
@@ -132,6 +134,9 @@ export struct NotifyGroupMessageRow {
     .width('100%').backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius({ topLeft: 0, topRight: 0, bottomLeft: this.isLast ? 12 : 0, bottomRight: this.isLast ? 12 : 0 })
     .clip(true).transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
+    // 各文本独立模糊，卡片和图片保持清晰；保护期间禁用操作及无障碍朗读。
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
     .onClick(() => this.isEditing ? this.onSelect(notifyIdentity(this.message)) : this.onOpen(this.message));
   }
 }

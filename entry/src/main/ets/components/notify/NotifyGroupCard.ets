@@ -1,3 +1,4 @@
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import {
   formatNotifyTime,
   isExpiringSoon,
@@ -18,6 +19,7 @@ import { NotifyMessage } from '../../model/NotifyMessage';
 /** 折叠态分组卡片，页面负责持有展开状态、高度和实际操作。 */
 @Component
 export struct NotifyGroupCard {
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   @Prop section: NotifySection = {
     key: '',
     groupKey: '',
@@ -81,7 +83,7 @@ export struct NotifyGroupCard {
             // 折叠分组预览与普通通知统一：标题和最新通知时间同行。
             Row({ space: 8 }) {
               if (this.section.messages[0].title.length > 0) {
-                Text(this.section.messages[0].title)
+                Text(this.section.messages[0].title).blur(this.antiPeepBlur ? 22 : 0)
                   .fontSize(15)
                   .fontWeight(FontWeight.Bold)
                   .fontColor($r('app.color.color_text_primary'))
@@ -94,7 +96,7 @@ export struct NotifyGroupCard {
               if (isExpiringSoon(this.section.messages[0].expiresAt)) {
                 NotifyExpiryBadge();
               }
-              Text(formatNotifyTime(this.section.messages[0].timestamp)).fontSize(11)
+              Text(formatNotifyTime(this.section.messages[0].timestamp)).blur(this.antiPeepBlur ? 22 : 0).fontSize(11)
                 .fontColor($r('app.color.color_text_hint')).flexShrink(0);
             }.width('100%').alignItems(VerticalAlign.Center);
 
@@ -102,7 +104,7 @@ export struct NotifyGroupCard {
             Row({ space: 8 }) {
               Column() {
                 if (this.section.messages[0].subtitle.length > 0) {
-                  Text(this.section.messages[0].subtitle)
+                  Text(this.section.messages[0].subtitle).blur(this.antiPeepBlur ? 22 : 0)
                     .fontSize(13)
                     .fontColor($r('app.color.color_brand'))
                     .width('100%')
@@ -151,7 +153,10 @@ export struct NotifyGroupCard {
       .onAreaChange((_old: Area, value: Area) => this.onHeightChange(value.height as number))
       .onClick(() => this.isEditing ? this.onToggleSelection() : this.onOpen());
     }
-    .width('100%').padding({ bottom: this.section.messages.length >= 3 ? 18 : 9 });
+    .width('100%').padding({ bottom: this.section.messages.length >= 3 ? 18 : 9 })
+    // 各文本独立模糊，卡片和图片保持清晰；保护期间禁用操作及无障碍朗读。
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto');
   }
 
   @Builder
@@ -181,7 +186,7 @@ export struct NotifyGroupCard {
           if (index < 4) {
             Text() {
               this.spans(line)
-            }.width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21);
+            }.blur(this.antiPeepBlur ? 22 : 0).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21);
           }
         }, (line: string, index: number) => `${index}_${line}`)
       }.width('100%').margin({ top: 4 });
@@ -189,6 +194,7 @@ export struct NotifyGroupCard {
       Text() {
         this.spans(message.body)
       }
+      .blur(this.antiPeepBlur ? 22 : 0)
       .width('100%')
       .maxLines(4)
       .textOverflow({ overflow: TextOverflow.Ellipsis })

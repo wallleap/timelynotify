@@ -1,3 +1,4 @@
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { NotifyMessage } from '../../model/NotifyMessage';
 import {
   buildNotifyCopyText,
@@ -19,6 +20,7 @@ const DETAIL_ACTION_SCROLL_THRESHOLD: number = 16;
 /** 通知详情半模态内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
 export struct NotifyMessageDetail {
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   @State private actionsVisible: boolean = true;
   private actionScrollDistance: number = 0;
   // 与页面共用实测导航条高度，让滚动末尾的卡片避开底部手势区域。
@@ -80,6 +82,7 @@ export struct NotifyMessageDetail {
   @Builder
   private body(text: string) {
     Text() { this.textSpans(text) }
+      .blur(this.antiPeepBlur ? 22 : 0)
       .width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
       .onClick(() => this.onCopyText(text, '内容'));
   }
@@ -89,7 +92,7 @@ export struct NotifyMessageDetail {
     Column({ space: 8 }) {
       ForEach(items, (line: string, index: number) => {
         // 点击每一条收件箱内容的非识别区域时，复制该条完整文本。
-        Text() { this.textSpans(line) }.width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
+        Text() { this.textSpans(line) }.blur(this.antiPeepBlur ? 22 : 0).width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
           .onClick(() => this.onCopyText(line, '内容'));
       }, (line: string, index: number) => `${index}_${line}`)
     }.width('100%').alignItems(HorizontalAlign.Start);
@@ -153,7 +156,7 @@ export struct NotifyMessageDetail {
             Column({ space: 2 }) {
               Text(this.isUrlSegment(segment) ? '识别到链接' : '识别到验证码').fontSize(12)
                 .fontColor($r('app.color.color_text_tertiary')).width('100%');
-              Text(this.displayRecognizedText(segment)).fontSize(14).fontWeight(FontWeight.Medium)
+              Text(this.displayRecognizedText(segment)).blur(this.antiPeepBlur ? 22 : 0).fontSize(14).fontWeight(FontWeight.Medium)
                 .fontColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_text_primary'))
                 .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
             }
@@ -287,12 +290,12 @@ export struct NotifyMessageDetail {
                 }
                 Column() {
                   if (this.message.title.length > 0) {
-                    Text(this.message.title).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
+                    Text(this.message.title).blur(this.antiPeepBlur ? 22 : 0).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
                       .fontColor($r('app.color.color_text_primary')).width('100%').copyOption(CopyOptions.InApp)
                       .onClick(() => this.onCopyText(this.message ? this.message.title : '', '标题'));
                   }
                   if (this.message.subtitle.length > 0) {
-                    Text(this.message.subtitle).fontSize(13).fontColor($r('app.color.color_brand'))
+                    Text(this.message.subtitle).blur(this.antiPeepBlur ? 22 : 0).fontSize(13).fontColor($r('app.color.color_brand'))
                       .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                       .margin({ top: this.message.title.length > 0 ? 6 : 0 }).copyOption(CopyOptions.InApp)
                       .onClick(() => this.onCopyText(this.message ? this.message.subtitle : '', '副标题'));
@@ -317,14 +320,14 @@ export struct NotifyMessageDetail {
                   NotifyEncryptionBadge();
                 }
                 Blank();
-                Text(formatNotifyTime(this.message.timestamp))
+                Text(formatNotifyTime(this.message.timestamp)).blur(this.antiPeepBlur ? 22 : 0)
                   .fontSize(12)
                   .fontColor($r('app.color.color_text_hint'))
                   .maxLines(1);
               }
               .width('100%').margin({ top: 14 }).alignItems(VerticalAlign.Center);
               if (formatExpiryDescription(this.message.expiresAt).length > 0) {
-                Text(formatExpiryDescription(this.message.expiresAt))
+                Text(formatExpiryDescription(this.message.expiresAt)).blur(this.antiPeepBlur ? 22 : 0)
                   .fontSize(12)
                   .fontColor($r('app.color.color_warning'))
                   .width('100%')
@@ -379,6 +382,9 @@ export struct NotifyMessageDetail {
         this.bottomActions();
       }
     }
-    .width('100%').height('100%');
+    .width('100%').height('100%')
+    // 各文本独立模糊，卡片和图片保持清晰；保护期间禁用操作及无障碍朗读。
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto');
   }
 }

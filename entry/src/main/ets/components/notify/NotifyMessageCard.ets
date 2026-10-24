@@ -1,3 +1,4 @@
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { NotifyMessage } from '../../model/NotifyMessage';
 import { notifyIdentity } from '../../utils/NotifyIdentity';
 import {
@@ -13,6 +14,7 @@ import { NotifyEncryptionBadge, NotifyExpiryBadge } from './NotifyGroupVisuals';
 /** 单条通知卡片；详情、选择与富文本交互通过页面回调处理。 */
 @Component
 export struct NotifyMessageCard {
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   @Prop message: NotifyMessage = new NotifyMessage();
   // 搜索临时平铺时，首条消息内容与折叠分组预览共享位置过渡。
   @Prop contentTransitionId: string = '';
@@ -51,7 +53,7 @@ export struct NotifyMessageCard {
           // 首行固定为标题与时间，便于快速扫描通知来源和发生时间。
           Row({ space: 8 }) {
             if (this.message.title.length > 0) {
-              Text(this.message.title)
+              Text(this.message.title).blur(this.antiPeepBlur ? 22 : 0)
                 .fontSize(15)
                 .fontWeight(FontWeight.Bold)
                 .fontColor($r('app.color.color_text_primary'))
@@ -64,7 +66,7 @@ export struct NotifyMessageCard {
             if (isExpiringSoon(this.message.expiresAt)) {
               NotifyExpiryBadge();
             }
-            Text(formatNotifyTime(this.message.timestamp))
+            Text(formatNotifyTime(this.message.timestamp)).blur(this.antiPeepBlur ? 22 : 0)
               .fontSize(11)
               .fontColor($r('app.color.color_text_hint'))
               .flexShrink(0);
@@ -74,7 +76,7 @@ export struct NotifyMessageCard {
           Row({ space: 8 }) {
             Column() {
               if (this.message.subtitle.length > 0) {
-                Text(this.message.subtitle)
+                Text(this.message.subtitle).blur(this.antiPeepBlur ? 22 : 0)
                   .fontSize(13)
                   .fontColor($r('app.color.color_brand'))
                   .width('100%')
@@ -119,6 +121,9 @@ export struct NotifyMessageCard {
     .backgroundColor($r('app.color.color_bg_surface'))
     .borderRadius(12)
     .clip(true)
+    // 各文本独立模糊，卡片和图片保持清晰；保护期间禁用操作及无障碍朗读。
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
     .onClick(() => this.isEditing ? this.onSelect(notifyIdentity(this.message)) : this.onOpen(this.message));
   }
 
@@ -191,7 +196,7 @@ export struct NotifyMessageCard {
           if (index < 4) {
             Text() {
               this.spans(line)
-            }.width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21);
+            }.blur(this.antiPeepBlur ? 22 : 0).width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).lineHeight(21);
           }
         }, (line: string, index: number) => `${index}_${line}`)
       }.width('100%').alignItems(HorizontalAlign.Start).margin({ top: 4 });
@@ -199,6 +204,7 @@ export struct NotifyMessageCard {
       Text() {
         this.spans(this.message.body)
       }
+      .blur(this.antiPeepBlur ? 22 : 0)
       .width('100%')
       .maxLines(4)
       .textOverflow({ overflow: TextOverflow.Ellipsis })

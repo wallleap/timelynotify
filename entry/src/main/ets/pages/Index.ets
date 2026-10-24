@@ -9,6 +9,7 @@ import {
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
 import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING, KEY_NOTIFY_SYNC_PROGRESS } from '../common/Constant';
 import { NotifySyncService } from '../services/NotifySyncService';
+import { AntiPeepService } from '../services/AntiPeepService';
 
 // 底部 Tab 项定义
 interface TabItem {
@@ -99,8 +100,14 @@ struct Index {
   }
 
   aboutToAppear(): void {
+    AntiPeepService.start();
     this.barSelectedIndex = this.currentIndex;
     NotifySyncService.getInstance().setTabIndex(this.currentIndex);
+  }
+
+  /** 根页面销毁时释放防窥；路由隐藏不停止，确保设置页等窗口内容仍能被保护。 */
+  aboutToDisappear(): void {
+    AntiPeepService.stop();
   }
 
   // 页面显隐：router 跳转其它页面（如服务器设置页）/应用退后台时触发 onPageHide，

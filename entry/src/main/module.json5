@@ -42,6 +42,10 @@
       {
         // 智感握姿仅用于通知页控件左右跟手布局；系统授予，无运行时权限弹窗。
         "name": "ohos.permission.DETECT_GESTURE"
+      },
+      {
+        // 隐私防窥状态与系统蒙层；调试及发布签名均须具有对应 ACL 授权。
+        "name": "ohos.permission.DLP_GET_HIDE_STATUS"
       }
     ],
     "abilities": [

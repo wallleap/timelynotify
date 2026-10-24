@@ -5,7 +5,7 @@
 .gitignore[FC5T]: F:排除依赖、构建输出、本地环境与签名材料目录 | R:- | A:- | S:AOCI 主机集成配置仅供本机使用，不纳入版本控制
 AGENTS.md[SG8L]: F:规定 ArkTS 项目架构、修改授权、验证、Git 与 AOCI 认知治理规范 | R:- | A:- | S:源码改动须先提供文档并确认；Git提交推送及依赖配置修改需明确授权
 LICENSE[SG4T]: F:声明 MIT 授权、版权保留义务与免责条件 | R:- | A:- | S:-
-README.md[SG7M]: F:说明通知同步诊断、加密、握姿能力门禁与开关预览、搜索跳底过渡、发版和防伪校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:客户端本地历史迁移后删除远程副本，不能照通用 Gotify 缓存策略清空历史
+README.md[SG7M]: F:说明通知同步、加密、握姿与防窥开关预览、逐文本保护、权限接入及发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程副本，不能按通用Gotify策略清空本地历史；防窥声明还需签名ACL，缺失可致安装失败
 SERVER_API.md[SN8L]: F:定义推送、设备注册、Gotify 消息与删除流水以及服务运维接口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:HTTP API、鉴权与加密载荷约定 | S:文档通用删除协议消费 ids/purges/reset；本客户端迁移链路另有只消费 extraIds 的约束
 build-profile.json5[FV8T]: F:配置 Harmony 产品、SDK 兼容范围、签名与 entry 模块 | R:code:entry/build-profile.json5,code:AppScope/app.json5 | A:default/release 产品 | S:target26兼容API23；CI剥离本地调试签名后整体重签，不复用本机加密材料
 code-linter.json5[FQ5T]: F:定义 ArkTS lint 范围、性能规则与密码算法安全规则 | R:- | A:files、ignore、ruleSet | S:-
@@ -72,14 +72,14 @@ NotifySettingsSection.ets[CU6S]: F:管理应用订阅偏好、全部本地通知
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/components/notify/===
 NotifyContentState.ets[CU4T]: F:展示通知引导、本地加载、远端连接、失败重试与空状态 | R:- | A:NotifyContentState、onRetry | S:-
 NotifyEditActionBar.ets[CU5T]: F:展示通知多选操作数量及取消全选导出删除入口 | R:code:entry/src/main/ets/views/NotifyView.ets | A:NotifyEditActionBar | S:-
-NotifyGroupCard.ets[CU6M]: F:展示折叠分组的最新通知预览、计数、选择及展开交互 | R:code:entry/src/main/ets/components/notify/NotifyGroupVisuals.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:NotifyGroupCard | S:首条完整内容作为共享节点配对展开首条消息；已选数只统计已加载通知
-NotifyGroupExpandedHeader.ets[CU5T]: F:展示展开分组标题、计数、复选框与收起操作 | R:code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:NotifyGroupExpandedHeader | S:使用透明命中以允许点击向 List 传播，Block 会截断滚动手势
-NotifyGroupMessageRow.ets[CU5S]: F:展示展开组内通知富文本、图片、状态与选择交互 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:NotifyGroupMessageRow | S:仅首条使用共享内容转场标识，与折叠预览配对
+NotifyGroupCard.ets[CU6M]: F:展示折叠分组预览、计数及选择展开交互，防窥逐项模糊标题正文时间 | R:code:entry/src/main/ets/components/notify/NotifyGroupVisuals.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:NotifyGroupCard | S:首条完整内容共享节点配对展开首条；已选数仅已加载通知；防窥保留卡片图片清晰但禁用操作及朗读
+NotifyGroupExpandedHeader.ets[CU5T]: F:展示展开分组名计数、复选框与收起入口，防窥仅模糊分组名文本 | R:code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:NotifyGroupExpandedHeader | S:透明命中让事件向List传播，Block截断滚动；防窥禁用操作和朗读，图标计数及背景清晰
+NotifyGroupMessageRow.ets[CU5S]: F:展示展开组内富文本图片、选择状态与链接操作，防窥逐项模糊消息文本 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:NotifyGroupMessageRow | S:仅首条共享内容转场与折叠预览配对；防窥保留卡片图片清晰但禁用操作和朗读
 NotifyGroupStateUtils.ets[CU4T]: F:不可变计算分组展开集合与实测卡片高度更新 | R:- | A:NotifyGroupStateUtils | S:-
 NotifyGroupVisuals.ets[CU4T]: F:复用通知加密过期计数标签及折叠分组层叠背景 | R:- | A:NotifyGroupCountBadge、NotifyEncryptionBadge、NotifyExpiryBadge、NotifyGroupShellLayer | S:-
 NotifyListDataSource.ets[CU7S]: F:将分组快照扁平为 LazyForEach 行并按稳定 Key 增删同步 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:buildNotifyListRows、NotifyListDataSource | S:展开收起避免全量重载；末项圆角变化需更新对应行Key，不能重建整组
-NotifyMessageCard.ets[CU5M]: F:展示单条通知标题正文图片及链接、复制和选择操作 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:NotifyMessageCard | S:-
-NotifyMessageDetail.ets[CU6M]: F:展示通知详情、分组抽屉及复制链接等交互 | R:code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/model/NotifyMessage.ets | A:NotifyMessageDetail | S:-
+NotifyMessageCard.ets[CU5M]: F:展示普通与搜索通知标题正文图片及选择链接操作，防窥逐项模糊消息文本 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:NotifyMessageCard | S:防窥模糊挂各Text含富文本父节点，标题副标题时间均保护；卡片图片及动作标签清晰，禁用操作和朗读
+NotifyMessageDetail.ets[CU6M]: F:展示详情富文本图片、识别结果及复制访问删除操作，防窥逐项模糊通知文本 | R:code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/model/NotifyMessage.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:NotifyMessageDetail | S:底栏随滚动显隐；防窥含识别值和过期时间，卡片图片及按钮清晰；根节点禁操作及朗读，不能仅遮底层列表
 NotifyMessageList.ets[CU7L]: F:渲染通知平铺与分组列表、局部分页及两段式跳到底部 | R:code:entry/src/main/ets/components/notify/NotifyListDataSource.ets,code:entry/src/main/ets/components/notify/NotifySelectionUtils.ets,code:entry/src/main/ets/components/ListStatusFooter.ets | A:NotifyMessageList、onLoadMoreInGroup、onLoadMoreFlat | S:Checkbox 属性回显须过滤；瞬跳后由可见索引驱动平滑收尾，数据重建中断自动滚动
 NotifyRefreshHeader.ets[CU3T]: F:根据顶部遮挡距离显示通知下拉刷新指示器 | R:- | A:NotifyRefreshHeader | S:-
 NotifySelectionUtils.ets[CU6T]: F:不可变维护通知单条组选状态及删除后的可展开组集合 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets | A:setSelectedMessage、setGroupMessagesSelection、retainExpandableGroups | S:组选仅作用已加载通知；收起判断优先数据库总数，避免丢失历史加载入口
@@ -100,6 +100,7 @@ SettingDivider.ets[CU3T]: F:提供设置卡片内分隔线样式 | R:- | A:Setti
 SettingGroup.ets[CU4T]: F:提供圆角毛玻璃设置卡片容器与内容槽位 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:SettingGroup、content | S:-
 SettingGroupTitle.ets[CU3T]: F:统一设置分组标题字体颜色及留白 | R:- | A:SettingGroupTitle | S:-
 HoldingHandSettingsCard.ets[CU6M]: F:提供默认开启的智感握姿开关、左右布局动态演示与关闭静态预览和简短说明 | R:code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/components/settings/SettingGroup.ets | A:HoldingHandSettingsCard、KEY_HOLDING_HAND_PREVIEW_VISIBLE | S:演示不订阅握姿；仅开启且页面与视口可见时循环，离页按代次废弃回调；写盘失败恢复开关
+AntiPeepSettingsCard.ets[CU6M]: F:提供防窥开关、逐文本模糊与全屏蒙层两种可选动态预览及异常提示 | R:code:entry/src/main/ets/services/AntiPeepService.ets,code:entry/src/main/ets/components/settings/SettingGroup.ets | A:AntiPeepSettingsCard | S:默认关选模糊；关闭置灰禁选静止；演示不触发感知，仅页面视口可见循环；离页废弃回调，保存失败回退
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/config/===
 ApiConfig.ets[FC6T]: F:声明生产与局域网 API 地址、环境开关及注册平台常量 | R:code:entry/src/main/ets/services/ServerManager.ets | A:ApiConfig.baseURL、REGISTER_PATH | S:当前 USE_PRODUCTION=false；设备 localhost 指设备自身，联调需宿主局域网地址
@@ -113,8 +114,8 @@ NotifyMessage.ets[DM8M]: F:容错解析推送载荷并维护加密展示、归�
 ServerEntry.ets[DD7T]: F:描述服务器配置、设备鉴权、数据库实例与本地历史命名空间 | R:code:entry/src/main/ets/services/ServerManager.ets | A:ServerEntry | S:数字消息ID跨实例不唯一；historyKeys保留旧实例和旧Key历史
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/pages/===
-Index.ets[AU7S]: F:承载通知服务我的三Tab，协调导航视觉、编辑返回与页可见信号 | R:code:entry/src/main/ets/views/NotifyView.ets,code:entry/src/main/ets/views/ServerView.ets,code:entry/src/main/ets/views/MineView.ets | A:Index、onBackPress | S:Hds底栏视觉在动画开始更新，业务Tab状态待切换完成；多选态返回先退出编辑
-PersonalizationSettings.ets[CU6M]: F:按外观、通知行为和末尾鸿蒙特性展示偏好，检测握姿支持后显示卡片并控制预览可见性 | R:code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/services/EncryptedNotificationResendService.ets,code:entry/src/main/ets/components/settings/HoldingHandSettingsCard.ets | A:PersonalizationSettings、onPageShow、onPageHide | S:未确认握姿支持时连同空分组隐藏，临时检测失败再次进入可重试；重发开关先确认再保存，不改变isArchive留存策略
+Index.ets[AU7M]: F:承载三Tab并协调导航视觉、编辑返回、页可见信号及应用防窥服务生命周期 | R:code:entry/src/main/ets/views/NotifyView.ets,code:entry/src/main/ets/views/ServerView.ets,code:entry/src/main/ets/views/MineView.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:Index、onBackPress | S:Hds底栏视觉先更新，业务Tab待动画完成；多选返回先退出编辑；防窥仅根实例销毁时停，路由隐藏仍由应用前后台管理
+PersonalizationSettings.ets[CU6M]: F:按外观、通知行为和鸿蒙特性展示偏好，独立检测握姿与防窥能力并控制卡片预览可见性 | R:code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/services/AntiPeepService.ets,code:entry/src/main/ets/components/settings/AntiPeepSettingsCard.ets | A:PersonalizationSettings、onPageShow、onPageHide | S:能力独立，均不可用才隐藏鸿蒙分组；离页废弃防窥异步检测；重发开关先确认再保存且不改变isArchive留存策略
 SharePage.ets[CU6M]: F:承载内嵌网页、下拉刷新、历史返回、分享与沉浸标题栏 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:SharePage、路由url/title参数 | S:强制联网应使用CacheMode.Online，None仍优先缓存；返回先走Web历史
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/services/===
@@ -137,12 +138,13 @@ NotifySyncService.ets[AM9L]: F:按前台生命周期编排多服务器注册重�
 ServerManager.ets[DD9L]: F:管理内置自定义服务器、设备鉴权、视图范围、实例历史及变更通知 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/ets/services/DeviceRegisterService.ets,code:entry/src/main/ets/config/ApiConfig.ets | A:ensureLoaded、switchTo、addServer、deleteServer、rememberHistory | S:读取前等初始化；内置地址动态来自ApiConfig，Key与Token单独持久化；至少保留一个服务器，旧来源不明记录仅聚合展示
 ThemeService.ets[DU6S]: F:持久化主题并即时应用颜色模式，保存沉浸偏好和重启应用 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/ets/common/AppContextStore.ets | A:applyColorMode、setImmersiveLightEnabled、restartApp | S:沉浸偏好只写盘，重启后生效，不能原地重建Tabs；重启不依赖onDestroy
 HoldingHandService.ets[IU6M]: F:检测系统与实际握姿能力，保存独立开关偏好，共享页面订阅并协调前后台与右侧降级 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start、stop、isEnabled、setEnabled、checkSupport | S:缺能力/801才缓存不支持；默认开启偏好独立，读完再订阅、写成才生效；检测复用订阅，无需监听即退；owner共享末个释放；取消失败留标记
+AntiPeepService.ets[IS8M]: F:检测防窥能力并保存开关模式，按应用前后台订阅状态、发布通知保护并调用全屏系统蒙层 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start、stop、checkSupport、getSettings、setEnabled、setMode | S:默认关闭，开关模式单JSON写成后生效；仅前台监听并读初值；开启须系统同意，关闭不改系统开关；801才缓存不支持，失败留偏好；全屏用系统窗口蒙层，代次与风险轮废弃迟到请求并去重，先模糊通知；签名须DLP_GET_HIDE_STATUS的ACL
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/utils/===
 HttpUtil.ets[IN7S]: F:封装JSON请求、总时限取消、网络错误分类与耗时及HTTP资源释放 | R:- | A:HttpUtil、HttpResponse、formatNetworkFailure | S:连接异常code=0且保留系统码；默认总时限10s，放宽读取同步延长；到限终止且仅释放一次，迟到结果不回写；仅2xx解析JSON，非JSON留空
 ImmersiveUtil.ets[CU8M]: F:集中处理沉浸材质版本兼容、动态加载、实例复用与各表面降级 | R:code:entry/src/main/module.json5,code:.github/scripts/check-immersive-boundary.sh | A:ensureImmersiveMaterial、getDialogMaterial、getDialogBackgroundOptions | S:uiMaterial仅动态加载；低算力支持检查只诊断；弹窗模糊挂controller，内容透明；全局启用时undefined恢复默认，关闭需Material.empty；悬浮Toggle先统一两态底色再挂材质
 NotifyIdentity.ets[DM8T]: F:定义历史来源与通知复合身份、远端安全定位及跨服务器稳定排序 | R:code:entry/src/main/ets/model/ServerEntry.ets,code:entry/src/main/ets/model/NotifyMessage.ets | A:notifySourceKey、notifyIdentity、resolveCurrentRemoteServer、compareNotifyOrder | S:实例缺失用serverId隔离；只匹配服务器当前实例才可删远端，不猜旧裸Key来源；导出还原原Key
-PreferencesUtil.ets[PD7S]: F:统一Preferences字符串读写、含握姿开关的偏好键定义、Context解析与实例缓存 | R:code:entry/src/main/ets/common/AppContextStore.ets | A:putString、getString、has、delete、KEY_HOLDING_HAND_ENABLED | S:写入与删除后flush；缺Context或读失败返回默认值，写失败返回false
+PreferencesUtil.ets[PD7S]: F:统一Preferences字符串读写、握姿与防窥配置等偏好键、Context解析和实例缓存 | R:code:entry/src/main/ets/common/AppContextStore.ets | A:putString、getString、has、delete、KEY_HOLDING_HAND_ENABLED、KEY_ANTI_PEEP_SETTINGS | S:写入与删除后flush；缺Context或读失败返回默认值，写失败返回false
 ServerUrlUtil.ets[CU4T]: F:从服务器URL移除协议与路径提取含端口主机名 | R:- | A:extractHost | S:-
 TestPushExample.ets[CM6T]: F:共享推送测试参数并生成安全引用的GET与POST curl命令 | R:code:entry/src/main/ets/components/server/SampleCode.ets | A:createTestPushPayload、buildTestGetCode、buildTestPostCode | S:示例和实际测试共用载荷；GET用jq编码标题正文路径，shell参数单引号转义
 
@@ -152,7 +154,7 @@ NotifyView.ets[AU9L]: F:编排通知本地加载与远端状态、搜索分组�
 ServerView.ets[AU6L]: F:承载服务器列表、添加、推送测试与文档入口，标题和添加操作随握姿过渡换侧 | R:code:entry/src/main/ets/components/server/ServerList.ets,code:entry/src/main/ets/components/server/SampleCode.ets,code:entry/src/main/ets/services/HoldingHandService.ets | A:ServerView | S:添加弹窗点击时构造以取最新材质；server仅可见时订阅；Hds原生菜单由端侧留白动画定位，到位后才淡入标题；离页使旧回调失效，返回直接同步握姿
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/===
-module.json5[FC8S]: F:注册主入口、扩展Ability、路由、Push元数据与网络和握姿权限 | R:code:entry/src/main/ets/abilities/EntryAbility.ets,code:entry/src/main/resources/base/profile/main_pages.json,code:entry/src/main/ets/services/HoldingHandService.ets | A:entry 模块 | S:全局UIMaterial启用并避让挖孔；远程通知扩展不导出，普通type0仍不进入；DETECT_GESTURE由系统授予
+module.json5[FC8S]: F:注册入口扩展Ability、路由、Push元数据以及网络、握姿和防窥权限 | R:code:entry/src/main/ets/abilities/EntryAbility.ets,code:entry/src/main/resources/base/profile/main_pages.json,code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:entry 模块 | S:全局UIMaterial启用并避让挖孔；远程通知扩展不导出，普通type0不进入；DETECT_GESTURE系统授予；DLP_GET_HIDE_STATUS声明仍须签名ACL，否则可导致安装失败
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/resources/base/element/===
 color.json[FU6S]: F:定义亮色主题品牌、文本、玻璃背景与语义状态色 | R:code:entry/src/main/resources/dark/element/color.json | A:color资源表 | S:新增颜色需同步暗色对应条目，透明度参与玻璃背板合成

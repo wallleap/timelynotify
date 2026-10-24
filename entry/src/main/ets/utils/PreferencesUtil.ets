@@ -57,6 +57,8 @@ export class PreferencesUtil {
   static readonly KEY_IMMERSIVE_LIGHT_ENABLED: string = 'immersive_light_enabled';
   /** 智感握姿开关：缺失时开启，关闭后首页操作区固定在右侧。 */
   static readonly KEY_HOLDING_HAND_ENABLED: string = 'holding_hand_enabled';
+  /** 防窥开关和模式的 JSON 配置，缺失时关闭并默认选择模糊通知。 */
+  static readonly KEY_ANTI_PEEP_SETTINGS: string = 'anti_peep_settings';
   /** 通知列表是否按 group 分组显示：'true'（分组，默认）/ 'false'（平铺不分组） */
   static readonly KEY_GROUP_ENABLED: string = 'group_enabled';
   /** 用户主动展开的通知分组 group_key 列表，JSON 字符串；同名分组跨服务器共用展开状态。 */

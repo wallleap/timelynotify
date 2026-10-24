@@ -14,6 +14,8 @@ import { HoldingHandSettingsCard, KEY_HOLDING_HAND_PREVIEW_VISIBLE } from '../co
 import { ThemeService } from '../services/ThemeService';
 import { EncryptedNotificationResendService } from '../services/EncryptedNotificationResendService';
 import { HoldingHandService } from '../services/HoldingHandService';
+import { AntiPeepSettingsCard } from '../components/settings/AntiPeepSettingsCard';
+import { AntiPeepService, KEY_ANTI_PEEP_PREVIEW_VISIBLE } from '../services/AntiPeepService';
 import showToast from '../components/showToast';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
@@ -35,6 +37,9 @@ struct PersonalizationSettings {
   @State encryptedResendSaving: boolean = false;
   // 未确认支持前不渲染卡片和空分组，避免不支持设备出现入口闪现。
   @State holdingHandSupported: boolean = false;
+  @State antiPeepSupported: boolean = false;
+  // 异步能力查询不能在页面离开后补渲染卡片。
+  private supportCheckSequence: number = 0;
   private readonly colorModeKeys: string[] = ['system', 'light', 'dark'];
   private readonly colorModeLabels: string[] = ['跟随系统', '浅色模式', '深色模式'];
   private scroller: Scroller = new Scroller();
@@ -141,11 +146,16 @@ struct PersonalizationSettings {
       .width('100%')
       .margin({ top: 8 });
 
-      // 当前仅有握姿卡片，不支持时连同空的鸿蒙特性分组一起隐藏。
-      if (this.holdingHandSupported) {
+      // 两项能力独立检测，任一可用时保留分组，避免防窥依赖握姿设备能力。
+      if (this.holdingHandSupported || this.antiPeepSupported) {
         Column({ space: 12 }) {
           SettingGroupTitle({ title: '鸿蒙特性' });
-          HoldingHandSettingsCard();
+          if (this.holdingHandSupported) {
+            HoldingHandSettingsCard();
+          }
+          if (this.antiPeepSupported) {
+            AntiPeepSettingsCard();
+          }
         }
         .width('100%')
         .margin({ top: 8 });
@@ -189,11 +199,22 @@ struct PersonalizationSettings {
   onPageShow(): void {
     // 支持结果与持久化开关独立；权限或临时服务错误可在再次进入时重新检测。
     this.holdingHandSupported = HoldingHandService.checkSupport();
+    this.checkAntiPeepSupport();
     AppStorage.setOrCreate(KEY_HOLDING_HAND_PREVIEW_VISIBLE, true);
+    AppStorage.setOrCreate(KEY_ANTI_PEEP_PREVIEW_VISIBLE, true);
   }
 
   onPageHide(): void {
+    this.supportCheckSequence++;
     AppStorage.setOrCreate(KEY_HOLDING_HAND_PREVIEW_VISIBLE, false);
+    AppStorage.setOrCreate(KEY_ANTI_PEEP_PREVIEW_VISIBLE, false);
+  }
+
+  /** 查询不改变系统防窥开关；ACL 或暂时错误可以在再次进入页面时重试。 */
+  private async checkAntiPeepSupport(): Promise<void> {
+    const sequence: number = ++this.supportCheckSequence;
+    const supported: boolean = await AntiPeepService.checkSupport();
+    if (sequence === this.supportCheckSequence) this.antiPeepSupported = supported;
   }
 
   /** 进入页面时恢复持久化开关；读完前禁用 Toggle，避免默认关闭态覆盖已保存的开启态。 */

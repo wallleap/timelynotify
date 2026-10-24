@@ -1,9 +1,11 @@
+import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { displayGroupTitle, NotifySection } from './NotifyViewTypes';
 import { NotifyGroupCountBadge } from './NotifyGroupVisuals';
 
 /** 展开态分组头；选择与收起行为由 NotifyView 回调处理。 */
 @Component
 export struct NotifyGroupExpandedHeader {
+  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
   @Prop section: NotifySection = { key: '', groupKey: '', messages: [], grouped: false, total: 0 };
   @Prop isEditing: boolean = false;
   @Prop groupSelected: boolean = false;
@@ -35,7 +37,7 @@ export struct NotifyGroupExpandedHeader {
         } else {
           Image($r('app.media.app_icon')).width(24).height(24).borderRadius(6).objectFit(ImageFit.Cover).draggable(false);
         }
-        Text(displayGroupTitle(this.section.groupKey)).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.color_text_primary'))
+        Text(displayGroupTitle(this.section.groupKey)).blur(this.antiPeepBlur ? 22 : 0).fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.color_text_primary'))
           .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1);
         Row() { this.groupCount(); }
           .flexShrink(0).geometryTransition(`gmb:${this.section.groupKey}`)
@@ -50,6 +52,9 @@ export struct NotifyGroupExpandedHeader {
     // Transparent：自己消费触发 onClick，同时事件继续向上传递到 List 让滚动手势识别生效。
     // Block 会拦截 touchmove，导致 header 上无法上下/左右滑动 List。
     .hitTestBehavior(HitTestMode.Transparent).onClick(() => this.onToggle())
-    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }));
+    .transition(TransitionEffect.OPACITY.animation({ duration: 200 }))
+    // 各文本独立模糊，卡片和图片保持清晰；保护期间禁用操作及无障碍朗读。
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto');
   }
 }
