@@ -45,6 +45,8 @@ import {
   KEY_NOTIFY_EDITING,
   KEY_NOTIFY_OPEN_REQUEST,
   KEY_NOTIFY_REFRESH_SIGNAL,
+  KEY_NOTIFY_SEARCH_BACK_ACTIVE,
+  KEY_NOTIFY_SEARCH_BACK_SIGNAL,
   KEY_NOTIFY_SYNC_FEEDBACK,
   KEY_NOTIFY_SYNC_PROGRESS,
   KEY_NOTIFY_SYNC_REVISION
@@ -221,6 +223,8 @@ export struct NotifyView {
   @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onHomeTabIndexChanged') homeTabIndex: number = 0;
   @StorageProp(KEY_NOTIFY_REFRESH_SIGNAL) @Watch('onRefreshSignalChanged') refreshSignal: number = 0;
   @StorageProp(KEY_NOTIFY_OPEN_REQUEST) @Watch('onOpenRequestChanged') openRequest: string = '';
+  // 主页只发送退出请求，不直接修改 searchActive，以保留取消动画和列表位置恢复。
+  @StorageProp(KEY_NOTIFY_SEARCH_BACK_SIGNAL) @Watch('handleSearchBack') searchBackSignal: number = 0;
   @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onPageVisibleChanged') indexPageVisible: boolean = true;
   @State refreshState: RefreshStatus = RefreshStatus.Inactive;
   // 自绘标题栏底边与列表起点均使用窗口坐标；两者之差即实际遮挡距离。
@@ -277,6 +281,8 @@ export struct NotifyView {
   private searchBaseOffsetSaved: boolean = false;
   // 阻止过渡中重复点击造成标题栏与临时胶囊状态错位。
   private searchTransitioning: boolean = false;
+  // 返回发生在搜索/握姿动画中时合并等待，避免定时器叠加或交叉播放动画。
+  private searchBackTimer: number = -1;
   // 滚动方向可能在动画中改变；结束时按列表实际位置校正一次。
   private searchCollapseTransitioning: boolean = false;
   // 收缩动画中点击胶囊时，等该动画收尾后继续进入搜索，避免点击无响应。
@@ -315,6 +321,7 @@ export struct NotifyView {
 
   aboutToAppear() {
     this.holdingHandViewMounted = true;
+    this.publishSearchBackState();
     this.updateHoldingHandSubscription();
     this.initAfterServerManagerReady();
     // 读取分组显示开关（默认开启分组）
@@ -363,6 +370,11 @@ export struct NotifyView {
 
   aboutToDisappear() {
     this.holdingHandViewMounted = false;
+    if (this.searchBackTimer >= 0) {
+      clearTimeout(this.searchBackTimer);
+      this.searchBackTimer = -1;
+    }
+    AppStorage.setOrCreate(KEY_NOTIFY_SEARCH_BACK_ACTIVE, false);
     this.cancelHoldingHandAnimation();
     HoldingHandService.stop();
     this.resetSearchBottomButton();
@@ -961,6 +973,50 @@ export struct NotifyView {
     this.searchCompactStartIconSize = 24;
   }
 
+  /** 搜索状态及其在途转场都拦截返回；离页后的旧回调不得重新发布状态。 */
+  private publishSearchBackState(): void {
+    if (!this.holdingHandViewMounted) {
+      return;
+    }
+    // 本轮已经完全退出时撤销重复返回的等待回调，不得误取消紧接着打开的新搜索。
+    if (!this.searchActive && !this.searchTransitioning && !this.pendingSearchAfterCollapse &&
+      !this.searchCollapseTransitioning && !this.handSwitching && this.searchBackTimer >= 0) {
+      clearTimeout(this.searchBackTimer);
+      this.searchBackTimer = -1;
+    }
+    AppStorage.setOrCreate(KEY_NOTIFY_SEARCH_BACK_ACTIVE, this.searchActive || this.searchTransitioning ||
+      this.pendingSearchAfterCollapse || this.searchBackTimer >= 0);
+  }
+
+  /** 连续返回合并为一次取消；当前动画完成后复用取消按钮的完整清理和恢复流程。 */
+  private handleSearchBack(): void {
+    if (!this.holdingHandViewMounted) {
+      return;
+    }
+    this.pendingSearchAfterCollapse = false;
+    if (this.searchTransitioning || this.searchCollapseTransitioning || this.handSwitching) {
+      if (this.searchBackTimer < 0) {
+        this.searchBackTimer = setTimeout(() => {
+          this.searchBackTimer = -1;
+          this.handleSearchBack();
+        }, SEARCH_SCROLL_SAMPLE_MS);
+      }
+      this.publishSearchBackState();
+      return;
+    }
+    if (this.searchActive) {
+      this.cancelSearch();
+    }
+    this.publishSearchBackState();
+  }
+
+  /** 入场后才允许聚焦；返回已开始取消时，迟到的聚焦不得重新唤起键盘。 */
+  private focusSearchInput(): void {
+    if (this.holdingHandViewMounted && this.searchActive && !this.searchTransitioning && this.searchBackTimer < 0) {
+      focusControl.requestFocus('notify_search_input');
+    }
+  }
+
   /** 外层胶囊先完成上移，之后才切换标题栏节点和聚焦输入框。 */
   private enterSearch(): void {
     if (this.searchActive || this.isEditing || this.searchTransitioning || this.handSwitching) {
@@ -968,6 +1024,7 @@ export struct NotifyView {
     }
     if (this.searchCollapseTransitioning) {
       this.pendingSearchAfterCollapse = true;
+      this.publishSearchBackState();
       return;
     }
     this.resetSearchBottomButton();
@@ -984,6 +1041,7 @@ export struct NotifyView {
     this.scheduleSearch(true);
     // 两种布局都持有入场门禁，首屏即使先返回也等动画结束后交接。
     this.searchTransitioning = true;
+    this.publishSearchBackState();
     // 收起状态从右侧图标原位展开，结束后再挂载输入框和键盘。
     if (this.searchCollapsed) {
       this.prepareSearchCompactTransition(this.searchCollapseTransitionVisible);
@@ -997,9 +1055,10 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
+        this.publishSearchBackState();
         this.finishSearchEntryPreview();
         this.applyHoldingHandSide();
-        setTimeout(() => focusControl.requestFocus('notify_search_input'), 64);
+        setTimeout(() => this.focusSearchInput(), 64);
       }, SEARCH_COMPACT_TRANSITION_DURATION);
       return;
     }
@@ -1014,9 +1073,10 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchTransitionVisible = false;
         this.searchTransitioning = false;
+        this.publishSearchBackState();
         this.finishSearchEntryPreview();
         this.applyHoldingHandSide();
-        setTimeout(() => focusControl.requestFocus('notify_search_input'), 32);
+        setTimeout(() => this.focusSearchInput(), 32);
       }, SEARCH_TRANSITION_DURATION);
       return;
     }
@@ -1025,17 +1085,16 @@ export struct NotifyView {
     });
     setTimeout(() => {
       this.searchTransitioning = false;
+      this.publishSearchBackState();
       this.finishSearchEntryPreview();
       this.applyHoldingHandSide();
-      if (this.searchActive) {
-        focusControl.requestFocus('notify_search_input');
-      }
+      this.focusSearchInput();
     }, SEARCH_TRANSITION_DURATION);
   }
 
   /** 取消搜索仅恢复 UI；原列表节点与滚动控制器始终保留。 */
   private cancelSearch(): void {
-    if (this.searchTransitioning || this.handSwitching) {
+    if (!this.searchActive || this.searchTransitioning || this.handSwitching) {
       return;
     }
     this.resetSearchBottomButton();
@@ -1069,6 +1128,8 @@ export struct NotifyView {
       this.searchError = false;
     }, SEARCH_PREVIEW_HANDOFF_DURATION + 16);
     this.restoreSearchBaseOffset();
+    // 先持有返回门禁，再撤下搜索态；直到退出动画完成才恢复默认返回行为。
+    this.searchTransitioning = true;
     // 只切换叠层可见性，不重建底层分组 List。
     this.searchActive = false;
     // 从输入框反向收回右侧图标，保留进入搜索前的列表滚动位置。
@@ -1082,6 +1143,7 @@ export struct NotifyView {
       setTimeout(() => {
         this.searchCompactTransitionVisible = false;
         this.searchTransitioning = false;
+        this.publishSearchBackState();
         this.applyHoldingHandSide();
         const currentOffset = this.getListYOffset();
         if (currentOffset === undefined) {
@@ -1110,11 +1172,18 @@ export struct NotifyView {
         setTimeout(() => {
           this.searchTransitionVisible = false;
           this.searchTransitioning = false;
+          this.publishSearchBackState();
           this.applyHoldingHandSide();
         }, SEARCH_TRANSITION_DURATION);
       }, 16);
       return;
     }
+    // 降级搜索栏没有独立退场胶囊，也保留同样的返回门禁直到布局交接结束。
+    setTimeout(() => {
+      this.searchTransitioning = false;
+      this.publishSearchBackState();
+      this.applyHoldingHandSide();
+    }, SEARCH_TRANSITION_DURATION);
   }
 
   // 单服务或全部模式下 per-server 错误的非阻塞提示条（点击打开对应修复入口）

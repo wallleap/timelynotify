@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-21T01:31:40Z",
-  "updated_at": "2026-10-25T03:48:58Z",
+  "updated_at": "2026-10-25T04:00:14Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -81,9 +81,9 @@
     },
     "README.md": {
       "role": "index",
-      "sha256": "5fa6122b7e77e8adb2c9f7249e8ed5492d007925f18bd1a7885dfd05b62b4870",
-      "size": 46003,
-      "normalized_sha256": "5fa6122b7e77e8adb2c9f7249e8ed5492d007925f18bd1a7885dfd05b62b4870"
+      "sha256": "4666ace3196a4a63a5bcb783195302b7934c5533f5968edb1c0803e83db4d630",
+      "size": 46180,
+      "normalized_sha256": "4666ace3196a4a63a5bcb783195302b7934c5533f5968edb1c0803e83db4d630"
     },
     "SERVER_API.md": {
       "role": "index",
@@ -93,9 +93,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "f0a4e0e6b40c201b10ded3961e45d4b356678e166f2b41a767aba65da0fb3738",
-      "size": 47040,
-      "normalized_sha256": "f0a4e0e6b40c201b10ded3961e45d4b356678e166f2b41a767aba65da0fb3738"
+      "sha256": "17e65b7ae40226238a2e353f056b0df9051618944967a3f3378bc32d8244d9b5",
+      "size": 47201,
+      "normalized_sha256": "17e65b7ae40226238a2e353f056b0df9051618944967a3f3378bc32d8244d9b5"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -219,9 +219,9 @@
     },
     "entry/src/main/ets/common/Constant.ets": {
       "role": "index",
-      "sha256": "93c2ef952dd38824ff767da83c91c822c627be6395b6b38eb5f3ee950132fdab",
-      "size": 1521,
-      "normalized_sha256": "93c2ef952dd38824ff767da83c91c822c627be6395b6b38eb5f3ee950132fdab"
+      "sha256": "560a84766bdbc216555f46630e456b4fb84a2fe0a3b9f446e8fae3be7c9de1ad",
+      "size": 1793,
+      "normalized_sha256": "560a84766bdbc216555f46630e456b4fb84a2fe0a3b9f446e8fae3be7c9de1ad"
     },
     "entry/src/main/ets/components/ClientTokenDialog.ets": {
       "role": "index",
@@ -477,9 +477,9 @@
     },
     "entry/src/main/ets/pages/Index.ets": {
       "role": "index",
-      "sha256": "8ac576b420677ae3a7e0bcdb2585ed56932e343f2d47e0bb688f62b4b25071ee",
-      "size": 8194,
-      "normalized_sha256": "8ac576b420677ae3a7e0bcdb2585ed56932e343f2d47e0bb688f62b4b25071ee"
+      "sha256": "699ee9e41d9aee648c0a30a2790c19ccebcc7a7c20769ecc100166c29b29fc5e",
+      "size": 8751,
+      "normalized_sha256": "699ee9e41d9aee648c0a30a2790c19ccebcc7a7c20769ecc100166c29b29fc5e"
     },
     "entry/src/main/ets/pages/PersonalizationSettings.ets": {
       "role": "index",
@@ -657,9 +657,9 @@
     },
     "entry/src/main/ets/views/NotifyView.ets": {
       "role": "index",
-      "sha256": "56a9bbdf311c62308cd5792976b3a535f129f289b1715ef458b4c6085bc65343",
-      "size": 165846,
-      "normalized_sha256": "56a9bbdf311c62308cd5792976b3a535f129f289b1715ef458b4c6085bc65343"
+      "sha256": "654a2a10644effc51908f55a673bfbc185348951e6ddac7e277148edf006ce7d",
+      "size": 168909,
+      "normalized_sha256": "654a2a10644effc51908f55a673bfbc185348951e6ddac7e277148edf006ce7d"
     },
     "entry/src/main/ets/views/ServerView.ets": {
       "role": "index",

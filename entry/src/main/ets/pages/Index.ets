@@ -7,7 +7,14 @@ import {
   shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
-import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE, KEY_NOTIFY_EDITING, KEY_NOTIFY_SYNC_PROGRESS } from '../common/Constant';
+import {
+  KEY_HOME_TAB_INDEX,
+  KEY_INDEX_PAGE_VISIBLE,
+  KEY_NOTIFY_EDITING,
+  KEY_NOTIFY_SEARCH_BACK_ACTIVE,
+  KEY_NOTIFY_SEARCH_BACK_SIGNAL,
+  KEY_NOTIFY_SYNC_PROGRESS
+} from '../common/Constant';
 import { NotifySyncService } from '../services/NotifySyncService';
 import { AntiPeepService } from '../services/AntiPeepService';
 
@@ -30,6 +37,8 @@ struct Index {
   @State barSelectedIndex: number = 0;
   // 通知页多选编辑态（NotifyView 经 @StorageLink 写入）：onBackPress 据此拦截系统返回
   @StorageLink(KEY_NOTIFY_EDITING) notifyIsEditing: boolean = false;
+  // 包含搜索入场和退场，防止动画期间再次返回直接退出应用。
+  @StorageProp(KEY_NOTIFY_SEARCH_BACK_ACTIVE) notifySearchBackActive: boolean = false;
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgress: string = '';
   private hdsController: HdsTabsController = new HdsTabsController();
   private hdsSelectedIndex: number = 0;
@@ -110,6 +119,7 @@ struct Index {
   /** 根页面销毁时释放应用生命周期，独立路由显隐通过页面范围暂停防窥。 */
   aboutToDisappear(): void {
     this.pageVisible = false;
+    AppStorage.setOrCreate(KEY_NOTIFY_SEARCH_BACK_ACTIVE, false);
     AntiPeepService.stop();
   }
 
@@ -144,9 +154,14 @@ struct Index {
     AntiPeepService.setPageActive(this.pageVisible && (index === 0 || index === 1));
   }
 
-  // 系统返回拦截：通知页多选编辑态时，返回键/侧滑先退出多选而不是离开页面；
+  // 系统返回拦截：通知页先退出搜索或多选，搜索动画期间继续消费返回；
   // 返回 true 表示事件已消费，false 走默认返回行为（退出应用）
   onBackPress(): boolean {
+    if (this.currentIndex === 0 && this.notifySearchBackActive) {
+      const signal: number = AppStorage.get<number>(KEY_NOTIFY_SEARCH_BACK_SIGNAL) ?? 0;
+      AppStorage.setOrCreate(KEY_NOTIFY_SEARCH_BACK_SIGNAL, signal + 1);
+      return true;
+    }
     if (this.currentIndex === 0 && this.notifyIsEditing) {
       // 置 false 后经 @StorageLink 同步回 NotifyView，等价于 exitEditMode
       this.notifyIsEditing = false;

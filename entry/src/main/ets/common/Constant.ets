@@ -6,6 +6,10 @@ export const KEY_HOME_TAB_INDEX: string = 'homeTabIndex';
 /** AppStorage 键：通知页多选编辑态（NotifyView 持有并同步，Index onBackPress 读取以拦截返回退出编辑） */
 export const KEY_NOTIFY_EDITING: string = 'notifyIsEditing';
 
+/** 搜索及其转场期间由主页消费返回事件，退出操作仍交给 NotifyView 的取消流程。 */
+export const KEY_NOTIFY_SEARCH_BACK_ACTIVE: string = 'notifySearchBackActive';
+export const KEY_NOTIFY_SEARCH_BACK_SIGNAL: string = 'notifySearchBackSignal';
+
 /** AppStorage 键：通知列表刷新信号（EntryAbility 回前台/点击通知拉起时自增，NotifyView 监听变化后刷新列表） */
 export const KEY_NOTIFY_REFRESH_SIGNAL: string = 'notifyRefreshSignal';
 
