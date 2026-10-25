@@ -1095,6 +1095,7 @@ export struct NotifyView {
           this.searchCollapseProgress = ratio * ratio * (3 - 2 * ratio);
           this.searchCollapseTransitionVisible = true;
         }
+        this.updateSearchCollapsedFromOffset();
       }, SEARCH_COMPACT_TRANSITION_DURATION);
       return;
     }
@@ -1563,6 +1564,7 @@ export struct NotifyView {
         this.setServerErrorBannerCollapsed(false);
       },
       onListReachEnd: () => {
+        this.updateSearchCollapsedFromOffset();
         if (this.showScrollToBottom) {
           this.showScrollToBottom = false;
         }
@@ -2390,6 +2392,13 @@ export struct NotifyView {
       this.finishSearchExpandAtTop();
       return;
     }
+    // 短列表触底时可能仍在回顶插值区间；回弹不能让搜索入口停在半展开状态。
+    // 必须实际离顶，避免不足一屏时首次触底回调把完整搜索栏收起。
+    if (offset > SEARCH_EXPAND_OFFSET && offset < SEARCH_EXPAND_RANGE && this.scroller.isAtEnd()) {
+      this.searchMovingTowardTop = false;
+      this.setSearchCollapsed(true);
+      return;
+    }
     if (this.searchCollapsed && (this.searchMovingTowardTop || this.searchCollapseTransitionVisible) &&
       offset < SEARCH_EXPAND_RANGE) {
       const ratio: number = offset / SEARCH_EXPAND_RANGE;
@@ -2415,9 +2424,10 @@ export struct NotifyView {
     this.startSearchScrollSampling();
   }
 
-  /** 滚动停止只停止采样；半途位置不强制缩回。 */
+  /** 滚动停止后复核真实底部；普通半途位置继续保留滚动过渡。 */
   private handleSearchScrollStop(): void {
     this.stopSearchScrollSampling();
+    this.updateSearchCollapsedFromOffset();
   }
 
   /** 从 List 的滚动开始事件持续采样；系统回顶缺少逐帧回调时也能在到顶前展开。 */
@@ -2480,14 +2490,18 @@ export struct NotifyView {
     this.searchCollapseTransitionVisible = false;
   }
 
-  /** 离顶收缩动画；回顶展开改由滚动位置连续驱动。 */
+  /** 离顶收缩动画；短列表触底从当前胶囊进度续接，回顶仍由滚动位置连续驱动。 */
   private setSearchCollapsed(collapsed: boolean): void {
-    if (this.searchCollapsed === collapsed || this.searchActive || this.isEditing ||
+    const resumeCollapse: boolean = collapsed && this.searchCollapsed &&
+      this.searchCollapseTransitionVisible && this.searchCollapseProgress < 1;
+    if ((this.searchCollapsed === collapsed && !resumeCollapse) || this.searchActive || this.isEditing ||
       this.searchCollapseTransitioning) {
       return;
     }
     this.searchCollapseTransitioning = true;
-    this.searchCollapseProgress = collapsed ? 0 : 1;
+    if (!resumeCollapse) {
+      this.searchCollapseProgress = collapsed ? 0 : 1;
+    }
     this.searchCollapseTransitionVisible = true;
     this.getUIContext().animateTo({ duration: SEARCH_TRANSITION_DURATION, curve: Curve.EaseInOut }, () => {
       this.searchCollapseProgress = collapsed ? 1 : 0;
