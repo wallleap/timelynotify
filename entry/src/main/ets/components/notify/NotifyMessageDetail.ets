@@ -16,6 +16,29 @@ const DETAIL_BOTTOM_SPACING: number = 32;
 const DETAIL_DELETE_BUTTON_HEIGHT: number = 44;
 const DETAIL_ACTION_MAX_WIDTH: number = 420;
 const DETAIL_ACTION_SCROLL_THRESHOLD: number = 16;
+// 原生返回会先发取消选择、再发 Sheet 关闭；保留一帧供同次返回确认已消费。
+const DETAIL_SELECTION_CLEAR_DELAY: number = 16;
+
+/** 将详情内部的文字选择清理交给外层 Sheet 返回回调，不暴露组件状态。 */
+export class NotifyDetailSelectionController {
+  private handler: (() => boolean) | null = null;
+
+  /** 当前详情挂载时接管返回；旧实例卸载时不能解除新实例的处理函数。 */
+  attach(handler: () => boolean): void {
+    this.handler = handler;
+  }
+
+  detach(handler: () => boolean): void {
+    if (this.handler === handler) {
+      this.handler = null;
+    }
+  }
+
+  /** 返回 true 表示已清理文字选择，本次返回不应继续关闭详情。 */
+  clearSelection(): boolean {
+    return this.handler ? this.handler() : false;
+  }
+}
 
 /** 通知详情半模态内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
@@ -25,10 +48,19 @@ export struct NotifyMessageDetail {
   private actionScrollDistance: number = 0;
   // 与页面共用实测导航条高度，让滚动末尾的卡片避开底部手势区域。
   @StorageProp('navBarHeight') navBarHeight: number = 0;
-  @Prop message: NotifyMessage | null = null;
+  @Prop @Watch('resetTextSelection') message: NotifyMessage | null = null;
   @Prop useImmersiveMaterial: boolean = false;
   // 滚动控制器由页面持有并传入，供 Sheet 内 HdsNavigation.bindToScrollable 绑定标题栏动态模糊。
   detailScroller: Scroller = new Scroller();
+  // 标题、副标题、正文及每条收件箱文字各自绑定控制器，返回只清理当前有效选择。
+  selectionController: NotifyDetailSelectionController = new NotifyDetailSelectionController();
+  private titleTextController: TextController = new TextController();
+  private subtitleTextController: TextController = new TextController();
+  private bodyTextController: TextController = new TextController();
+  private inboxTextControllers: Map<number, TextController> = new Map<number, TextController>();
+  private selectedTextController: TextController | null = null;
+  private selectionClearTimer: number = -1;
+  private selectionBackHandler: () => boolean = (): boolean => this.clearTextSelection();
   onOpenUrl: (url: string) => void = (_url: string) => {};
   onCopyCode: (code: string) => void = (_code: string) => {};
   onCopyUrl: (url: string) => void = (_url: string) => {};
@@ -38,6 +70,71 @@ export struct NotifyMessageDetail {
   onCopyContent: (text: string) => void = (_text: string) => {};
   // 删除动作交给列表页复用现有确认弹窗和本地删除流程。
   onDelete: () => void = () => {};
+
+  aboutToAppear(): void {
+    this.selectionController.attach(this.selectionBackHandler);
+  }
+
+  aboutToDisappear(): void {
+    this.selectionController.detach(this.selectionBackHandler);
+    this.cancelSelectionClearTimer();
+    this.selectedTextController = null;
+    this.inboxTextControllers.clear();
+  }
+
+  /** 收件箱行复用同一控制器，避免渲染更新时丢失当前选择的归属。 */
+  private getInboxTextController(index: number): TextController {
+    let controller: TextController | undefined = this.inboxTextControllers.get(index);
+    if (!controller) {
+      controller = new TextController();
+      this.inboxTextControllers.set(index, controller);
+    }
+    return controller;
+  }
+
+  /** 旧文字的取消回调可能晚于新文字选中到达，只允许它清理自己的记录。 */
+  private onTextSelectionChanged(controller: TextController, start: number, end: number): void {
+    if (start >= 0 && end > start) {
+      this.cancelSelectionClearTimer();
+      this.selectedTextController = controller;
+    } else if (this.selectedTextController === controller) {
+      this.cancelSelectionClearTimer();
+      // 模拟器实测：系统返回的 -1/-1 回调早于 onWillDismiss，不能在此同步丢掉归属。
+      this.selectionClearTimer = setTimeout(() => {
+        this.selectionClearTimer = -1;
+        if (this.selectedTextController === controller) {
+          this.selectedTextController = null;
+        }
+      }, DETAIL_SELECTION_CLEAR_DELAY);
+    }
+  }
+
+  /** 新选择、主动清理或卸载都会使上一帧的取消选择回调失效。 */
+  private cancelSelectionClearTimer(): void {
+    if (this.selectionClearTimer >= 0) {
+      clearTimeout(this.selectionClearTimer);
+      this.selectionClearTimer = -1;
+    }
+  }
+
+  /** 关闭菜单本身可能保留高亮；同时清空选择范围以完整退出文字选择。 */
+  private clearTextSelection(): boolean {
+    const controller: TextController | null = this.selectedTextController;
+    this.cancelSelectionClearTimer();
+    if (!controller) {
+      return false;
+    }
+    this.selectedTextController = null;
+    controller.setTextSelection(0, 0, { menuPolicy: MenuPolicy.HIDE });
+    controller.closeSelectionMenu();
+    return true;
+  }
+
+  /** 同一详情承接另一条通知时不沿用前一条的高亮、手柄或控制器。 */
+  private resetTextSelection(): void {
+    this.clearTextSelection();
+    this.inboxTextControllers.clear();
+  }
 
   /** 只在用户明显改变滚动方向后切换按钮行，避免回弹和微小位移造成闪烁。 */
   private handleDetailScroll(scrollOffset: number, scrollState: ScrollState): void {
@@ -81,9 +178,12 @@ export struct NotifyMessageDetail {
 
   @Builder
   private body(text: string) {
-    Text() { this.textSpans(text) }
+    Text(undefined, { controller: this.bodyTextController }) { this.textSpans(text) }
       .blur(this.antiPeepBlur ? 22 : 0)
       .width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
+      .onTextSelectionChange((start: number, end: number) => {
+        this.onTextSelectionChanged(this.bodyTextController, start, end);
+      })
       .onClick(() => this.onCopyText(text, '内容'));
   }
 
@@ -92,7 +192,11 @@ export struct NotifyMessageDetail {
     Column({ space: 8 }) {
       ForEach(items, (line: string, index: number) => {
         // 点击每一条收件箱内容的非识别区域时，复制该条完整文本。
-        Text() { this.textSpans(line) }.blur(this.antiPeepBlur ? 22 : 0).width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
+        Text(undefined, { controller: this.getInboxTextController(index) }) { this.textSpans(line) }
+          .blur(this.antiPeepBlur ? 22 : 0).width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
+          .onTextSelectionChange((start: number, end: number) => {
+            this.onTextSelectionChanged(this.getInboxTextController(index), start, end);
+          })
           .onClick(() => this.onCopyText(line, '内容'));
       }, (line: string, index: number) => `${index}_${line}`)
     }.width('100%').alignItems(HorizontalAlign.Start);
@@ -290,14 +394,22 @@ export struct NotifyMessageDetail {
                 }
                 Column() {
                   if (this.message.title.length > 0) {
-                    Text(this.message.title).blur(this.antiPeepBlur ? 22 : 0).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
+                    Text(this.message.title, { controller: this.titleTextController })
+                      .blur(this.antiPeepBlur ? 22 : 0).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
                       .fontColor($r('app.color.color_text_primary')).width('100%').copyOption(CopyOptions.InApp)
+                      .onTextSelectionChange((start: number, end: number) => {
+                        this.onTextSelectionChanged(this.titleTextController, start, end);
+                      })
                       .onClick(() => this.onCopyText(this.message ? this.message.title : '', '标题'));
                   }
                   if (this.message.subtitle.length > 0) {
-                    Text(this.message.subtitle).blur(this.antiPeepBlur ? 22 : 0).fontSize(13).fontColor($r('app.color.color_brand'))
+                    Text(this.message.subtitle, { controller: this.subtitleTextController })
+                      .blur(this.antiPeepBlur ? 22 : 0).fontSize(13).fontColor($r('app.color.color_brand'))
                       .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                       .margin({ top: this.message.title.length > 0 ? 6 : 0 }).copyOption(CopyOptions.InApp)
+                      .onTextSelectionChange((start: number, end: number) => {
+                        this.onTextSelectionChanged(this.subtitleTextController, start, end);
+                      })
                       .onClick(() => this.onCopyText(this.message ? this.message.subtitle : '', '副标题'));
                   }
                 }

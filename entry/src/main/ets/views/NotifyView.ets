@@ -61,7 +61,7 @@ import {
   setSelectedMessage,
   toggleSelectedMessage
 } from '../components/notify/NotifySelectionUtils';
-import { NotifyMessageDetail } from '../components/notify/NotifyMessageDetail';
+import { NotifyDetailSelectionController, NotifyMessageDetail } from '../components/notify/NotifyMessageDetail';
 import { NotifyTitleBar } from '../components/notify/NotifyTitleBar';
 import { NotifyEditActionBar } from '../components/notify/NotifyEditActionBar';
 import { NotifyContentState } from '../components/notify/NotifyContentState';
@@ -296,6 +296,8 @@ export struct NotifyView {
   private searchMovingTowardTop: boolean = false;
   // 详情 Sheet 内部 List 的滚动控制器，与 Sheet 内 HdsNavigation.bindToScrollable 共享以驱动标题栏动态模糊。
   private detailScroller: Scroller = new Scroller();
+  // Sheet 返回优先交给当前详情清除文字选择，下一次返回才关闭详情。
+  private detailSelectionController: NotifyDetailSelectionController = new NotifyDetailSelectionController();
   // 「跳到底部」程序滚动进行中：屏蔽 handleListScroll 的方向判断，避免动画期间 onDidScroll 让按钮重现。
   private isAutoScrolling: boolean = false;
   // 自动贴底后继续隐藏按钮，直到真实手势把列表带离底部。
@@ -1475,6 +1477,7 @@ export struct NotifyView {
           blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
             ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
           systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
+          onWillDismiss: (action: DismissSheetAction) => this.handleDetailDismiss(action),
           onDisappear: () => {
             this.showDetail = false;
           }
@@ -1576,6 +1579,7 @@ export struct NotifyView {
         blurStyle: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded)
           ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
         systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
+        onWillDismiss: (action: DismissSheetAction) => this.handleDetailDismiss(action),
         onDisappear: () => {
           this.showDetail = false;
         }
@@ -1682,6 +1686,7 @@ export struct NotifyView {
       message: this.selectedMessage,
       useImmersiveMaterial: shouldUseLoadedMaterialStyle(this.immersiveLightEnabled, this.immersiveMaterialLoaded),
       detailScroller: this.detailScroller,
+      selectionController: this.detailSelectionController,
       onOpenUrl: (url: string) => {
         this.openUrl(url);
       },
@@ -1703,6 +1708,14 @@ export struct NotifyView {
         }
       }
     });
+  }
+
+  /** 只拦截有文字选择时的系统返回，其它弹窗关闭操作沿用系统行为。 */
+  private handleDetailDismiss(action: DismissSheetAction): void {
+    if (action.reason === DismissReason.PRESS_BACK && this.detailSelectionController.clearSelection()) {
+      return;
+    }
+    action.dismiss();
   }
 
   // ====== 各弹窗打开方法（复用组件，指定目标服务器） ======
