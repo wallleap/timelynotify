@@ -201,12 +201,12 @@ export struct NotifyMessageDetail {
       Column() {
         Divider().width('100%').strokeWidth(0.5).color($r('app.color.color_border_subtle'));
         Row() {
-          // 待复制文本：copy 非空时显示在最左边
+          // Copy 参数内容使用独立文案，copy 非空时显示在最左边。
           if (copy.length > 0) {
             Row({ space: 4 }) {
               Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
                 .objectFit(ImageFit.Contain).flexShrink(0);
-              Text('复制').fontSize(13).fontColor($r('app.color.color_text_secondary'));
+              Text('复制 Copy 参数内容').fontSize(13).fontColor($r('app.color.color_text_secondary'));
             }
             .layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
             .onClick(() => this.onCopyContent(copy));
