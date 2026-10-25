@@ -9,6 +9,8 @@ export class NotifyMessage extends Object {
   title: string = '';
   // 消息正文：gotify 用 message，timelynotify 可能用 body
   body: string = '';
+  // Markdown 原文单独保存；body 保留服务端提供的纯文本摘要，列表不解析 Markdown。
+  markdown: string = '';
   // 副标题（来自 extras.subtitle）
   subtitle: string = '';
   priority: number = 0;
@@ -74,6 +76,7 @@ export class NotifyMessage extends Object {
     const extrasVal: Object | undefined = raw['extras'];
     if (extrasVal && typeof extrasVal === 'object') {
       const extras = extrasVal as Record<string, Object>;
+      m.markdown = NotifyMessage.parseMarkdown(extras['markdown']);
       const subtitleVal: Object | undefined = extras['subtitle'];
       m.subtitle = typeof subtitleVal === 'string' ? subtitleVal : '';
       // icon 与 image 保持 Bark 原始语义，不能复用同一个本地字段。
@@ -157,6 +160,11 @@ export class NotifyMessage extends Object {
       const topIvVal: Object | undefined = raw['iv'];
       m.iv = typeof topIvVal === 'string' ? topIvVal : '';
     }
+    if (!m.hasMarkdown()) {
+      m.markdown = NotifyMessage.parseMarkdown(raw['markdown']);
+    }
+    // 仅有 Markdown 的第三方或加密载荷仍需有可搜索、可复制的正文回退。
+    if (m.body.length === 0 && m.hasMarkdown()) m.body = m.markdown;
     m.encrypted = m.ciphertext.length > 0;
     m.migrationReady = !m.encrypted;
 
@@ -180,6 +188,8 @@ export class NotifyMessage extends Object {
     const messageVal: Object | undefined = raw['message'];
     this.body = typeof bodyVal === 'string' ? bodyVal :
       (typeof messageVal === 'string' ? messageVal : '');
+    this.markdown = NotifyMessage.parseMarkdown(raw['markdown']);
+    if (this.body.length === 0 && this.hasMarkdown()) this.body = this.markdown;
     const subtitleVal: Object | undefined = raw['subtitle'];
     this.subtitle = typeof subtitleVal === 'string' ? subtitleVal : '';
     const iconVal: Object | undefined = raw['icon'];
@@ -209,6 +219,16 @@ export class NotifyMessage extends Object {
     }
     this.applyRetentionValues(raw, null);
     this.migrationReady = true;
+  }
+
+  /** 只把非空字符串正文视为 Markdown，布尔开关和普通正文中的符号不触发渲染。 */
+  hasMarkdown(): boolean {
+    return this.markdown.trim().length > 0 && !this.isDecryptionFailed();
+  }
+
+  /** 保留缩进及换行，避免 trim 改变代码块语义；空白或非字符串视为未提供。 */
+  private static parseMarkdown(value: Object | undefined): string {
+    return typeof value === 'string' && value.trim().length > 0 ? value : '';
   }
 
   // 判断本地历史是否已经达到 ttl 的绝对过期时间。

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-21T01:31:40Z",
-  "updated_at": "2026-10-25T08:08:55Z",
+  "updated_at": "2026-10-25T14:51:15Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -41,9 +41,9 @@
     },
     "AGENTS.md": {
       "role": "index",
-      "sha256": "362ff1bbb9b4ca3984e90386d4b01a2c7e4f034e2a8b0fa31d2e061363c5498d",
-      "size": 30854,
-      "normalized_sha256": "362ff1bbb9b4ca3984e90386d4b01a2c7e4f034e2a8b0fa31d2e061363c5498d"
+      "sha256": "43e28deefc67fea14b8a4309ce4208dd476b48b20a2b1f9fa4ef56af5cca32e0",
+      "size": 30926,
+      "normalized_sha256": "43e28deefc67fea14b8a4309ce4208dd476b48b20a2b1f9fa4ef56af5cca32e0"
     },
     "AppScope/app.json5": {
       "role": "index",
@@ -81,9 +81,9 @@
     },
     "README.md": {
       "role": "index",
-      "sha256": "ac8e7872d8c4b0067944f177fd9faed7fb20e8e74a7e0c90527deebc7fe0dfa8",
-      "size": 47679,
-      "normalized_sha256": "ac8e7872d8c4b0067944f177fd9faed7fb20e8e74a7e0c90527deebc7fe0dfa8"
+      "sha256": "88110bff5cd200fc934c0bb1be13ba79859d3dd08b4230646425bf78719b692e",
+      "size": 48674,
+      "normalized_sha256": "88110bff5cd200fc934c0bb1be13ba79859d3dd08b4230646425bf78719b692e"
     },
     "SERVER_API.md": {
       "role": "index",
@@ -93,9 +93,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "965d00e2d671d69b08ca8bb62fde97448bdefe6d513a37ce07a04e5253d3136e",
-      "size": 48171,
-      "normalized_sha256": "965d00e2d671d69b08ca8bb62fde97448bdefe6d513a37ce07a04e5253d3136e"
+      "sha256": "c5c87d0944dd5ec322a0193a467012688149543e0380ae514911028d1c0e53e1",
+      "size": 49044,
+      "normalized_sha256": "c5c87d0944dd5ec322a0193a467012688149543e0380ae514911028d1c0e53e1"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -159,9 +159,182 @@
     },
     "entry/.test/default/intermediates/assets/default/ets/sourceMaps.map": {
       "role": "observe",
-      "sha256": "7b5ab8c42c6e3b01f2459fa71684fc0062c98c574e3100bdebda8128955b3239",
-      "size": 1287882,
-      "normalized_sha256": "7b5ab8c42c6e3b01f2459fa71684fc0062c98c574e3100bdebda8128955b3239"
+      "sha256": "c40424603c3ea70fe17796c5ac86735e3aa6638c5cbaf09913016157672476f2",
+      "size": 1276738,
+      "normalized_sha256": "c40424603c3ea70fe17796c5ac86735e3aa6638c5cbaf09913016157672476f2"
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/base/cmex10.ttf": {
+      "role": "observe",
+      "sha256": "7b2b08616ff6c98ab58c1db654e22f24af17b47fbdd2d99443228d2bc66c3502",
+      "size": 19240
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/base/cmmi10.ttf": {
+      "role": "observe",
+      "sha256": "429148cd695008b52a2981e1e2fd94b62794c42fa007096b69299083ee0a2063",
+      "size": 26576
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/base/cmmib10.ttf": {
+      "role": "observe",
+      "sha256": "71f6917c54829ddf7abf34741d7d6d67598166692ce8560f29574336e972cb53",
+      "size": 24348
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/euler/eufb10.ttf": {
+      "role": "observe",
+      "sha256": "881440a3d0b72a2986278cd8ca68d4fecbe5304e5727bce168028de702db273f",
+      "size": 23744
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/euler/eufm10.ttf": {
+      "role": "observe",
+      "sha256": "db2e9aa9408a418ba59ef76ff61dd62a7f87e13803363b92cf8b12637bd9c183",
+      "size": 23668
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/bi10.ttf": {
+      "role": "observe",
+      "sha256": "aeb76088f5b7ca779a33871909f0732775365827320cfd95e868ac47ae214b0b",
+      "size": 3080
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/bx10.ttf": {
+      "role": "observe",
+      "sha256": "170a94f0c00fe322ced684bcae3c0651595b1634cc8087dab14c5ce41ce9101a",
+      "size": 2948
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/cmr10.ttf": {
+      "role": "observe",
+      "sha256": "303ba1ef9f3485a60201cb16cc263566820e872d8c982825accc0df53d3796d8",
+      "size": 25236
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/i10.ttf": {
+      "role": "observe",
+      "sha256": "87b2cfbfc8ce21aee68673240ba61f440f2699b3b83b962144d1c935d5a869cd",
+      "size": 3080
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/optional/cmbx10.ttf": {
+      "role": "observe",
+      "sha256": "83911bd4d1d40ff8cb0d21b774ce9a58046b7eb7950ddaf658edc18cb1bf8269",
+      "size": 18004
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/optional/cmbxti10.ttf": {
+      "role": "observe",
+      "sha256": "b1ea9eb622cc7169cfee11af84b53c2f2a85b0b95261577f70034f97528e3469",
+      "size": 24324
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/optional/cmss10.ttf": {
+      "role": "observe",
+      "sha256": "de04c3410627816a1414f577fcfcf2be19da92017b6bbba52931256e8bd66d2c",
+      "size": 12956
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/optional/cmssbx10.ttf": {
+      "role": "observe",
+      "sha256": "945ee3d582cf5d8334f16bc4b647f4166e461c38173060e6b1a8013d79a9f558",
+      "size": 25600
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/optional/cmssi10.ttf": {
+      "role": "observe",
+      "sha256": "7cd4403d0c1e77bac0592fd7f63b876a272429b5c3ea452179f7261d146b725b",
+      "size": 13920
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/optional/cmti10.ttf": {
+      "role": "observe",
+      "sha256": "6b89f04bd485bc43a4ab0be4a78ae70b0a09f165f9ce5a7baf7ca04179587c94",
+      "size": 32524
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/optional/cmtt10.ttf": {
+      "role": "observe",
+      "sha256": "04dc44c52573e1580c5bf9550b2a03fccfb02b848e568ec7e24210ece06c9933",
+      "size": 28160
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/r10.ttf": {
+      "role": "observe",
+      "sha256": "fd414c01ad9266f39d68196f95397c127d1e38b3751fcadb65fb6aeff5f5995a",
+      "size": 3944
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/sb10.ttf": {
+      "role": "observe",
+      "sha256": "fa664e667c2972e298d6597547a519d9522ce7e4f8d31fa0d4c48d1de33ebcec",
+      "size": 2968
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/sbi10.ttf": {
+      "role": "observe",
+      "sha256": "90d7d516a74d938940fd78b061c90328ebc4064275a087866ef3d9d5e18fe081",
+      "size": 2968
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/si10.ttf": {
+      "role": "observe",
+      "sha256": "65307d12b16ae89a17354b88c8f71e97eb4c8b6af7f66a1f5f9e6fbb98760d77",
+      "size": 2716
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/ss10.ttf": {
+      "role": "observe",
+      "sha256": "b21fbc77551f79fd906c6ea091979e840108b301d41677becf4bf669fa7f1241",
+      "size": 2536
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/latin/tt10.ttf": {
+      "role": "observe",
+      "sha256": "d408234bf41f51f98d109d41900b02b5cfff0e38b624bfbabeed0867f5888b44",
+      "size": 2652
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/licences/Knuth_License.txt": {
+      "role": "observe",
+      "sha256": "8dfa2050f50d341636748e7ab0ed175dde130e33d722678cfa99351c6aded331",
+      "size": 395,
+      "normalized_sha256": "8dfa2050f50d341636748e7ab0ed175dde130e33d722678cfa99351c6aded331"
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/licences/License_for_dsrom.txt": {
+      "role": "observe",
+      "sha256": "6c4321c24c91ce63ce7f77286207eddf59066b1daa9e393f3e697d578ce4789e",
+      "size": 260,
+      "normalized_sha256": "6c4321c24c91ce63ce7f77286207eddf59066b1daa9e393f3e697d578ce4789e"
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/licences/OFL.txt": {
+      "role": "observe",
+      "sha256": "c5f826ca32b56a30e0f22467be9f51068b747a6e461314b7650238c3b90ee819",
+      "size": 4630,
+      "normalized_sha256": "c5f826ca32b56a30e0f22467be9f51068b747a6e461314b7650238c3b90ee819"
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/cmbsy10.ttf": {
+      "role": "observe",
+      "sha256": "4187e269273d0f0c261e05a839c27496e60a69e8bd573ebe9970c29daed62395",
+      "size": 19804
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/cmsy10.ttf": {
+      "role": "observe",
+      "sha256": "fbec0615cc79ac80a439b71e44fb486b0b80fc82a3a370343dcb9a83190d3bf3",
+      "size": 22076
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/mhchem.ttf": {
+      "role": "observe",
+      "sha256": "45ca48f2c87f5e2b252e6cb56f6b40d9be835a9109c96724e3ebece789228541",
+      "size": 6384
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/msam10.ttf": {
+      "role": "observe",
+      "sha256": "896a21b5d61124cdd6a390ac76af6b13f5748a6b4a4cea2fb63c7ad412837ff4",
+      "size": 21684
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/msbm10.ttf": {
+      "role": "observe",
+      "sha256": "8ed7494575a25da918de700334b68fc4a6c608f734d5ecec5295acc86e303192",
+      "size": 29728
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/optional/dsrom10.ttf": {
+      "role": "observe",
+      "sha256": "ef05119469bb897a609d6d00e7dcbc289e25f6d094c69bbe2ff403684648c909",
+      "size": 9316
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/rsfs10.ttf": {
+      "role": "observe",
+      "sha256": "a32ac550c63959794542959b5e31de7b5a9b10d45fcbf4d204f0fb4fa68c24ff",
+      "size": 10592
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/special.ttf": {
+      "role": "observe",
+      "sha256": "affff5b681d69ffee7bd219500656fc83a5e462d1111dade37a388cef19b9ce2",
+      "size": 2760
+    },
+    "entry/.test/default/intermediates/res/default/resources/resfile/res/fonts/maths/stmary10.ttf": {
+      "role": "observe",
+      "sha256": "6fbb2fa122c5b14b1e8aa818657a3a31a7f22144aac22e21e57288defa6b66ea",
+      "size": 17416
     },
     "entry/build-profile.json5": {
       "role": "index",
@@ -181,11 +354,17 @@
       "size": 1002,
       "normalized_sha256": "1c127360e10209c7fe0a43e3edf9504c34ad33a75882904254d4acc2b33b6cc5"
     },
+    "entry/oh-package-lock.json5": {
+      "role": "index",
+      "sha256": "fd0534f62f3c0938c5db1846a843350f7767bcfc238e11e0c80a9127f9231a35",
+      "size": 4476,
+      "normalized_sha256": "fd0534f62f3c0938c5db1846a843350f7767bcfc238e11e0c80a9127f9231a35"
+    },
     "entry/oh-package.json5": {
       "role": "index",
-      "sha256": "c3ab4a8122311d19a890ceb7d6717fd06e1e2f6ab496aa1fc61e98a95a50a7cc",
-      "size": 173,
-      "normalized_sha256": "c3ab4a8122311d19a890ceb7d6717fd06e1e2f6ab496aa1fc61e98a95a50a7cc"
+      "sha256": "7805be920e49f9250b82aeb42bf137af1a8d2eceec304be3b3046934d967400f",
+      "size": 264,
+      "normalized_sha256": "7805be920e49f9250b82aeb42bf137af1a8d2eceec304be3b3046934d967400f"
     },
     "entry/src/main/ets/abilities/EntryAbility.ets": {
       "role": "index",
@@ -339,9 +518,9 @@
     },
     "entry/src/main/ets/components/notify/NotifyMessageDetail.ets": {
       "role": "index",
-      "sha256": "91ff8822226af0e9e05d9cace4dd363498974a17644355648e94d8897c4856f5",
-      "size": 24301,
-      "normalized_sha256": "91ff8822226af0e9e05d9cace4dd363498974a17644355648e94d8897c4856f5"
+      "sha256": "d713c9c632996a5e9de8f3e796956430d40b606bd2cd34f2ac350bb6d0647856",
+      "size": 30178,
+      "normalized_sha256": "d713c9c632996a5e9de8f3e796956430d40b606bd2cd34f2ac350bb6d0647856"
     },
     "entry/src/main/ets/components/notify/NotifyMessageList.ets": {
       "role": "index",
@@ -471,9 +650,9 @@
     },
     "entry/src/main/ets/model/NotifyMessage.ets": {
       "role": "index",
-      "sha256": "f81da2b102644db5a0a8cbd645d154b83db2b14e01aa55fa42444a3b8ae95a27",
-      "size": 16136,
-      "normalized_sha256": "f81da2b102644db5a0a8cbd645d154b83db2b14e01aa55fa42444a3b8ae95a27"
+      "sha256": "b7c0f66c5aef069ef1a3d9ecdc6f006ca23e977e56327c322194af36a6c563e9",
+      "size": 17231,
+      "normalized_sha256": "b7c0f66c5aef069ef1a3d9ecdc6f006ca23e977e56327c322194af36a6c563e9"
     },
     "entry/src/main/ets/model/ServerEntry.ets": {
       "role": "index",
@@ -579,9 +758,9 @@
     },
     "entry/src/main/ets/services/MessageCacheStore.ets": {
       "role": "index",
-      "sha256": "75653bb76c7d574e1419c61e0c0facc553d2f4ed589b8ddf76d518d0e32bd95b",
-      "size": 52980,
-      "normalized_sha256": "75653bb76c7d574e1419c61e0c0facc553d2f4ed589b8ddf76d518d0e32bd95b"
+      "sha256": "6b4a31d70fcd8f5067ad4b93169d670ec09d664bc99c23603fa3416587ace041",
+      "size": 53685,
+      "normalized_sha256": "6b4a31d70fcd8f5067ad4b93169d670ec09d664bc99c23603fa3416587ace041"
     },
     "entry/src/main/ets/services/MessageCryptoService.ets": {
       "role": "index",
@@ -591,9 +770,9 @@
     },
     "entry/src/main/ets/services/NotifyExportService.ets": {
       "role": "index",
-      "sha256": "7c3158c51f1d93ec727db7de261067a35a307973b70d833d977d477a689224d8",
-      "size": 8726,
-      "normalized_sha256": "7c3158c51f1d93ec727db7de261067a35a307973b70d833d977d477a689224d8"
+      "sha256": "0ecc2e948977553232b4a3a9d6d006423571b70280479c6b086239ff2a9eea59",
+      "size": 8878,
+      "normalized_sha256": "0ecc2e948977553232b4a3a9d6d006423571b70280479c6b086239ff2a9eea59"
     },
     "entry/src/main/ets/services/NotifyMessageService.ets": {
       "role": "index",
@@ -1245,15 +1424,21 @@
     },
     "entry/src/test/List.test.ets": {
       "role": "index",
-      "sha256": "af66a18ceaca24b0633e8ab468bf8bf5644f2dba6b10211e99706685d9da0585",
-      "size": 189,
-      "normalized_sha256": "af66a18ceaca24b0633e8ab468bf8bf5644f2dba6b10211e99706685d9da0585"
+      "sha256": "b875be83afaff01d0523cab862baa74f8275940d0ea37d1487fa97466dfcb18e",
+      "size": 251,
+      "normalized_sha256": "b875be83afaff01d0523cab862baa74f8275940d0ea37d1487fa97466dfcb18e"
     },
     "entry/src/test/LocalUnit.test.ets": {
       "role": "index",
       "sha256": "b6cf7239a86e81bc8153338b07b296c737323619024d2ee846d36cb3566c78e7",
       "size": 42294,
       "normalized_sha256": "b6cf7239a86e81bc8153338b07b296c737323619024d2ee846d36cb3566c78e7"
+    },
+    "entry/src/test/Markdown.test.ets": {
+      "role": "index",
+      "sha256": "51a80d9ba4fb72fd2808d6ee19da02a8532531e80d1daa90b4bd99617dc6ead5",
+      "size": 3276,
+      "normalized_sha256": "51a80d9ba4fb72fd2808d6ee19da02a8532531e80d1daa90b4bd99617dc6ead5"
     },
     "entry/src/test/TestPushExample.test.ets": {
       "role": "index",
@@ -1284,6 +1469,179 @@
       "sha256": "a14b4f025d753c860b4c2599f4d6405dbfefeef6d3e73eb4829c4ba49695f10a",
       "size": 200,
       "normalized_sha256": "a14b4f025d753c860b4c2599f4d6405dbfefeef6d3e73eb4829c4ba49695f10a"
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/base/cmex10.ttf": {
+      "role": "observe",
+      "sha256": "7b2b08616ff6c98ab58c1db654e22f24af17b47fbdd2d99443228d2bc66c3502",
+      "size": 19240
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/base/cmmi10.ttf": {
+      "role": "observe",
+      "sha256": "429148cd695008b52a2981e1e2fd94b62794c42fa007096b69299083ee0a2063",
+      "size": 26576
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/base/cmmib10.ttf": {
+      "role": "observe",
+      "sha256": "71f6917c54829ddf7abf34741d7d6d67598166692ce8560f29574336e972cb53",
+      "size": 24348
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/euler/eufb10.ttf": {
+      "role": "observe",
+      "sha256": "881440a3d0b72a2986278cd8ca68d4fecbe5304e5727bce168028de702db273f",
+      "size": 23744
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/euler/eufm10.ttf": {
+      "role": "observe",
+      "sha256": "db2e9aa9408a418ba59ef76ff61dd62a7f87e13803363b92cf8b12637bd9c183",
+      "size": 23668
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/bi10.ttf": {
+      "role": "observe",
+      "sha256": "aeb76088f5b7ca779a33871909f0732775365827320cfd95e868ac47ae214b0b",
+      "size": 3080
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/bx10.ttf": {
+      "role": "observe",
+      "sha256": "170a94f0c00fe322ced684bcae3c0651595b1634cc8087dab14c5ce41ce9101a",
+      "size": 2948
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/cmr10.ttf": {
+      "role": "observe",
+      "sha256": "303ba1ef9f3485a60201cb16cc263566820e872d8c982825accc0df53d3796d8",
+      "size": 25236
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/i10.ttf": {
+      "role": "observe",
+      "sha256": "87b2cfbfc8ce21aee68673240ba61f440f2699b3b83b962144d1c935d5a869cd",
+      "size": 3080
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/optional/cmbx10.ttf": {
+      "role": "observe",
+      "sha256": "83911bd4d1d40ff8cb0d21b774ce9a58046b7eb7950ddaf658edc18cb1bf8269",
+      "size": 18004
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/optional/cmbxti10.ttf": {
+      "role": "observe",
+      "sha256": "b1ea9eb622cc7169cfee11af84b53c2f2a85b0b95261577f70034f97528e3469",
+      "size": 24324
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/optional/cmss10.ttf": {
+      "role": "observe",
+      "sha256": "de04c3410627816a1414f577fcfcf2be19da92017b6bbba52931256e8bd66d2c",
+      "size": 12956
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/optional/cmssbx10.ttf": {
+      "role": "observe",
+      "sha256": "945ee3d582cf5d8334f16bc4b647f4166e461c38173060e6b1a8013d79a9f558",
+      "size": 25600
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/optional/cmssi10.ttf": {
+      "role": "observe",
+      "sha256": "7cd4403d0c1e77bac0592fd7f63b876a272429b5c3ea452179f7261d146b725b",
+      "size": 13920
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/optional/cmti10.ttf": {
+      "role": "observe",
+      "sha256": "6b89f04bd485bc43a4ab0be4a78ae70b0a09f165f9ce5a7baf7ca04179587c94",
+      "size": 32524
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/optional/cmtt10.ttf": {
+      "role": "observe",
+      "sha256": "04dc44c52573e1580c5bf9550b2a03fccfb02b848e568ec7e24210ece06c9933",
+      "size": 28160
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/r10.ttf": {
+      "role": "observe",
+      "sha256": "fd414c01ad9266f39d68196f95397c127d1e38b3751fcadb65fb6aeff5f5995a",
+      "size": 3944
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/sb10.ttf": {
+      "role": "observe",
+      "sha256": "fa664e667c2972e298d6597547a519d9522ce7e4f8d31fa0d4c48d1de33ebcec",
+      "size": 2968
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/sbi10.ttf": {
+      "role": "observe",
+      "sha256": "90d7d516a74d938940fd78b061c90328ebc4064275a087866ef3d9d5e18fe081",
+      "size": 2968
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/si10.ttf": {
+      "role": "observe",
+      "sha256": "65307d12b16ae89a17354b88c8f71e97eb4c8b6af7f66a1f5f9e6fbb98760d77",
+      "size": 2716
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/ss10.ttf": {
+      "role": "observe",
+      "sha256": "b21fbc77551f79fd906c6ea091979e840108b301d41677becf4bf669fa7f1241",
+      "size": 2536
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/latin/tt10.ttf": {
+      "role": "observe",
+      "sha256": "d408234bf41f51f98d109d41900b02b5cfff0e38b624bfbabeed0867f5888b44",
+      "size": 2652
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/licences/Knuth_License.txt": {
+      "role": "observe",
+      "sha256": "8dfa2050f50d341636748e7ab0ed175dde130e33d722678cfa99351c6aded331",
+      "size": 395,
+      "normalized_sha256": "8dfa2050f50d341636748e7ab0ed175dde130e33d722678cfa99351c6aded331"
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/licences/License_for_dsrom.txt": {
+      "role": "observe",
+      "sha256": "6c4321c24c91ce63ce7f77286207eddf59066b1daa9e393f3e697d578ce4789e",
+      "size": 260,
+      "normalized_sha256": "6c4321c24c91ce63ce7f77286207eddf59066b1daa9e393f3e697d578ce4789e"
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/licences/OFL.txt": {
+      "role": "observe",
+      "sha256": "c5f826ca32b56a30e0f22467be9f51068b747a6e461314b7650238c3b90ee819",
+      "size": 4630,
+      "normalized_sha256": "c5f826ca32b56a30e0f22467be9f51068b747a6e461314b7650238c3b90ee819"
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/cmbsy10.ttf": {
+      "role": "observe",
+      "sha256": "4187e269273d0f0c261e05a839c27496e60a69e8bd573ebe9970c29daed62395",
+      "size": 19804
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/cmsy10.ttf": {
+      "role": "observe",
+      "sha256": "fbec0615cc79ac80a439b71e44fb486b0b80fc82a3a370343dcb9a83190d3bf3",
+      "size": 22076
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/mhchem.ttf": {
+      "role": "observe",
+      "sha256": "45ca48f2c87f5e2b252e6cb56f6b40d9be835a9109c96724e3ebece789228541",
+      "size": 6384
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/msam10.ttf": {
+      "role": "observe",
+      "sha256": "896a21b5d61124cdd6a390ac76af6b13f5748a6b4a4cea2fb63c7ad412837ff4",
+      "size": 21684
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/msbm10.ttf": {
+      "role": "observe",
+      "sha256": "8ed7494575a25da918de700334b68fc4a6c608f734d5ecec5295acc86e303192",
+      "size": 29728
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/optional/dsrom10.ttf": {
+      "role": "observe",
+      "sha256": "ef05119469bb897a609d6d00e7dcbc289e25f6d094c69bbe2ff403684648c909",
+      "size": 9316
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/rsfs10.ttf": {
+      "role": "observe",
+      "sha256": "a32ac550c63959794542959b5e31de7b5a9b10d45fcbf4d204f0fb4fa68c24ff",
+      "size": 10592
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/special.ttf": {
+      "role": "observe",
+      "sha256": "affff5b681d69ffee7bd219500656fc83a5e462d1111dade37a388cef19b9ce2",
+      "size": 2760
+    },
+    "oh_modules/.ohpm/@cangjie-tpc+formula_hybrid@1.3.0/oh_modules/@cangjie-tpc/formula_hybrid/src/main/resources/resfile/res/fonts/maths/stmary10.ttf": {
+      "role": "observe",
+      "sha256": "6fbb2fa122c5b14b1e8aa818657a3a31a7f22144aac22e21e57288defa6b66ea",
+      "size": 17416
     },
     "signature/debug.cer": {
       "role": "index",

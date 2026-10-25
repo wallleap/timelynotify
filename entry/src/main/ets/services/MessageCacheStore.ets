@@ -18,6 +18,8 @@ const SQL_CREATE_MSG: string =
   'appid INTEGER NOT NULL DEFAULT 0, ' +
   'title TEXT NOT NULL DEFAULT \'\', ' +
   'body TEXT NOT NULL DEFAULT \'\', ' +
+  // Markdown 原文与纯文本正文分开落库，详情重开不依赖已清理的远端副本。
+  'markdown TEXT NOT NULL DEFAULT \'\', ' +
   'subtitle TEXT NOT NULL DEFAULT \'\', ' +
   'priority INTEGER NOT NULL DEFAULT 0, ' +
   'date TEXT NOT NULL DEFAULT \'\', ' +
@@ -104,6 +106,7 @@ function toBucket(deviceKey: string, m: NotifyMessage): relationalStore.ValuesBu
     'appid': m.appid,
     'title': m.title,
     'body': m.body,
+    'markdown': m.markdown,
     'subtitle': m.subtitle,
     'priority': m.priority,
     'date': m.date,
@@ -136,6 +139,7 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     m.appid = rs.getLong(rs.getColumnIndex('appid'));
     m.title = rs.getString(rs.getColumnIndex('title'));
     m.body = rs.getString(rs.getColumnIndex('body'));
+    m.markdown = rs.getString(rs.getColumnIndex('markdown'));
     m.subtitle = rs.getString(rs.getColumnIndex('subtitle'));
     m.priority = rs.getLong(rs.getColumnIndex('priority'));
     m.date = rs.getString(rs.getColumnIndex('date'));
@@ -198,6 +202,7 @@ export class MessageCacheStore {
    * v6 补充 archive/expires_at，接入 Bark isArchive 与 ttl，旧记录默认永久保留。
    * v7 拆分 icon/image；旧版 image 实际保存的是远程 icon，迁移到新 icon 列。
    * v8 补充 extra_id 列（Bark id），供删除流水 extraIds 墓碑按 extras.id 定位本地副本。
+   * v9 仅补充 markdown 原文列；旧行默认为空，保留全部历史和同步游标。
    * 检测到缺失列时逐列补齐：
    * - group_key 缺失：旧行分组无法回填，清空消息与元信息，让下次同步走 after=0 全量重新播种；
    * - url 缺失：仅补列即可，旧行本无 url（历史事实），无需清库重播种。
@@ -218,6 +223,7 @@ export class MessageCacheStore {
       let hasExpiresAt: boolean = false;
       let hasIcon: boolean = false;
       let hasExtraId: boolean = false;
+      let hasMarkdown: boolean = false;
       if (rs.goToFirstRow()) {
         const nameIndex: number = rs.getColumnIndex('name');
         do {
@@ -244,6 +250,8 @@ export class MessageCacheStore {
             hasIcon = true;
           } else if (col === 'extra_id') {
             hasExtraId = true;
+          } else if (col === 'markdown') {
+            hasMarkdown = true;
           }
         } while (rs.goToNextRow());
       }
@@ -313,6 +321,12 @@ export class MessageCacheStore {
         hilog.info(DOMAIN, TAG, '迁移：notify_message 补充 extra_id 列');
         await db.executeSql(
           `ALTER TABLE ${TABLE_MSG} ADD COLUMN extra_id INTEGER NOT NULL DEFAULT 0`);
+      }
+
+      // Markdown 缺失仅补列；旧通知原文无法凭正文推断，不清库或重置同步游标。
+      if (!hasMarkdown) {
+        await db.executeSql(
+          `ALTER TABLE ${TABLE_MSG} ADD COLUMN markdown TEXT NOT NULL DEFAULT ''`);
       }
 
       // 旧版本的 max_id 只代表“已拉到的最新消息”，不能证明历史已完整。

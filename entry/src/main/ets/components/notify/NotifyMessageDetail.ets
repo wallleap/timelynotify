@@ -1,3 +1,6 @@
+import { resourceManager } from '@kit.LocalizationKit';
+import { LongPressMenuInfo, Markdown, MarkdownController, TextSelectionActionItem } from '@luvi/lv-markdown-in';
+import { AppContextStore } from '../../common/AppContextStore';
 import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { NotifyMessage } from '../../model/NotifyMessage';
 import {
@@ -43,8 +46,13 @@ export class NotifyDetailSelectionController {
 /** 通知详情半模态内容；页面仅传入数据与交互回调，状态仍由 NotifyView 持有。 */
 @Component
 export struct NotifyMessageDetail {
-  @StorageProp(KEY_ANTI_PEEP_BLUR) antiPeepBlur: boolean = false;
+  @StorageProp(KEY_ANTI_PEEP_BLUR) @Watch('onPrivacyChanged') antiPeepBlur: boolean = false;
   @State private actionsVisible: boolean = true;
+  @State private markdownFailed: boolean = false;
+  // 每个详情实例独立控制选区，避免库的跨段落选择泄露到下一条通知。
+  private markdownController: MarkdownController = new MarkdownController();
+  private markdownSelecting: boolean = false;
+  private detailMounted: boolean = false;
   private actionScrollDistance: number = 0;
   // 与页面共用实测导航条高度，让滚动末尾的卡片避开底部手势区域。
   @StorageProp('navBarHeight') navBarHeight: number = 0;
@@ -72,10 +80,14 @@ export struct NotifyMessageDetail {
   onDelete: () => void = () => {};
 
   aboutToAppear(): void {
+    this.detailMounted = true;
+    this.configureMarkdown();
     this.selectionController.attach(this.selectionBackHandler);
   }
 
   aboutToDisappear(): void {
+    this.detailMounted = false;
+    this.clearMarkdownSelection();
     this.selectionController.detach(this.selectionBackHandler);
     this.cancelSelectionClearTimer();
     this.selectedTextController = null;
@@ -95,6 +107,7 @@ export struct NotifyMessageDetail {
   /** 旧文字的取消回调可能晚于新文字选中到达，只允许它清理自己的记录。 */
   private onTextSelectionChanged(controller: TextController, start: number, end: number): void {
     if (start >= 0 && end > start) {
+      this.clearMarkdownSelection();
       this.cancelSelectionClearTimer();
       this.selectedTextController = controller;
     } else if (this.selectedTextController === controller) {
@@ -119,10 +132,11 @@ export struct NotifyMessageDetail {
 
   /** 关闭菜单本身可能保留高亮；同时清空选择范围以完整退出文字选择。 */
   private clearTextSelection(): boolean {
+    const markdownSelected: boolean = this.clearMarkdownSelection();
     const controller: TextController | null = this.selectedTextController;
     this.cancelSelectionClearTimer();
     if (!controller) {
-      return false;
+      return markdownSelected;
     }
     this.selectedTextController = null;
     controller.setTextSelection(0, 0, { menuPolicy: MenuPolicy.HIDE });
@@ -133,7 +147,114 @@ export struct NotifyMessageDetail {
   /** 同一详情承接另一条通知时不沿用前一条的高亮、手柄或控制器。 */
   private resetTextSelection(): void {
     this.clearTextSelection();
+    this.markdownFailed = false;
     this.inboxTextControllers.clear();
+  }
+
+  /** 防窥时卸载富文本，只模糊普通 Text 回退，卡片、代码底色等表面不整体模糊。 */
+  private onPrivacyChanged(): void {
+    if (this.antiPeepBlur) this.clearTextSelection();
+  }
+
+  /** 主题变化时同步代码块，其余颜色使用应用资源自动切换。 */
+  onWillApplyTheme(): void {
+    const context = AppContextStore.getInstance().getContext();
+    if (context) {
+      const dark: boolean = context.resourceManager.getConfigurationSync().colorMode ===
+        resourceManager.ColorMode.DARK;
+      this.markdownController.setCodeBlockTheme(dark ? 'dark' : 'light');
+    }
+  }
+
+  /** Markdown 的所有复制入口都经应用回调，迟到事件必须重新检查保护状态。 */
+  private copyMarkdownText(text: string): void {
+    if (this.detailMounted && !this.antiPeepBlur) this.onCopyText(text, '内容');
+  }
+
+  private clearMarkdownSelection(): boolean {
+    const selected: boolean = this.markdownSelecting;
+    this.markdownSelecting = false;
+    this.markdownController.clearTextSelection();
+    return selected;
+  }
+
+  /** 不启用网页或 Worker 分支；选择、复制与链接继续由通知详情管理。 */
+  private configureMarkdown(): void {
+    this.markdownController
+      .setThreadRenderEnable(false)
+      .setMermaidEnable(false)
+      .setHtmlPreviewEnable(false)
+      .setHtmlPreviewJavaScriptEnable(false)
+      .setWebPreviewPoolEnable(false)
+      .setTextSize(15).setTextLineHeight(24)
+      .setTextColor($r('app.color.color_text_secondary'))
+      .setTitleColor($r('app.color.color_text_primary'))
+      .setHyperlinkTextColor($r('app.color.color_link'))
+      .setInlineCodeColor($r('app.color.color_brand'))
+      .setInlineCodeBackgroundColor($r('app.color.color_bg_action'))
+      .setQuoteTextColor($r('app.color.color_text_secondary'))
+      .setQuoteBackgroundColor($r('app.color.color_bg_action'))
+      .setTableBackgroundColor($r('app.color.color_bg_surface'))
+      .setTableTitleBackgroundColor($r('app.color.color_bg_action'))
+      .setTableTitleTextColor($r('app.color.color_text_primary'))
+      .setTextSelectionEnable(true)
+      .setLongPressMenuEnable(true)
+      .setLongPressMenuListener((info: LongPressMenuInfo) => {
+        if (!this.detailMounted || this.antiPeepBlur) return;
+        this.clearTextSelection();
+        this.markdownSelecting = true;
+        info.selectWholeBlock();
+      })
+      .setTextSelectionCopyListener((text: string) => this.copyMarkdownText(text))
+      .setCodeCopyListener((text: string) => this.copyMarkdownText(text))
+      .setHyperlinkClickListener((_title: string, url: string): boolean => {
+        // 仅放行常用网络/邮件协议；锚点和其它 scheme 不交由库启动页面。
+        if (this.detailMounted && !this.antiPeepBlur && /^(https?:\/\/|mailto:)/i.test(url)) {
+          this.onOpenUrl(url.replace(/^mailto:/i, ''));
+        }
+        return true;
+      })
+      .setImageClickListener((): boolean => true)
+      // 通知内图片只加载网络地址，不让外部正文访问应用或设备本地文件。
+      .setImageLoadProxy((url: string): string => /^https?:\/\//i.test(url) ? url : '')
+      .setTextSelectionActionItems([
+        new TextSelectionActionItem('复制', (selection) => {
+          this.copyMarkdownText(selection.selectedText);
+          this.clearMarkdownSelection();
+        }),
+        new TextSelectionActionItem('全选', (selection) => {
+          if (this.detailMounted && !this.antiPeepBlur) {
+            this.markdownSelecting = true;
+            selection.selectAll();
+          }
+        }),
+        new TextSelectionActionItem('取消', () => { this.clearMarkdownSelection(); })
+      ]);
+    this.markdownController.setTableNormalTextColor($r('app.color.color_text_secondary'));
+    this.markdownController.setTableInterleaveTextColor($r('app.color.color_text_secondary'));
+    this.markdownController.setTableCopyClickListener((text: string) => this.copyMarkdownText(text));
+    // 未提供回调时库会隐藏对应按钮；仅保留表格复制，不增加导出/全屏入口。
+    this.markdownController.setTableDownloadClickListener();
+    this.markdownController.setTableExpandClickListener();
+    this.onWillApplyTheme();
+  }
+
+  /** 只在显式传入 Markdown 时渲染；失败和防窥回退都保留原文且不修改存储。 */
+  @Builder
+  private markdownBody(text: string) {
+    if (this.antiPeepBlur || this.markdownFailed) {
+      this.body(this.message && this.message.body.length > 0 ? this.message.body : text);
+    } else {
+      Markdown({
+        text: text,
+        controller: this.markdownController,
+        callback: {
+          fail: () => {
+            if (this.detailMounted && this.message?.markdown === text) this.markdownFailed = true;
+          }
+        }
+      }).width('100%');
+    }
   }
 
   /** 只在用户明显改变滚动方向后切换按钮行，避免回弹和微小位移造成闪烁。 */
@@ -416,7 +537,9 @@ export struct NotifyMessageDetail {
                 .layoutWeight(1).alignItems(HorizontalAlign.Start);
               }
               .width('100%').alignItems(VerticalAlign.Top).margin({ bottom: 14 });
-              if (this.message.inboxContent.length > 0) {
+              if (this.message.hasMarkdown()) {
+                this.markdownBody(this.message.markdown);
+              } else if (this.message.inboxContent.length > 0) {
                 this.inbox(this.message.inboxContent);
               } else if (this.message.body.length > 0) {
                 this.body(this.message.body);
@@ -465,7 +588,7 @@ export struct NotifyMessageDetail {
           top: DETAIL_EDGE_SPACING });
         ListItem() {
           if (this.message) {
-            Text('点按标题或内容，可分别复制')
+            Text(this.message.hasMarkdown() ? '长按正文可选择复制' : '点按标题或内容，可分别复制')
               .width('100%').textAlign(TextAlign.Center)
               .fontSize(12).fontColor($r('app.color.color_text_hint'));
           }

@@ -13,6 +13,8 @@ const EXPORT_TAG: string = 'NotifyExportSvc';
 class NotifyExportExtras {
   device_key: string = '';
   subtitle: string = '';
+  // 与服务端 extras.markdown 一致，导出保留可再次渲染的原文。
+  markdown: string = '';
   icon: string = '';
   image: string = '';
   group: string = '';
@@ -190,6 +192,7 @@ export class NotifyExportService {
     raw.date = message.date.length > 0 ? message.date : message.createdAt;
     raw.extras.device_key = message.deviceKey.length > 0 ? originalDeviceKey(message.deviceKey) : deviceKey;
     raw.extras.icon = message.icon;
+    raw.extras.markdown = message.markdown;
     raw.extras.image = message.image;
     raw.extras.group = message.group;
     raw.extras.inboxcontent = message.inboxContent;
