@@ -5,7 +5,7 @@
 .gitignore[FC5T]: F:排除依赖、构建输出、本地环境与签名材料目录 | R:- | A:- | S:AOCI 主机集成配置仅供本机使用，不纳入版本控制
 AGENTS.md[SG8L]: F:规定 ArkTS 项目架构、修改授权、验证、Git 与 AOCI 认知治理规范 | R:- | A:- | S:源码改动须先提供文档并确认；Git提交推送及依赖配置修改需明确授权
 LICENSE[SG4T]: F:声明 MIT 授权、版权保留义务与免责条件 | R:- | A:- | S:-
-README.md[SG7M]: F:说明通知同步、加密、握姿、防窥页面范围与文字保护、权限接入及发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程，不可清空本地历史；防窥只在通知和服务页及其弹窗生效；系统蒙层由系统解除，签名需ACL
+README.md[SG7M]: F:说明通知同步、加密、握姿、防窥页面范围与模式、权限接入及发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程，不可清空本地历史；防窥仅通知和服务范围；全屏不叠加文字模糊，系统解除蒙层且签名需ACL
 SERVER_API.md[SN8L]: F:定义推送、设备注册、Gotify 消息与删除流水以及服务运维接口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:HTTP API、鉴权与加密载荷约定 | S:文档通用删除协议消费 ids/purges/reset；本客户端迁移链路另有只消费 extraIds 的约束
 build-profile.json5[FV8T]: F:配置 Harmony 产品、SDK 兼容范围、签名与 entry 模块 | R:code:entry/build-profile.json5,code:AppScope/app.json5 | A:default/release 产品 | S:target26兼容API23；CI剥离本地调试签名后整体重签，不复用本机加密材料
 code-linter.json5[FQ5T]: F:定义 ArkTS lint 范围、性能规则与密码算法安全规则 | R:- | A:files、ignore、ruleSet | S:-
@@ -138,7 +138,7 @@ NotifySyncService.ets[AM9L]: F:按前台生命周期编排多服务器注册重�
 ServerManager.ets[DD9L]: F:管理内置自定义服务器、设备鉴权、视图范围、实例历史及变更通知 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/ets/services/DeviceRegisterService.ets,code:entry/src/main/ets/config/ApiConfig.ets | A:ensureLoaded、switchTo、addServer、deleteServer、rememberHistory | S:读取前等初始化；内置地址动态来自ApiConfig，Key与Token单独持久化；至少保留一个服务器，旧来源不明记录仅聚合展示
 ThemeService.ets[DU6S]: F:持久化主题并即时应用颜色模式，保存沉浸偏好和重启应用 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/ets/common/AppContextStore.ets | A:applyColorMode、setImmersiveLightEnabled、restartApp | S:沉浸偏好只写盘，重启后生效，不能原地重建Tabs；重启不依赖onDestroy
 HoldingHandService.ets[IU6M]: F:检测系统与实际握姿能力，保存独立开关偏好，共享页面订阅并协调前后台与右侧降级 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start、stop、isEnabled、setEnabled、checkSupport | S:缺能力/801才缓存不支持；默认开启偏好独立，读完再订阅、写成才生效；检测复用订阅，无需监听即退；owner共享末个释放；取消失败留标记
-AntiPeepService.ets[IS8M]: F:检测防窥能力并保存偏好，仅在前台且页面范围激活时监听、发布文字保护并请求系统蒙层 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start/stop、setPageActive、checkSupport、getSettings、setEnabled、setMode | S:默认关闭，单JSON写成生效；页面范围默认关，离开清模糊并废弃迟到查询/窗口请求，返回重读；设置改偏好不激活监听；801才缓存不支持，失败留偏好；全屏先保护文字，蒙层按风险轮去重且由系统解除；签名需ACL
+AntiPeepService.ets[IS8M]: F:检测防窥能力并保存偏好，仅在前台指定页面按模式发布文字模糊或请求系统蒙层 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start/stop、setPageActive、checkSupport、getSettings、setEnabled、setMode | S:默认关闭，单JSON写成生效；页面范围默认关，离开清模糊并废弃迟到查询/窗口请求，返回重读；设置改偏好不激活监听；801才缓存不支持，失败留偏好；全屏仅系统蒙层，等待或失败也不模糊，按风险轮去重且由系统解除；签名需ACL
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/utils/===
 HttpUtil.ets[IN7S]: F:封装JSON请求、总时限取消、网络错误分类与耗时及HTTP资源释放 | R:- | A:HttpUtil、HttpResponse、formatNetworkFailure | S:连接异常code=0且保留系统码；默认总时限10s，放宽读取同步延长；到限终止且仅释放一次，迟到结果不回写；仅2xx解析JSON，非JSON留空

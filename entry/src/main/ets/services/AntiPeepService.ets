@@ -214,7 +214,7 @@ export class AntiPeepService {
       AntiPeepService.publishBlur(false);
       return;
     }
-    // 等待系统结果期间暂时隐藏通知内容，避免前台恢复时出现明文闪现。
+    // 模糊通知模式等待系统结果时先保护文字；全屏模式仅使用系统蒙层。
     AntiPeepService.publishBlur(true);
     try {
       if (!(await AntiPeepService.checkSupport())) {
@@ -248,7 +248,7 @@ export class AntiPeepService {
     }
   }
 
-  /** PASS 解除应用内容模糊；HIDE 全屏模式在系统蒙层完成前同样先保护通知。 */
+  /** HIDE 按所选模式保护：模糊通知发布文字状态，全屏模式请求系统蒙层。 */
   private static applyStatus(status: dlpAntiPeep.DlpAntiPeepStatus): void {
     if (!AntiPeepService.shouldProtect()) return;
     AntiPeepService.hide = status === dlpAntiPeep.DlpAntiPeepStatus.HIDE;
@@ -299,8 +299,10 @@ export class AntiPeepService {
     }
   }
 
+  /** 统一限制文字保护的模式，等待、HIDE 或蒙层失败都不能让全屏模式叠加模糊。 */
   private static publishBlur(hidden: boolean): void {
-    AppStorage.setOrCreate(KEY_ANTI_PEEP_BLUR, hidden);
+    AppStorage.setOrCreate(KEY_ANTI_PEEP_BLUR,
+      hidden && AntiPeepService.settings.mode === ANTI_PEEP_MODE_BLUR);
   }
 
   private static setError(message: string): void {
