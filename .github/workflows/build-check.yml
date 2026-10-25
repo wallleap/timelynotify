@@ -37,25 +37,27 @@ defaults:
 jobs:
   build-check:
     name: Build Check（debug + release）
-    runs-on: ${{ vars.BUILD_CHECK_RUNNER || 'ubuntu-latest' }}
+    # 固定托管系统版本；兼容旧变量 ubuntu-latest，自托管或自定义标签仍原样使用。
+    # JS Action 使用 Node.js 24；self-hosted Runner 至少 2.327.1（容器内 Git 认证需 2.329.0）。
+    runs-on: ${{ vars.BUILD_CHECK_RUNNER == 'ubuntu-latest' && 'ubuntu-24.04' || vars.BUILD_CHECK_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 25
     # 托管 runner 用自建 GHCR CI 镜像（预装 DevEco CLT + JDK17，见 docker-image.yml）；
     # 表达式结果为空串时 = 不使用容器（self-hosted 走机器上预装的 SDK）
-    container: ${{ (vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest') && (vars.CI_IMAGE || format('ghcr.io/{0}/harmonyos-ci:latest', github.repository_owner)) || '' }}
+    container: ${{ (vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest' || vars.BUILD_CHECK_RUNNER == 'ubuntu-24.04') && (vars.CI_IMAGE || format('ghcr.io/{0}/harmonyos-ci:latest', github.repository_owner)) || '' }}
     strategy:
       fail-fast: false
       matrix:
         build_mode: [ debug, release ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 检查沉浸光感工具边界
         run: bash .github/scripts/check-immersive-boundary.sh
 
       - name: Setup JDK 17（self-hosted 兜底）
         if: vars.BUILD_CHECK_RUNNER == 'self-hosted'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -65,7 +67,7 @@ jobs:
       #   CI 镜像布局：/opt/harmonyos-tools/command-line-tools/{bin, sdk/default, tool/node}
       # ------------------------------------------------------------
       - name: 容器内工具链环境（托管 runner）
-        if: vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest'
+        if: vars.BUILD_CHECK_RUNNER == '' || vars.BUILD_CHECK_RUNNER == 'ubuntu-latest' || vars.BUILD_CHECK_RUNNER == 'ubuntu-24.04'
         run: |
           set -euo pipefail
           # 容器内当前用户(root)与宿主 checkout 属主(runner)不一致，git 会报 dubious ownership 拒绝操作
@@ -103,7 +105,7 @@ jobs:
           ${OHPM:-ohpm} -v
 
       - name: 缓存 ohpm 依赖
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.ohpm

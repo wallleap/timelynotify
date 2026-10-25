@@ -17,9 +17,9 @@ oh-package.json5[FV6T]: F:声明OHPM工程模型、空运行依赖与官方测�
 check-immersive-boundary.sh[TQ7T]: F:扫描 ArkTS 代码并阻止组件绕过沉浸材质工具边界 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:脚本参数为可选源码根目录 | S:仅 ImmersiveUtil 可做能力判断与材质实例化；命中违规退出1，扫描错误退出2
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/.github/workflows/===
-build-check.yml[OV7S]: F:为推送与 PR 执行 debug/release 无签名 HAP 编译检查 | R:code:.github/scripts/check-immersive-boundary.sh,code:docker/ci/Dockerfile | A:push、pull_request、workflow_dispatch | S:本地单元测试为容错步骤，不能据流水线成功认定测试通过
-docker-image.yml[OV6S]: F:手动下载校验 CLT 并构建推送 GHCR CI 镜像 | R:code:docker/ci/Dockerfile | A:workflow_dispatch | S:镜像不随源码变更自动重建；CLT 压缩包按 SHA256 缓存并强制校验
-release.yml[OV8L]: F:由版本标签编译签名 APP、上传 AGC 并创建 GitHub Release | R:code:bin/versioning.sh,code:docker/ci/Dockerfile,code:entry/src/main/ets/generated/BuildInfo.ets | A:prepare、build-sign、upload-agc、github-release | S:整体重签 .app，不能拆包单签 HAP；AGC 只上传登记，正式提交发布仍由控制台完成
+build-check.yml[OV7S]: F:为推送与 PR 执行 debug/release 无签名 HAP 编译检查，采用 Node24 Action | R:code:.github/scripts/check-immersive-boundary.sh,code:docker/ci/Dockerfile | A:push、pull_request、workflow_dispatch | S:旧latest变量归一24.04并加载SDK容器；自托管保留预装SDK；本地单测失败容错，不能据流水线成功认定测试通过
+docker-image.yml[OV6S]: F:在固定 Ubuntu24.04 上手动下载校验 CLT 并构建推送 GHCR CI 镜像 | R:code:docker/ci/Dockerfile | A:workflow_dispatch | S:镜像不随源码变更自动重建；CLT压缩包按SHA256缓存并强制校验；宿主固定版本不改变Dockerfile基础镜像
+release.yml[OV8L]: F:由版本标签编译签名 APP、上传 AGC 并创建 GitHub Release，采用 Node24 Action | R:code:bin/versioning.sh,code:docker/ci/Dockerfile,code:entry/src/main/ets/generated/BuildInfo.ets | A:prepare、build-sign、upload-agc、github-release | S:整体重签.app不能拆包单签HAP；AGC仅登记需控制台发布；托管归一24.04且加载SDK容器，自托管需兼容Node24的Runner；多文件artifact保持archive=true供两路下载
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/AppScope/===
 app.json5[FC7T]: F:声明应用包标识、图标、名称与构建版本占位值 | R:code:.github/workflows/release.yml | A:app 元数据 | S:发版版本由 CI 从 tag 注入，本地占位值不是已发布版本
