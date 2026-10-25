@@ -15,7 +15,9 @@ export enum NotifyContextAction {
   Delete,
   ExpandGroup,
   SelectGroup,
-  DeleteGroup
+  DeleteGroup,
+  // 单条通知的详情入口，与访问消息中的链接区分。
+  ViewDetail
 }
 
 /** 固定本次长按的消息身份和分组范围，避免列表刷新后操作到其它行。 */
@@ -197,6 +199,8 @@ export struct NotifyContextMenu {
           .contentFontColor($r('app.color.color_error'))
           .onClick(() => this.choose(NotifyContextAction.DeleteGroup));
       } else {
+        MenuItem({ content: '查看详情' })
+          .onClick(() => this.choose(NotifyContextAction.ViewDetail));
         MenuItem({ content: '多选' })
           .onClick(() => this.choose(NotifyContextAction.Select));
         MenuItem({ content: '复制全文' })
@@ -290,10 +294,10 @@ export struct NotifyContextMenu {
     return Math.max(160, Math.min(this.overlayWidth - 32, 420));
   }
 
-  /** 最多六个菜单行，预留其高度；小屏优先缩短可滚动预览。 */
+  /** 最多七个菜单行，预留其高度；小屏优先缩短可滚动预览。 */
   private maxPreviewHeight(): number {
     const target: NotifyContextTarget = this.getTarget();
-    const rows: number = target.grouped ? 3 : 3 + (target.message.copy ? 1 : 0) + (target.message.url ? 2 : 0);
+    const rows: number = target.grouped ? 3 : 4 + (target.message.copy ? 1 : 0) + (target.message.url ? 2 : 0);
     return Math.max(80, Math.min(320, this.overlayHeight - this.targetTop() - rows * 48 - 40 - this.navBarHeight));
   }
 

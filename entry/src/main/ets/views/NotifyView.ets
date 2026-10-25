@@ -2784,7 +2784,10 @@ export struct NotifyView {
       }
       return;
     }
-    if (action === NotifyContextAction.Select) {
+    if (action === NotifyContextAction.ViewDetail) {
+      // 菜单退场并重新核对本地记录后复用详情入口，保留搜索状态与列表位置。
+      this.openMessageDetail(message);
+    } else if (action === NotifyContextAction.Select) {
       this.selectFromContext(message, generation, scope);
     } else if (action === NotifyContextAction.CopyAll) {
       this.copyText(buildNotifyCopyText(message), '全文');
