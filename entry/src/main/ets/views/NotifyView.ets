@@ -53,7 +53,9 @@ import {
 } from '../common/Constant';
 import { NotifySyncService } from '../services/NotifySyncService';
 import showToast from '../components/showToast';
-import { NotifySection } from '../components/notify/NotifyViewTypes';
+import { KEY_ANTI_PEEP_BLUR } from '../services/AntiPeepService';
+import { NotifyContextAction, NotifyContextMenu, NotifyContextTarget } from '../components/notify/NotifyContextMenu';
+import { buildNotifyCopyText, NotifySection } from '../components/notify/NotifyViewTypes';
 import {
   areGroupMessagesSelected,
   hasSelectedMessage,
@@ -186,6 +188,8 @@ export struct NotifyView {
   // 是否启用分组显示（右下角浮动按钮切换，持久化到 Preferences）
   @State groupEnabled: boolean = true;
   @State searchActive: boolean = false;
+  // 菜单绑定也依赖转场门禁，须可观察以便动画结束时重新启用长按。
+  @State searchTransitioning: boolean = false;
   @State searchPreviewExiting: boolean = false;
   @State searchQuery: string = '';
   @State searchResults: NotifyMessage[] = [];
@@ -279,10 +283,11 @@ export struct NotifyView {
   // 原列表在关键词搜索期间隐藏；记录首次隐藏前的偏移以便清空或取消时恢复。
   private searchBaseOffset: number = 0;
   private searchBaseOffsetSaved: boolean = false;
-  // 阻止过渡中重复点击造成标题栏与临时胶囊状态错位。
-  private searchTransitioning: boolean = false;
   // 返回发生在搜索/握姿动画中时合并等待，避免定时器叠加或交叉播放动画。
   private searchBackTimer: number = -1;
+  // 菜单多选等搜索退场完成再提交，代次使离页和切服务后的异步结果失效。
+  private contextActionGeneration: number = 0;
+  private contextSelectionTimer: number = -1;
   // 滚动方向可能在动画中改变；结束时按列表实际位置校正一次。
   private searchCollapseTransitioning: boolean = false;
   // 收缩动画中点击胶囊时，等该动画收尾后继续进入搜索，避免点击无响应。
@@ -339,6 +344,7 @@ export struct NotifyView {
       });
     this.loadExpandedGroups();
     this.onChange = (_list: ServerEntry[], _curId: string): void => {
+      this.cancelContextSelection();
       this.resetSearchBottomButton();
       this.suppressBottomButtonUntilUserScroll = false;
       this.bottomButtonUserTouchStarted = false;
@@ -372,6 +378,7 @@ export struct NotifyView {
 
   aboutToDisappear() {
     this.holdingHandViewMounted = false;
+    this.cancelContextSelection();
     if (this.searchBackTimer >= 0) {
       clearTimeout(this.searchBackTimer);
       this.searchBackTimer = -1;
@@ -766,16 +773,12 @@ export struct NotifyView {
         } else {
           ForEach(this.searchResults, (message: NotifyMessage) => {
             ListItem() {
-              NotifyMessageCard({
+              NotifyContextMenu({
                 message: message,
-                // 保留分组空词预览首条的共享转场，底层分组数据源仍不改写。
-                contentTransitionId: this.groupEnabled && this.searchQuery.trim().length === 0 &&
-                  this.messages.length > 0 && notifyIdentity(message) === notifyIdentity(this.messages[0]) ?
-                  `gmc:${message.group}` : '',
-                onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
-                onOpenUrl: (url: string) => this.openUrl(url),
-                onCopyCode: (code: string) => this.copyCode(code),
-                onCopyUrl: (url: string) => this.copyUrl(url)
+                scope: this.getVisibleHistoryKeys().join('|'),
+                disabled: this.isEditing || this.searchTransitioning || this.searchPreviewExiting,
+                onAction: (action: NotifyContextAction, target: NotifyContextTarget) => this.handleContextAction(action, target),
+                content: (): void => { this.searchMessageCard(message); }
               });
             }
             .margin({ bottom: NOTIFY_LIST_ROW_GAP });
@@ -840,6 +843,22 @@ export struct NotifyView {
     .backgroundColor($r('app.color.color_bg_page'))
     // 分组时平铺层一直可见；非分组时仍只在有关键词时覆盖原列表。
     .visibility(this.groupEnabled || this.searchQuery.trim().length > 0 ? Visibility.Visible : Visibility.Hidden);
+  }
+
+  /** 搜索卡片继续复用共享内容过渡，只在外层增加长按预览。 */
+  @Builder
+  private searchMessageCard(message: NotifyMessage) {
+    NotifyMessageCard({
+      message: message,
+      // 保留分组空词预览首条的共享转场，底层分组数据源仍不改写。
+      contentTransitionId: this.groupEnabled && this.searchQuery.trim().length === 0 &&
+        this.messages.length > 0 && notifyIdentity(message) === notifyIdentity(this.messages[0]) ?
+        `gmc:${message.group}` : '',
+      onOpen: (item: NotifyMessage) => this.openMessageDetail(item),
+      onOpenUrl: (url: string) => this.openUrl(url),
+      onCopyCode: (code: string) => this.copyCode(code),
+      onCopyUrl: (url: string) => this.copyUrl(url)
+    });
   }
 
   /** 输入继续防抖；点击入口时立即准备快照与首屏查询，不在挂载结果层时清空动画目标。 */
@@ -1600,6 +1619,9 @@ export struct NotifyView {
   listView() {
     NotifyMessageList({
       messages: this.messages,
+      contextMenuScope: this.getVisibleHistoryKeys().join('|'),
+      contextMenuDisabled: this.searchActive && this.isSearchPreviewVisible() || this.searchTransitioning,
+      onContextAction: (action: NotifyContextAction, target: NotifyContextTarget) => this.handleContextAction(action, target),
       isEditing: this.isEditing,
       selectedIds: this.selectedIds,
       expandedGroups: this.expandedGroups,
@@ -2729,6 +2751,84 @@ export struct NotifyView {
     this.isAutoScrolling = false;
   }
 
+  /** 原生菜单已完全收起后执行；按来源和 ID 查库，避免通知过期或删除后仍操作旧快照。 */
+  private async handleContextAction(action: NotifyContextAction, target: NotifyContextTarget): Promise<void> {
+    if (!this.canRunContextAction() || this.isEditing ||
+      this.getVisibleHistoryKeys().indexOf(target.message.deviceKey) < 0) return;
+    this.cancelContextSelection();
+    const generation: number = this.contextActionGeneration;
+    const scope: string = this.getVisibleHistoryKeys().join('|');
+    const message: NotifyMessage | null =
+      await MessageCacheStore.loadByDeviceAndId(target.message.deviceKey, target.message.id);
+    if (generation !== this.contextActionGeneration || !this.canRunContextAction() ||
+      this.isEditing || scope !== this.getVisibleHistoryKeys().join('|')) return;
+    if (!message || message.isExpired()) {
+      showToast(this.getUIContext(), '通知已过期或已删除');
+      return;
+    }
+    if (target.grouped) {
+      // 折叠分组只交付分组操作，不能悄悄降级成最新单条通知操作。
+      if (!this.groupEnabled || message.group !== target.groupKey) return;
+      const section: NotifySection = { key: target.groupKey, groupKey: target.groupKey,
+        grouped: true, messages: [message], total: this.groupTotals.get(target.groupKey) ?? target.groupTotal };
+      if (action === NotifyContextAction.ExpandGroup) {
+        if (!this.isGroupExpanded(target.groupKey)) this.toggleGroupExpanded(target.groupKey);
+      } else if (action === NotifyContextAction.SelectGroup) {
+        const ids: string[] = await MessageCacheStore.getGroupIdentities(this.getVisibleHistoryKeys(), target.groupKey);
+        if (generation !== this.contextActionGeneration || !this.canRunContextAction() || this.isEditing ||
+          scope !== this.getVisibleHistoryKeys().join('|') || ids.length === 0) return;
+        this.enterEditMode();
+        this.selectedIds = ids;
+      } else if (action === NotifyContextAction.DeleteGroup) {
+        this.confirmDeleteGroup(section);
+      }
+      return;
+    }
+    if (action === NotifyContextAction.Select) {
+      this.selectFromContext(message, generation, scope);
+    } else if (action === NotifyContextAction.CopyAll) {
+      this.copyText(buildNotifyCopyText(message), '全文');
+    } else if (action === NotifyContextAction.CopyContent && message.copy.length > 0) {
+      this.copyContent(message.copy);
+    } else if (action === NotifyContextAction.CopyUrl && message.url.length > 0) {
+      this.copyUrl(message.url);
+    } else if (action === NotifyContextAction.OpenUrl && message.url.length > 0) {
+      this.openUrl(message.url);
+    } else if (action === NotifyContextAction.Delete) {
+      this.confirmDeleteOne(message);
+    }
+  }
+
+  /** 搜索多选沿用取消动画，等待退场和握姿布局交接后再进入编辑态。 */
+  private selectFromContext(message: NotifyMessage, generation: number, scope: string): void {
+    if (generation !== this.contextActionGeneration || !this.canRunContextAction() ||
+      this.isEditing || scope !== this.getVisibleHistoryKeys().join('|') || message.isExpired()) return;
+    if (this.searchActive || this.searchTransitioning || this.searchCollapseTransitioning || this.handSwitching) {
+      if (this.searchActive) this.handleSearchBack();
+      this.contextSelectionTimer = setTimeout(() => {
+        this.contextSelectionTimer = -1;
+        this.selectFromContext(message, generation, scope);
+      }, SEARCH_SCROLL_SAMPLE_MS);
+      return;
+    }
+    this.enterEditMode();
+    this.setSelected(notifyIdentity(message), true);
+  }
+
+  /** 防窥或离开通知范围后，菜单退场及查库的迟到回调不得复制或打开内容。 */
+  private canRunContextAction(): boolean {
+    return this.holdingHandViewMounted && this.indexPageVisible && this.homeTabIndex === 0 &&
+      AppStorage.get<boolean>(KEY_ANTI_PEEP_BLUR) !== true;
+  }
+
+  private cancelContextSelection(): void {
+    this.contextActionGeneration++;
+    if (this.contextSelectionTimer >= 0) {
+      clearTimeout(this.contextSelectionTimer);
+      this.contextSelectionTimer = -1;
+    }
+  }
+
   /** 打开消息详情，供列表卡片统一回调。 */
   private openMessageDetail(message: NotifyMessage): void {
     this.selectedMessage = message;
@@ -2910,6 +3010,7 @@ export struct NotifyView {
   }
 
   private onHomeTabIndexChanged(): void {
+    this.cancelContextSelection();
     this.updateHoldingHandSubscription();
     if (this.isEditing) {
       this.exitEditMode();
@@ -2921,6 +3022,7 @@ export struct NotifyView {
   }
 
   private onPageVisibleChanged(): void {
+    if (!this.indexPageVisible) this.cancelContextSelection();
     this.updateHoldingHandSubscription();
     if (this.indexPageVisible && this.homeTabIndex === 0) {
       this.onSyncRevisionChanged();

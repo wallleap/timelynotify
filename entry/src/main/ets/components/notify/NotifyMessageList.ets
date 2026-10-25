@@ -1,6 +1,7 @@
 import { NotifyMessage } from '../../model/NotifyMessage';
 import { notifyIdentity } from '../../utils/NotifyIdentity';
 import { buildNotifySections, NotifySection } from './NotifyViewTypes';
+import { NotifyContextAction, NotifyContextMenu, NotifyContextTarget } from './NotifyContextMenu';
 import { NotifyMessageCard } from './NotifyMessageCard';
 import { NotifyGroupCard } from './NotifyGroupCard';
 import { NotifyGroupExpandedHeader } from './NotifyGroupExpandedHeader';
@@ -35,6 +36,9 @@ const AUTO_SCROLL_SMOOTHING: number = 2;
 export struct NotifyMessageList {
   @Prop @Watch('reloadDataSource') messages: NotifyMessage[] = [];
   @Prop isEditing: boolean = false;
+  // 搜索或页面转场期间，隐藏的底层列表不响应长按。
+  @Prop contextMenuDisabled: boolean = false;
+  @Prop contextMenuScope: string = '';
   @Prop @Watch('reloadDataSource') selectedIds: string[] = [];
   @Prop @Watch('reloadDataSource') expandedGroups: string[] = [];
   @Prop groupCardHeights: Map<string, number> = new Map<string, number>();
@@ -64,6 +68,8 @@ export struct NotifyMessageList {
   private autoScrollTargetIndex: number = -1;
   // 平滑滚动兜底定时器：无位移时 onScrollStop 可能不触发，到期强制收尾，避免标记卡死。
   private autoScrollTimeoutId: number = -1;
+
+  onContextAction: (action: NotifyContextAction, target: NotifyContextTarget) => void = () => {};
 
   onListTopChange: (top: number) => void = (_top: number) => {
   };
@@ -140,20 +146,12 @@ export struct NotifyMessageList {
       LazyForEach(this.dataSource, (row: NotifyListRow) => {
         if (row.type === NOTIFY_LIST_ROW_MESSAGE && row.message !== null) {
           ListItem() {
-            NotifyMessageCard({
-              message: row.message,
-              isEditing: this.isEditing,
-              selected: this.isSelected(notifyIdentity(row.message)),
-              onSelect: (id: string) => this.onToggleSelect(id),
-              // 过滤 select 属性回显触发的 onChange（如全选后属性同步），避免误操作
-              onSelectionChange: (id: string, selected: boolean) => {
-                if (selected === this.isSelected(id)) return;
-                this.onSetSelected(id, selected);
-              },
-              onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
-              onOpenUrl: (url: string) => this.onOpenUrl(url),
-              onCopyCode: (code: string) => this.onCopyCode(code),
-              onCopyUrl: (url: string) => this.onCopyUrl(url)
+            NotifyContextMenu({
+              message: row.message!,
+              scope: this.contextMenuScope,
+              disabled: this.isEditing || this.contextMenuDisabled,
+              onAction: (action: NotifyContextAction, target: NotifyContextTarget) => this.onContextAction(action, target),
+              content: (): void => { this.contextMessageCard(row); }
             });
           }
           .margin({ bottom: row.spaceAfter })
@@ -166,23 +164,13 @@ export struct NotifyMessageList {
           });
         } else if (row.type === NOTIFY_LIST_ROW_GROUP_CARD && row.section !== null) {
           ListItem() {
-            NotifyGroupCard({
-              section: row.section,
-              isEditing: this.isEditing,
-              groupSelected: this.groupSelected(row.section.messages),
-              selectedCount: this.groupSelectedCount(row.section!),
-              cardHeight: this.groupCardHeights.get(row.section.groupKey) ?? 0,
-              onToggleSelection: () => this.onToggleGroupSelection(row.section!.messages),
-              // 过滤 select 属性回显触发的 onChange：目标状态与当前 group 选中态一致时不处理，
-              // 避免取消组内单条后 groupSelected 变 false 又回调取消整组
-              onSelectionChange: (selected: boolean) => {
-                if (selected === this.groupSelected(row.section!.messages)) return;
-                this.onSetGroupSelection(row.section!.messages, selected);
-              },
-              onOpen: () => this.onOpenGroup(row.section!),
-              onHeightChange: (height: number) => this.onHeightChange(row.section!.groupKey, height),
-              onOpenUrl: (url: string) => this.onOpenUrl(url),
-              onCopyCode: (code: string) => this.onCopyCode(code)
+            NotifyContextMenu({
+              message: row.section!.messages[0], grouped: true,
+              groupKey: row.section!.groupKey, groupTotal: row.section!.total,
+              scope: this.contextMenuScope,
+              disabled: this.isEditing || this.contextMenuDisabled,
+              onAction: (action: NotifyContextAction, target: NotifyContextTarget) => this.onContextAction(action, target),
+              content: (): void => { this.contextGroupCard(row); }
             });
           }
           .margin({ bottom: row.spaceAfter })
@@ -199,22 +187,12 @@ export struct NotifyMessageList {
           }.margin({ bottom: row.spaceAfter })
         } else if (row.type === NOTIFY_LIST_ROW_GROUP_MESSAGE && row.message !== null && row.section !== null) {
           ListItem() {
-            NotifyGroupMessageRow({
-              message: row.message,
-              isLast: row.indexInGroup === row.section.messages.length - 1 && !this.groupHasMore(row.section),
-              isEditing: this.isEditing,
-              selected: this.isSelected(notifyIdentity(row.message)),
-              contentTransitionId: row.indexInGroup === 0 ? `gmc:${row.section.groupKey}` : '',
-              onSelect: (id: string) => this.onToggleSelect(id),
-              // 过滤 select 属性回显触发的 onChange，避免全选/组选后属性同步误操作
-              onSelectionChange: (id: string, selected: boolean) => {
-                if (selected === this.isSelected(id)) return;
-                this.onSetSelected(id, selected);
-              },
-              onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
-              onOpenUrl: (url: string) => this.onOpenUrl(url),
-              onCopyCode: (code: string) => this.onCopyCode(code),
-              onCopyUrl: (url: string) => this.onCopyUrl(url)
+            NotifyContextMenu({
+              message: row.message!,
+              scope: this.contextMenuScope,
+              disabled: this.isEditing || this.contextMenuDisabled,
+              onAction: (action: NotifyContextAction, target: NotifyContextTarget) => this.onContextAction(action, target),
+              content: (): void => { this.contextGroupRow(row); }
             });
             // 外层 ListItem 不绘制卡片背景，避免复用后旧的方角背景遮住新末条的圆角；
             // NotifyGroupMessageRow 自身依据 isLast 负责背景、裁剪和圆角。
@@ -310,6 +288,71 @@ export struct NotifyMessageList {
       if (this.autoScrollState === AUTO_SCROLL_SMOOTHING) {
         this.finishAutoScroll();
       }
+    });
+  }
+
+  /** 长按容器复用原卡片，Builder 单独声明以保留 ArkUI 编译语义。 */
+  @Builder
+  private contextMessageCard(row: NotifyListRow) {
+    NotifyMessageCard({
+      message: row.message!,
+      isEditing: this.isEditing,
+      selected: this.isSelected(notifyIdentity(row.message!)),
+      onSelect: (id: string) => this.onToggleSelect(id),
+      // 过滤 select 属性回显触发的 onChange（如全选后属性同步），避免误操作
+      onSelectionChange: (id: string, selected: boolean) => {
+        if (selected === this.isSelected(id)) return;
+        this.onSetSelected(id, selected);
+      },
+      onOpen: (message: NotifyMessage) => this.onOpenMessage(message),
+      onOpenUrl: (url: string) => this.onOpenUrl(url),
+      onCopyCode: (code: string) => this.onCopyCode(code),
+      onCopyUrl: (url: string) => this.onCopyUrl(url)
+    });
+  }
+
+  /** 长按容器复用原卡片，Builder 单独声明以保留 ArkUI 编译语义。 */
+  @Builder
+  private contextGroupCard(row: NotifyListRow) {
+    NotifyGroupCard({
+      section: row.section!,
+      isEditing: this.isEditing,
+      groupSelected: this.groupSelected(row.section!.messages),
+      selectedCount: this.groupSelectedCount(row.section!),
+      cardHeight: this.groupCardHeights.get(row.section!.groupKey) ?? 0,
+      onToggleSelection: () => this.onToggleGroupSelection(row.section!.messages),
+      // 过滤 select 属性回显触发的 onChange：目标状态与当前 group 选中态一致时不处理，
+      // 避免取消组内单条后 groupSelected 变 false 又回调取消整组
+      onSelectionChange: (selected: boolean) => {
+        if (selected === this.groupSelected(row.section!.messages)) return;
+        this.onSetGroupSelection(row.section!.messages, selected);
+      },
+      onOpen: () => this.onOpenGroup(row.section!),
+      onHeightChange: (height: number) => this.onHeightChange(row.section!.groupKey, height),
+      onOpenUrl: (url: string) => this.onOpenUrl(url),
+      onCopyCode: (code: string) => this.onCopyCode(code)
+    });
+  }
+
+  /** 长按容器复用原卡片，Builder 单独声明以保留 ArkUI 编译语义。 */
+  @Builder
+  private contextGroupRow(row: NotifyListRow) {
+    NotifyGroupMessageRow({
+      message: row.message!,
+      isLast: row.indexInGroup === row.section!.messages.length - 1 && !this.groupHasMore(row.section!),
+      isEditing: this.isEditing,
+      selected: this.isSelected(notifyIdentity(row.message!)),
+      contentTransitionId: row.indexInGroup === 0 ? `gmc:${row.section!.groupKey}` : '',
+      onSelect: (id: string) => this.onToggleSelect(id),
+      // 过滤 select 属性回显触发的 onChange，避免全选/组选后属性同步误操作
+      onSelectionChange: (id: string, selected: boolean) => {
+        if (selected === this.isSelected(id)) return;
+        this.onSetSelected(id, selected);
+      },
+      onOpen: (item: NotifyMessage) => this.onOpenMessage(item),
+      onOpenUrl: (url: string) => this.onOpenUrl(url),
+      onCopyCode: (code: string) => this.onCopyCode(code),
+      onCopyUrl: (url: string) => this.onCopyUrl(url)
     });
   }
 
