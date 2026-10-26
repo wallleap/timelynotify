@@ -417,30 +417,31 @@ export struct NotifyMessageDetail {
   }
 
   /**
-   * 系统通知风格卡片底栏：copy 与 url 的复制/访问项等宽排列，与正文共享同一张卡片。
-   * copy 在最左边；只有 copy 没有 url 时独占整行；同时存在时三项等宽。
+   * 系统通知风格卡片底栏：Copy 独占一行，链接的复制/访问项在下一行等宽排列。
+   * 三项同时存在时分两行，避免较长的 Copy 文案被三等分宽度挤压换行。
    */
   @Builder
   private linkActions(url: string, copy: string) {
     if (url.length > 0 || copy.length > 0) {
       Column() {
-        Divider().width('100%').strokeWidth(0.5).color($r('app.color.color_border_subtle'));
-        Row() {
-          // Copy 参数内容使用独立文案，copy 非空时显示在最左边。
-          if (copy.length > 0) {
-            Row({ space: 4 }) {
-              Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
-                .objectFit(ImageFit.Contain).flexShrink(0);
-              Text('复制 Copy 参数内容').fontSize(13).fontColor($r('app.color.color_text_secondary'));
-            }
-            .layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
-            .onClick(() => this.onCopyContent(copy));
-            // copy 与 url 同时存在时中间画分隔线；只有 copy 时不画，让其独占整行
-            if (url.length > 0) {
-              Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
-            }
+        // 正文与操作区通过底色区分，不加通栏顶线，避免卡片被切成表格。
+        if (copy.length > 0) {
+          // Copy 始终使用整行点击区域，只有此项时仍保持原有单行高度。
+          Row({ space: 4 }) {
+            Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
+              .objectFit(ImageFit.Contain).flexShrink(0);
+            Text('复制 Copy 参数内容').fontSize(13).fontColor($r('app.color.color_text_secondary'));
           }
+          .width('100%').height(42).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
+          .onClick(() => this.onCopyContent(copy));
           if (url.length > 0) {
+            // 仅两行操作之间保留内缩细线，亮暗继续随主题提示色切换。
+            Divider().width('calc(100% - 32vp)').strokeWidth(0.5)
+              .color($r('app.color.color_text_hint')).opacity(0.35);
+          }
+        }
+        if (url.length > 0) {
+          Row() {
             Row({ space: 4 }) {
               Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
                 .objectFit(ImageFit.Contain).flexShrink(0);
@@ -448,7 +449,7 @@ export struct NotifyMessageDetail {
             }
             .layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
             .onClick(() => this.onCopyUrl(url));
-            Divider().vertical(true).strokeWidth(1).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
+            Divider().vertical(true).strokeWidth(0.5).color($r('app.color.color_text_hint')).height(16).opacity(0.35);
             Row({ space: 4 }) {
               Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
                 .objectFit(ImageFit.Contain).flexShrink(0);
@@ -457,9 +458,9 @@ export struct NotifyMessageDetail {
             .layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
             .onClick(() => this.onOpenUrl(url));
           }
+          .width('100%').height(42).alignItems(VerticalAlign.Center);
         }
-        .width('100%').height(42).backgroundColor($r('app.color.color_bg_action_bar')).alignItems(VerticalAlign.Center);
-      }.width('100%');
+      }.width('100%').backgroundColor($r('app.color.color_bg_action_bar'));
     }
   }
 
