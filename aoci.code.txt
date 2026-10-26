@@ -5,7 +5,7 @@
 .gitignore[FC5T]: F:排除依赖、构建输出、本地环境与签名材料目录 | R:- | A:- | S:AOCI 主机集成配置仅供本机使用，不纳入版本控制
 AGENTS.md[SG8L]: F:规定 ArkTS 架构、Markdown受控依赖、修改授权、验证、Git 与 AOCI 认知治理规范 | R:- | A:- | S:源码改动须先提供文档并确认；Git提交推送及依赖配置修改需明确授权
 LICENSE[SG4T]: F:声明 MIT 授权、版权保留义务与免责条件 | R:- | A:- | S:-
-README.md[SG7M]: F:说明同步、搜索长按详情、Markdown留存、三操作分行、加密握姿防窥及发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程不可清本地；旧通知缺失Markdown原文不能恢复；防窥仅通知服务，全屏不叠文字模糊且签名需ACL
+README.md[SG7M]: F:说明同步、搜索长按详情、Markdown留存、分行操作、局部临时防窥显示、握姿及发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程不可清本地；旧通知缺失Markdown原文不能恢复；防窥仅通知服务，全屏不叠文字模糊且签名需ACL
 SERVER_API.md[SN8L]: F:定义推送与Markdown双平台处理、设备注册、消息删除流水及服务运维接口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:HTTP API、鉴权与加密载荷约定 | S:文档通用删除协议消费 ids/purges/reset；本客户端迁移链路另有只消费 extraIds 的约束
 build-profile.json5[FV8T]: F:配置 Harmony 产品、SDK 兼容范围、签名与 entry 模块 | R:code:entry/build-profile.json5,code:AppScope/app.json5 | A:default/release 产品 | S:target26兼容API23；CI剥离本地调试签名后整体重签，不复用本机加密材料
 code-linter.json5[FQ5T]: F:定义 ArkTS lint 范围、性能规则与密码算法安全规则 | R:- | A:files、ignore、ruleSet | S:-
@@ -80,7 +80,7 @@ NotifyGroupStateUtils.ets[CU4T]: F:不可变计算分组展开集合与实测卡
 NotifyGroupVisuals.ets[CU4T]: F:复用通知加密过期计数标签及折叠分组层叠背景 | R:- | A:NotifyGroupCountBadge、NotifyEncryptionBadge、NotifyExpiryBadge、NotifyGroupShellLayer | S:-
 NotifyListDataSource.ets[CU7S]: F:将分组快照扁平为 LazyForEach 行并按稳定 Key 增删同步 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets | A:buildNotifyListRows、NotifyListDataSource | S:展开收起避免全量重载；末项圆角变化需更新对应行Key，不能重建整组
 NotifyMessageCard.ets[CU5M]: F:展示普通与搜索通知标题正文图片及选择链接操作，防窥逐项模糊消息文本 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets,code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:NotifyMessageCard | S:防窥模糊挂各Text含富文本父节点，标题副标题时间均保护；卡片图片及动作标签清晰，禁用操作和朗读
-NotifyMessageDetail.ets[CU6L]: F:展示通知详情、显式Markdown、图片与分行操作，管理文字选择返回及防窥 | R:code:entry/src/main/ets/components/notify/NotifyViewTypes.ets,code:entry/src/main/ets/model/NotifyMessage.ets,code:entry/src/main/ets/services/AntiPeepService.ets,code:entry/src/main/ets/views/NotifyView.ets | A:NotifyMessageDetail、NotifyDetailSelectionController | S:原生取消延帧清归属，返回先清选区；Markdown失败/防窥回退Text，禁Web/Worker；复制链接复查保护；根禁操作朗读，底栏随滚动显隐
+NotifyMessageDetail.ets[CU6L]: F:展示通知详情、Markdown与分行操作，管理选区返回、防窥及当前通知30秒临时显示，离页后台即撤销 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/model/NotifyMessage.ets,code:entry/src/main/ets/services/AntiPeepService.ets,code:entry/src/main/ets/views/NotifyView.ets | A:NotifyMessageDetail、NotifyDetailSelectionController | S:原生取消延帧清归属；Markdown失败/防窥回退Text，禁Web/Worker；临时显示不放开复制跳转朗读；底栏随滚动显隐
 NotifyMessageList.ets[CU7L]: F:渲染通知平铺分组、长按菜单、局部分页及两段式跳到底部 | R:code:entry/src/main/ets/components/notify/NotifyListDataSource.ets,code:entry/src/main/ets/components/notify/NotifyContextMenu.ets,code:entry/src/main/ets/components/ListStatusFooter.ets | A:NotifyMessageList、onContextAction、onLoadMoreInGroup、onLoadMoreFlat | S:卡片槽须调用独立Builder，直接内联组件会运行时崩溃；Checkbox回显须过滤；瞬跳由可见索引驱动收尾，重建中断滚动
 NotifyRefreshHeader.ets[CU3T]: F:根据顶部遮挡距离显示通知下拉刷新指示器 | R:- | A:NotifyRefreshHeader | S:-
 NotifySelectionUtils.ets[CU6T]: F:不可变维护通知单条组选状态及删除后的可展开组集合 | R:code:entry/src/main/ets/utils/NotifyIdentity.ets | A:setSelectedMessage、setGroupMessagesSelection、retainExpandableGroups | S:组选仅作用已加载通知；收起判断优先数据库总数，避免丢失历史加载入口

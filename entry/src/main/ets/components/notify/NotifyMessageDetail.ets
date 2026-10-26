@@ -1,8 +1,11 @@
+import { ApplicationStateChangeCallback, common } from '@kit.AbilityKit';
 import { resourceManager } from '@kit.LocalizationKit';
 import { LongPressMenuInfo, Markdown, MarkdownController, TextSelectionActionItem } from '@luvi/lv-markdown-in';
 import { AppContextStore } from '../../common/AppContextStore';
+import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../../common/Constant';
 import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { NotifyMessage } from '../../model/NotifyMessage';
+import { notifyIdentity } from '../../utils/NotifyIdentity';
 import {
   buildNotifyCopyText,
   formatNotifyTime,
@@ -21,6 +24,8 @@ const DETAIL_ACTION_MAX_WIDTH: number = 420;
 const DETAIL_ACTION_SCROLL_THRESHOLD: number = 16;
 // 原生返回会先发取消选择、再发 Sheet 关闭；保留一帧供同次返回确认已消费。
 const DETAIL_SELECTION_CLEAR_DELAY: number = 16;
+// 临时显示只属于当前详情实例，不写入全局防窥状态或持久化偏好。
+const DETAIL_TEMPORARY_REVEAL_MS: number = 30000;
 
 /** 将详情内部的文字选择清理交给外层 Sheet 返回回调，不暴露组件状态。 */
 export class NotifyDetailSelectionController {
@@ -47,8 +52,29 @@ export class NotifyDetailSelectionController {
 @Component
 export struct NotifyMessageDetail {
   @StorageProp(KEY_ANTI_PEEP_BLUR) @Watch('onPrivacyChanged') antiPeepBlur: boolean = false;
+  @StorageProp(KEY_HOME_TAB_INDEX) @Watch('onRevealScopeChanged') homeTabIndex: number = 0;
+  @StorageProp(KEY_INDEX_PAGE_VISIBLE) @Watch('onRevealScopeChanged') indexPageVisible: boolean = true;
+  @State private temporaryRevealSeconds: number = 0;
+  @State private temporaryRevealAvailable: boolean = false;
   @State private actionsVisible: boolean = true;
   @State private markdownFailed: boolean = false;
+  // 绝对截止时间和复合身份共同校验，避免延迟计时器或复用详情泄露另一条通知。
+  private temporaryRevealUntil: number = 0;
+  private temporaryRevealIdentity: string = '';
+  private temporaryRevealTimer: number = -1;
+  private temporaryRevealGeneration: number = 0;
+  private revealApplication: common.ApplicationContext | null = null;
+  private revealForeground: boolean = true;
+  private revealApplicationCallback: ApplicationStateChangeCallback = {
+    onApplicationForeground: (): void => {
+      this.revealForeground = true;
+      this.endTemporaryReveal();
+    },
+    onApplicationBackground: (): void => {
+      this.revealForeground = false;
+      this.endTemporaryReveal();
+    }
+  };
   // 每个详情实例独立控制选区，避免库的跨段落选择泄露到下一条通知。
   private markdownController: MarkdownController = new MarkdownController();
   private markdownSelecting: boolean = false;
@@ -81,12 +107,15 @@ export struct NotifyMessageDetail {
 
   aboutToAppear(): void {
     this.detailMounted = true;
+    this.installRevealLifecycle();
     this.configureMarkdown();
     this.selectionController.attach(this.selectionBackHandler);
   }
 
   aboutToDisappear(): void {
     this.detailMounted = false;
+    this.endTemporaryReveal();
+    this.removeRevealLifecycle();
     this.clearMarkdownSelection();
     this.selectionController.detach(this.selectionBackHandler);
     this.cancelSelectionClearTimer();
@@ -146,6 +175,7 @@ export struct NotifyMessageDetail {
 
   /** 同一详情承接另一条通知时不沿用前一条的高亮、手柄或控制器。 */
   private resetTextSelection(): void {
+    this.endTemporaryReveal();
     this.clearTextSelection();
     this.markdownFailed = false;
     this.inboxTextControllers.clear();
@@ -153,7 +183,111 @@ export struct NotifyMessageDetail {
 
   /** 防窥时卸载富文本，只模糊普通 Text 回退，卡片、代码底色等表面不整体模糊。 */
   private onPrivacyChanged(): void {
+    // PASS、模式切换及下一轮 HIDE 均不继承之前的临时许可。
+    this.endTemporaryReveal();
     if (this.antiPeepBlur) this.clearTextSelection();
+  }
+
+  /** 详情可能仍挂载于隐藏页面，离开通知范围也必须立即清理临时显示。 */
+  private onRevealScopeChanged(): void {
+    if (!this.indexPageVisible || this.homeTabIndex !== 0) this.endTemporaryReveal();
+  }
+
+  /** 必须能监听前后台才允许临时显示；监听不可用时保持保护。 */
+  private installRevealLifecycle(): void {
+    const context = AppContextStore.getInstance().getContext();
+    if (!context) return;
+    try {
+      const application = context.getApplicationContext();
+      application.on('applicationStateChange', this.revealApplicationCallback);
+      this.revealApplication = application;
+      this.temporaryRevealAvailable = true;
+    } catch (_err) {
+      this.temporaryRevealAvailable = false;
+    }
+  }
+
+  /** 卸载后即使出现迟到回调也不能重新开启临时显示。 */
+  private removeRevealLifecycle(): void {
+    this.temporaryRevealAvailable = false;
+    if (!this.revealApplication) return;
+    try {
+      this.revealApplication.off('applicationStateChange', this.revealApplicationCallback);
+    } catch (_err) {
+      // 回调自身只会清除许可；取消失败也不产生继续展示的路径。
+    }
+    this.revealApplication = null;
+  }
+
+  /** 许可仅在当前通知页、当前详情和文字模糊模式生效，不改变全局状态。 */
+  private canTemporarilyReveal(): boolean {
+    return this.detailMounted && this.temporaryRevealAvailable && this.revealForeground &&
+      this.indexPageVisible && this.homeTabIndex === 0 && this.antiPeepBlur && this.message !== null;
+  }
+
+  private isTemporarilyRevealed(): boolean {
+    return this.temporaryRevealSeconds > 0 && this.temporaryRevealUntil > Date.now() &&
+      this.canTemporarilyReveal() && this.message !== null &&
+      this.temporaryRevealIdentity === notifyIdentity(this.message);
+  }
+
+  /** 仅逐文本模糊读取局部许可；复制、跳转和朗读仍使用原有全局保护门禁。 */
+  private isTextConcealed(): boolean {
+    return this.antiPeepBlur && !this.isTemporarilyRevealed();
+  }
+
+  private toggleTemporaryReveal(): void {
+    if (this.isTemporarilyRevealed()) {
+      this.endTemporaryReveal();
+      return;
+    }
+    this.endTemporaryReveal();
+    if (!this.canTemporarilyReveal() || !this.message) return;
+    this.clearTextSelection();
+    this.temporaryRevealIdentity = notifyIdentity(this.message);
+    this.temporaryRevealUntil = Date.now() + DETAIL_TEMPORARY_REVEAL_MS;
+    this.temporaryRevealSeconds = DETAIL_TEMPORARY_REVEAL_MS / 1000;
+    const generation: number = this.temporaryRevealGeneration;
+    this.temporaryRevealTimer = setInterval(() => {
+      if (generation !== this.temporaryRevealGeneration || !this.detailMounted) return;
+      if (!this.isTemporarilyRevealed()) {
+        this.endTemporaryReveal();
+        return;
+      }
+      // 同时按截止时间和已过 tick 收紧期限，系统时钟回拨也不能延长显示。
+      this.temporaryRevealSeconds = Math.min(this.temporaryRevealSeconds - 1,
+        Math.max(0, Math.ceil((this.temporaryRevealUntil - Date.now()) / 1000)));
+      if (this.temporaryRevealSeconds <= 0) this.endTemporaryReveal();
+    }, 1000);
+  }
+
+  /** 关闭、换消息、离页、后台和手动恢复统一废弃计时器与迟到 tick。 */
+  private endTemporaryReveal(): void {
+    this.temporaryRevealGeneration++;
+    if (this.temporaryRevealTimer >= 0) clearInterval(this.temporaryRevealTimer);
+    this.temporaryRevealTimer = -1;
+    this.temporaryRevealUntil = 0;
+    this.temporaryRevealIdentity = '';
+    this.temporaryRevealSeconds = 0;
+  }
+
+  /** 入口位于受保护卡片之外，文字模糊时仍能主动选择临时显示或提前恢复。 */
+  @Builder
+  private temporaryRevealControl() {
+    Column({ space: 6 }) {
+      Button() {
+        Row({ space: 6 }) {
+          SymbolGlyph($r('sys.symbol.eye')).fontSize(16)
+            .fontColor([$r('app.color.color_text_secondary')]);
+          Text(this.temporaryRevealSeconds > 0 ? `恢复保护 · ${this.temporaryRevealSeconds}s` : '临时显示')
+            .fontSize(13).fontColor($r('app.color.color_text_secondary'));
+        }.justifyContent(FlexAlign.Center);
+      }
+      .height(36).padding({ left: 16, right: 16 }).borderRadius(18)
+      .backgroundColor($r('app.color.color_bg_action')).enabled(this.temporaryRevealAvailable)
+      .onClick(() => this.toggleTemporaryReveal());
+      Text('显示当前通知 30 秒。').fontSize(12).fontColor($r('app.color.color_text_hint'));
+    }.width('100%').alignItems(HorizontalAlign.Center);
   }
 
   /** 主题变化时同步代码块，其余颜色使用应用资源自动切换。 */
@@ -300,7 +434,7 @@ export struct NotifyMessageDetail {
   @Builder
   private body(text: string) {
     Text(undefined, { controller: this.bodyTextController }) { this.textSpans(text) }
-      .blur(this.antiPeepBlur ? 22 : 0)
+      .blur(this.isTextConcealed() ? 22 : 0)
       .width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
       .onTextSelectionChange((start: number, end: number) => {
         this.onTextSelectionChanged(this.bodyTextController, start, end);
@@ -314,7 +448,7 @@ export struct NotifyMessageDetail {
       ForEach(items, (line: string, index: number) => {
         // 点击每一条收件箱内容的非识别区域时，复制该条完整文本。
         Text(undefined, { controller: this.getInboxTextController(index) }) { this.textSpans(line) }
-          .blur(this.antiPeepBlur ? 22 : 0).width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
+          .blur(this.isTextConcealed() ? 22 : 0).width('100%').lineHeight(24).copyOption(CopyOptions.InApp)
           .onTextSelectionChange((start: number, end: number) => {
             this.onTextSelectionChanged(this.getInboxTextController(index), start, end);
           })
@@ -381,7 +515,7 @@ export struct NotifyMessageDetail {
             Column({ space: 2 }) {
               Text(this.isUrlSegment(segment) ? '识别到链接' : '识别到验证码').fontSize(12)
                 .fontColor($r('app.color.color_text_tertiary')).width('100%');
-              Text(this.displayRecognizedText(segment)).blur(this.antiPeepBlur ? 22 : 0).fontSize(14).fontWeight(FontWeight.Medium)
+              Text(this.displayRecognizedText(segment)).blur(this.isTextConcealed() ? 22 : 0).fontSize(14).fontWeight(FontWeight.Medium)
                 .fontColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_text_primary'))
                 .width('100%').maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis });
             }
@@ -488,6 +622,8 @@ export struct NotifyMessageDetail {
         });
     }
     .width('100%')
+    .enabled(!this.antiPeepBlur)
+    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
     .constraintSize({ maxWidth: DETAIL_ACTION_MAX_WIDTH })
     .padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING,
       bottom: this.navBarHeight + DETAIL_EDGE_SPACING })
@@ -498,6 +634,11 @@ export struct NotifyMessageDetail {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       List({ scroller: this.detailScroller }) {
+        if (this.message && this.antiPeepBlur) {
+          ListItem() {
+            this.temporaryRevealControl();
+          }.padding({ left: DETAIL_EDGE_SPACING, right: DETAIL_EDGE_SPACING, top: DETAIL_EDGE_SPACING });
+        }
         ListItem() {
           if (this.message) {
             // 外层统一裁剪圆角，正文与贴底 action 形成同一张分区卡片。
@@ -517,7 +658,7 @@ export struct NotifyMessageDetail {
                 Column() {
                   if (this.message.title.length > 0) {
                     Text(this.message.title, { controller: this.titleTextController })
-                      .blur(this.antiPeepBlur ? 22 : 0).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
+                      .blur(this.isTextConcealed() ? 22 : 0).fontSize(18).fontWeight(FontWeight.Medium).lineHeight(25)
                       .fontColor($r('app.color.color_text_primary')).width('100%').copyOption(CopyOptions.InApp)
                       .onTextSelectionChange((start: number, end: number) => {
                         this.onTextSelectionChanged(this.titleTextController, start, end);
@@ -526,7 +667,7 @@ export struct NotifyMessageDetail {
                   }
                   if (this.message.subtitle.length > 0) {
                     Text(this.message.subtitle, { controller: this.subtitleTextController })
-                      .blur(this.antiPeepBlur ? 22 : 0).fontSize(13).fontColor($r('app.color.color_brand'))
+                      .blur(this.isTextConcealed() ? 22 : 0).fontSize(13).fontColor($r('app.color.color_brand'))
                       .width('100%').maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                       .margin({ top: this.message.title.length > 0 ? 6 : 0 }).copyOption(CopyOptions.InApp)
                       .onTextSelectionChange((start: number, end: number) => {
@@ -556,14 +697,14 @@ export struct NotifyMessageDetail {
                   NotifyEncryptionBadge();
                 }
                 Blank();
-                Text(formatNotifyTime(this.message.timestamp)).blur(this.antiPeepBlur ? 22 : 0)
+                Text(formatNotifyTime(this.message.timestamp)).blur(this.isTextConcealed() ? 22 : 0)
                   .fontSize(12)
                   .fontColor($r('app.color.color_text_hint'))
                   .maxLines(1);
               }
               .width('100%').margin({ top: 14 }).alignItems(VerticalAlign.Center);
               if (formatExpiryDescription(this.message.expiresAt).length > 0) {
-                Text(formatExpiryDescription(this.message.expiresAt)).blur(this.antiPeepBlur ? 22 : 0)
+                Text(formatExpiryDescription(this.message.expiresAt)).blur(this.isTextConcealed() ? 22 : 0)
                   .fontSize(12)
                   .fontColor($r('app.color.color_warning'))
                   .width('100%')
@@ -581,7 +722,10 @@ export struct NotifyMessageDetail {
             .width('100%').borderRadius(20).clip(true)
             .backgroundColor(this.useImmersiveMaterial ? $r('app.color.color_bg_surface_glass') :
               $r('app.color.color_bg_surface'))
-            .border({ width: 1, color: $r('app.color.color_border_subtle') });
+            .border({ width: 1, color: $r('app.color.color_border_subtle') })
+            // 临时显示只解除视觉模糊；保护期内继续禁用内容操作和朗读。
+            .enabled(!this.antiPeepBlur)
+            .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto');
           }
         }
         // 提示与卡片相邻；固定删除按钮所需的底部留白放在下一项。
@@ -589,7 +733,8 @@ export struct NotifyMessageDetail {
           top: DETAIL_EDGE_SPACING });
         ListItem() {
           if (this.message) {
-            Text(this.message.hasMarkdown() ? '长按正文可选择复制' : '点按标题或内容，可分别复制')
+            Text(this.antiPeepBlur ? '临时显示仅供查看' :
+              (this.message.hasMarkdown() ? '长按正文可选择复制' : '点按标题或内容，可分别复制'))
               .width('100%').textAlign(TextAlign.Center)
               .fontSize(12).fontColor($r('app.color.color_text_hint'));
           }
@@ -618,9 +763,7 @@ export struct NotifyMessageDetail {
         this.bottomActions();
       }
     }
-    .width('100%').height('100%')
-    // 各文本独立模糊，卡片和图片保持清晰；保护期间禁用操作及无障碍朗读。
-    .enabled(!this.antiPeepBlur)
-    .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto');
+    // 入口保持可点击，敏感卡片及底部动作分别保留保护门禁。
+    .width('100%').height('100%');
   }
 }
