@@ -53,6 +53,8 @@ export class PreferencesUtil {
   static readonly KEY_FIRST_USE_GUIDE_ACKNOWLEDGED: string = 'first_use_guide_acknowledged';
   /** 归档加密通知解密后是否也重发本地通知；缺失时关闭，不影响 isArchive 留存策略。 */
   static readonly KEY_ENCRYPTED_NOTIFICATION_RESEND: string = 'encrypted_notification_resend';
+  /** 点击系统通知是否优先跳转携带的 URL；缺失时开启，关闭后按详情或首页处理。 */
+  static readonly KEY_NOTIFY_CLICK_OPEN_URL: string = 'notify_click_open_url';
   /** 主题颜色模式：'system'（跟随系统）/ 'light'（浅色）/ 'dark'（深色） */
   static readonly KEY_COLOR_MODE: string = 'color_mode';
   /** 沉浸光感开关：'true'（开启，默认）/ 'false'（关闭，走 blur 降级）。仅 API 26+ 生效 */

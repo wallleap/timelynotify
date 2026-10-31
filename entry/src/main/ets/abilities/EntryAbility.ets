@@ -9,6 +9,7 @@ import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
 import { NotifySyncService } from '../services/NotifySyncService';
 import { AppUpdateService } from '../services/AppUpdateService';
+import { NotifyClickSettingsService } from '../services/NotifyClickSettingsService';
 import {
   ensureImmersiveMaterial,
   KEY_IMMERSIVE_LIGHT_ENABLED,
@@ -25,6 +26,8 @@ export default class EntryAbility extends UIAbility {
   private mainWindow: window.Window | null = null;
   // 沉浸式布局是否开启成功；失败（如自由窗口场景）时保持默认布局，页面不做额外避让
   private immersiveEnabled: boolean = false;
+  // 冷启动读偏好时也可能收到下一条点击；只交付最新 Want 的跳转结果。
+  private pushClickSequence: number = 0;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
@@ -48,11 +51,12 @@ export default class EntryAbility extends UIAbility {
     // 在 onCreate 中触发无感注册（Push Kit 文档推荐时机），内部会 await ServerManager.ensureLoaded()
     // 然后调用 pushService.getToken() 拿 token 并写入服务端
     this.silentRegister();
-    // 点击系统通知冷启动：服务端推送 clickAction.data 携带的跳转 url 在 want.parameters 里，直接打开
+    // 点击系统通知冷启动：先读取用户偏好，再决定跳链接或定位通知详情。
     this.handlePushClick(want);
   }
 
   onDestroy(): void {
+    this.pushClickSequence++;
     NotifySyncService.getInstance().pause();
     hilog.info(DOMAIN, TAG, 'Ability onDestroy');
   }
@@ -112,22 +116,30 @@ export default class EntryAbility extends UIAbility {
     this.bumpNotifyRefreshSignal();
     // 应用已在前台时点击通知只走这里，同样清除桌面图标角标
     this.clearBadgeNumber();
-    // 点击系统通知温启动：同样解析并打开 clickAction.data 携带的跳转 url
+    // 点击系统通知温启动：与冷启动共用最新的点击跳转偏好。
     this.handlePushClick(want);
   }
 
   /**
-   * 处理系统通知点击透传的跳转数据：url 优先，其次按 action 路由。
+   * 处理系统通知点击透传数据：开关开启时 url 优先，关闭时按详情或首页路由。
    * Huawei clickAction.data 随 want.parameters 透传，详情查找交由通知页完成。
    */
-  private handlePushClick(want: Want): void {
+  private async handlePushClick(want: Want): Promise<void> {
+    const sequence: number = ++this.pushClickSequence;
     try {
       const params: Record<string, Object> | undefined = want.parameters;
       if (!params) {
         return;
       }
       const urlVal: Object | undefined = params['url'];
-      if (typeof urlVal === 'string' && (urlVal as string).length > 0) {
+      const hasUrl: boolean = typeof urlVal === 'string' && urlVal.length > 0;
+      const action: Object | undefined = params['tn_action'];
+      if (!hasUrl && action !== 'alert' && action !== 'none') return;
+      // 新点击先使尚在查库的旧目标失效，不能等偏好读完后旧详情已经弹出。
+      AppStorage.setOrCreate(KEY_NOTIFY_OPEN_REQUEST, '');
+      const openUrl: boolean = hasUrl && await NotifyClickSettingsService.isUrlEnabled();
+      if (sequence !== this.pushClickSequence) return;
+      if (openUrl) {
         const openWant: Want = {
           action: 'ohos.want.action.viewData',
           uri: urlVal as string,
@@ -137,11 +149,7 @@ export default class EntryAbility extends UIAbility {
         });
         return;
       }
-      const action: Object | undefined = params['tn_action'];
-      if (action !== 'alert' && action !== 'none') {
-        return;
-      }
-      // none 只回通知首页；alert 的精确定位交给 NotifyView 在服务器初始化和同步后处理。
+      // none 只回通知首页；关闭链接跳转时，旧推送缺少 action 也可尝试按归档身份定位。
       AppStorage.setOrCreate(KEY_HOME_TAB_INDEX, 0);
       if (action === 'none') {
         AppStorage.setOrCreate(KEY_NOTIFY_OPEN_REQUEST,

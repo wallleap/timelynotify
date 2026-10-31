@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-21T01:31:40Z",
-  "updated_at": "2026-10-31T14:50:49Z",
+  "updated_at": "2026-10-31T15:10:29Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -81,9 +81,9 @@
     },
     "README.md": {
       "role": "index",
-      "sha256": "ceff690227f4c9964af5bb1684e18a501238f8c4b878cab23efa36c7a4acd9fd",
-      "size": 50543,
-      "normalized_sha256": "ceff690227f4c9964af5bb1684e18a501238f8c4b878cab23efa36c7a4acd9fd"
+      "sha256": "7aa25c29ffd8e1fccb2f0957d720a69d3cd8c64290af0fa428fe54159a9b6cca",
+      "size": 51316,
+      "normalized_sha256": "7aa25c29ffd8e1fccb2f0957d720a69d3cd8c64290af0fa428fe54159a9b6cca"
     },
     "SERVER_API.md": {
       "role": "index",
@@ -93,9 +93,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "a91be142b8be7ccfb3b1018ef22a26052996e46f889016f70a48b527006826e4",
-      "size": 49386,
-      "normalized_sha256": "a91be142b8be7ccfb3b1018ef22a26052996e46f889016f70a48b527006826e4"
+      "sha256": "6a94677975824b7949273543a4a33d8b0cf80b552817e23b24d30a029ff7f18c",
+      "size": 49997,
+      "normalized_sha256": "6a94677975824b7949273543a4a33d8b0cf80b552817e23b24d30a029ff7f18c"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -368,9 +368,9 @@
     },
     "entry/src/main/ets/abilities/EntryAbility.ets": {
       "role": "index",
-      "sha256": "b6c264a10933c40e6a26b61293a96fa47c735f1e26d668cccb2fd1fa5d906413",
-      "size": 17584,
-      "normalized_sha256": "b6c264a10933c40e6a26b61293a96fa47c735f1e26d668cccb2fd1fa5d906413"
+      "sha256": "c9641e70b893454bb0538c6040da49196d54a4f5ebbe117a84c9bdd67da58dc6",
+      "size": 18223,
+      "normalized_sha256": "c9641e70b893454bb0538c6040da49196d54a4f5ebbe117a84c9bdd67da58dc6"
     },
     "entry/src/main/ets/abilities/EntryBackupAbility.ets": {
       "role": "index",
@@ -668,9 +668,9 @@
     },
     "entry/src/main/ets/pages/PersonalizationSettings.ets": {
       "role": "index",
-      "sha256": "e23a27a3299f1d07e3deb49ccb8c27c18957d251895bbb8e9bbf20ba1fe1cc98",
-      "size": 12307,
-      "normalized_sha256": "e23a27a3299f1d07e3deb49ccb8c27c18957d251895bbb8e9bbf20ba1fe1cc98"
+      "sha256": "7f28c641e599c9773afbcc63da16699f3bf08345ff316af05aa49aa9c9628998",
+      "size": 15089,
+      "normalized_sha256": "7f28c641e599c9773afbcc63da16699f3bf08345ff316af05aa49aa9c9628998"
     },
     "entry/src/main/ets/pages/SharePage.ets": {
       "role": "index",
@@ -768,6 +768,12 @@
       "size": 3678,
       "normalized_sha256": "d3b8ce745cfffc026dd00ffc9013b30a04f29d7282f50a052ee2c254a7127e9e"
     },
+    "entry/src/main/ets/services/NotifyClickSettingsService.ets": {
+      "role": "index",
+      "sha256": "40174426b7a7a7561b2dd2547cfe985435f5c8464f8f83d6b69d43c12205c299",
+      "size": 1567,
+      "normalized_sha256": "40174426b7a7a7561b2dd2547cfe985435f5c8464f8f83d6b69d43c12205c299"
+    },
     "entry/src/main/ets/services/NotifyExportService.ets": {
       "role": "index",
       "sha256": "0ecc2e948977553232b4a3a9d6d006423571b70280479c6b086239ff2a9eea59",
@@ -818,9 +824,9 @@
     },
     "entry/src/main/ets/utils/PreferencesUtil.ets": {
       "role": "index",
-      "sha256": "12f142de1e4bc508aff3bad2195b93966cbfbb8419815d930ce34c0566e463cb",
-      "size": 6067,
-      "normalized_sha256": "12f142de1e4bc508aff3bad2195b93966cbfbb8419815d930ce34c0566e463cb"
+      "sha256": "f61de4338992024ac05e1d698e5522e68e57c51b9af1ccd799fa3c8e36679cc6",
+      "size": 6262,
+      "normalized_sha256": "f61de4338992024ac05e1d698e5522e68e57c51b9af1ccd799fa3c8e36679cc6"
     },
     "entry/src/main/ets/utils/ServerUrlUtil.ets": {
       "role": "index",
@@ -842,9 +848,9 @@
     },
     "entry/src/main/ets/views/NotifyView.ets": {
       "role": "index",
-      "sha256": "b62539cdae9f6cb1b0f8fbbed506ca1cbd91e1f2b26bde12a407c0475c72a903",
-      "size": 175464,
-      "normalized_sha256": "b62539cdae9f6cb1b0f8fbbed506ca1cbd91e1f2b26bde12a407c0475c72a903"
+      "sha256": "a5ba160a82cd0cbfc9895b206d96bcafb66c82607d946171fbfc9b399843e677",
+      "size": 175748,
+      "normalized_sha256": "a5ba160a82cd0cbfc9895b206d96bcafb66c82607d946171fbfc9b399843e677"
     },
     "entry/src/main/ets/views/ServerView.ets": {
       "role": "index",

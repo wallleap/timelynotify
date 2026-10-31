@@ -52,6 +52,7 @@ import {
   KEY_NOTIFY_SYNC_REVISION
 } from '../common/Constant';
 import { NotifySyncService } from '../services/NotifySyncService';
+import { NotifyClickSettingsService } from '../services/NotifyClickSettingsService';
 import showToast from '../components/showToast';
 import { KEY_ANTI_PEEP_BLUR } from '../services/AntiPeepService';
 import { NotifyContextAction, NotifyContextMenu, NotifyContextTarget } from '../components/notify/NotifyContextMenu';
@@ -3880,15 +3881,17 @@ export struct NotifyView {
           found = await this.findPushNotice([server], instanceId, id);
         }
       }
-      if (!found) {
+      if (!found || found.isExpired()) {
         showToast(this.getUIContext(), '通知已过期、未归档或来源服务不可用');
         return;
       }
       if (AppStorage.get<string>(KEY_NOTIFY_OPEN_REQUEST) !== request) {
         return;
       }
-      // 加密载荷里的 url 不会明传给 Push Kit；解密落库后仍要保持 url 高于 action 的语义。
-      if (found.url) {
+      // 解密后本地通知也遵循同一偏好；关闭时保留 URL，供详情中的主动访问使用。
+      const openLink: boolean = found.url.length > 0 && await NotifyClickSettingsService.isUrlEnabled();
+      if (AppStorage.get<string>(KEY_NOTIFY_OPEN_REQUEST) !== request) return;
+      if (openLink) {
         this.openUrl(found.url);
         return;
       }
