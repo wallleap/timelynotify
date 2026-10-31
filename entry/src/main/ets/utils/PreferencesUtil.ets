@@ -49,6 +49,8 @@ export class PreferencesUtil {
   /** 通知视图范围：'true' 为聚合全部服务器，'false' 为仅当前服务器；缺失时默认聚合。 */
   static readonly KEY_SERVER_VIEW_ALL_MODE: string = 'server_view_all_mode';
   static readonly KEY_NOTIFY_ENABLED: string = 'notify_enabled';
+  /** 首次空列表点击查看指南的确认标记；Preferences 存字符串，AppStorage 用布尔值同步当前会话。 */
+  static readonly KEY_FIRST_USE_GUIDE_ACKNOWLEDGED: string = 'first_use_guide_acknowledged';
   /** 归档加密通知解密后是否也重发本地通知；缺失时关闭，不影响 isArchive 留存策略。 */
   static readonly KEY_ENCRYPTED_NOTIFICATION_RESEND: string = 'encrypted_notification_resend';
   /** 主题颜色模式：'system'（跟随系统）/ 'light'（浅色）/ 'dark'（深色） */
