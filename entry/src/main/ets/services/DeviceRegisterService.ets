@@ -196,17 +196,17 @@ export class DeviceRegisterService {
 
   /** 同一目标只允许一次注册；下次重试在前一次任务结束后重新发起。 */
   async syncKeyForServer(context: common.Context | null, serverId: string, baseURL: string,
-    savedDeviceKey: string): Promise<string | null> {
+    savedDeviceKey: string, rebindExisting: boolean = false): Promise<string | null> {
     // 输入 Key 是本次希望验证/还原的目标，不一定等于当前 Key（手动重置/还原入口）。
     const target: ServerEntry | undefined = ServerManager.getInstance().getList()
       .find((server: ServerEntry) => server.id === serverId);
     const expectedCurrentKey: string = target?.deviceKey ?? '';
-    const taskKey: string = JSON.stringify([serverId, baseURL, savedDeviceKey, expectedCurrentKey]);
+    const taskKey: string = JSON.stringify([serverId, baseURL, savedDeviceKey, expectedCurrentKey, rebindExisting]);
     const existing: Promise<string | null> | undefined = this.registrationTasks.get(taskKey);
     if (existing) return existing;
     this.registrationErrors.delete(taskKey);
     const task: Promise<string | null> = this.syncServerRegistration(
-      context, serverId, baseURL, savedDeviceKey, expectedCurrentKey, taskKey);
+      context, serverId, baseURL, savedDeviceKey, expectedCurrentKey, taskKey, rebindExisting);
     this.registrationTasks.set(taskKey, task);
     try {
       return await task;
@@ -217,7 +217,8 @@ export class DeviceRegisterService {
 
   /** 验证/还原失败保留旧 Key；地址或 Key 已被用户更改时不提交过时结果。 */
   private async syncServerRegistration(context: common.Context | null, serverId: string, baseURL: string,
-    savedDeviceKey: string, expectedCurrentKey: string, taskKey: string): Promise<string | null> {
+    savedDeviceKey: string, expectedCurrentKey: string, taskKey: string,
+    rebindExisting: boolean): Promise<string | null> {
     const ctx: common.Context | null = this.resolveContext(context);
     let finalKey: string | null = null;
 
@@ -227,8 +228,13 @@ export class DeviceRegisterService {
       // 无法连接不等于 Key 不存在，不再紧接着发一轮还原请求拉长等待。
       if (valid === null) return null;
       if (valid) {
-        finalKey = savedDeviceKey;
-        hilog.info(DOMAIN, TAG, 'syncKeyForServer：保存的 key 有效，直接使用，无需调接口');
+        if (rebindExisting) {
+          // 手动还原必须提交当前设备的 Push Token；GET 校验只证明 Key 存在。
+          finalKey = await this.doRegisterWithBaseURL(baseURL, savedDeviceKey, taskKey);
+        } else {
+          finalKey = savedDeviceKey;
+          hilog.info(DOMAIN, TAG, 'syncKeyForServer：保存的 key 有效，直接使用，无需调接口');
+        }
       } else {
         // 2) 无效 → 还原（三参数：device_token + platform + device_key）
         hilog.info(DOMAIN, TAG, 'syncKeyForServer：保存的 key 无效，尝试还原');

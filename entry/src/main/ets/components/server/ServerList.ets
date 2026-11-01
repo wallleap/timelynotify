@@ -725,7 +725,8 @@ export struct ServerList {
       return;
     }
     const key: string | null = await DeviceRegisterService.getInstance()
-      .syncKeyForServer(null, server.id, server.baseURL, inputKey.length > 0 ? inputKey : '');
+      .syncKeyForServer(null, server.id, server.baseURL, inputKey.length > 0 ? inputKey : '',
+        inputKey.length > 0);
     if (key && key.length > 0) {
       this.refresh();
       this.checkServers();

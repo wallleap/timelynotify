@@ -136,11 +136,11 @@ TODO:
 ┌─────────────────────────────────────────────────────────────────┐
 │              syncKeyForServer（核心 key 同步）                    │
 └─────────────────────────────────────────────────────────────────┘
-  输入：serverId + baseURL + savedDeviceKey
+  输入：serverId + baseURL + savedDeviceKey + rebindExisting（手动还原时为 true）
          │
          ├─ savedKey 非空？
          │     ├─ 是 → GET /register/:key 验证
-         │     │     ├─ 有效 → 直接用（0 次写接口）
+         │     │     ├─ 有效 → 启动同步直接用；手动还原则 POST 绑定当前设备 Token
          │     │     └─ 无效 → POST 还原（token+platform+key）
          │     │           ├─ 成功 → 用还原的 key
          │     │           └─ 失败 → 保留原 key（不重置）
