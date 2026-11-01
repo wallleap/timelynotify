@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-10-21T01:31:40Z",
-  "updated_at": "2026-10-31T15:10:29Z",
+  "updated_at": "2026-11-01T23:54:06Z",
   "files": {
     ".gitattributes": {
       "role": "index",
@@ -81,9 +81,9 @@
     },
     "README.md": {
       "role": "index",
-      "sha256": "7aa25c29ffd8e1fccb2f0957d720a69d3cd8c64290af0fa428fe54159a9b6cca",
-      "size": 51316,
-      "normalized_sha256": "7aa25c29ffd8e1fccb2f0957d720a69d3cd8c64290af0fa428fe54159a9b6cca"
+      "sha256": "8dcd192f8667123f6e6564d19bef507223dd6f2f5b5f91415596e16d387fa3ca",
+      "size": 51835,
+      "normalized_sha256": "8dcd192f8667123f6e6564d19bef507223dd6f2f5b5f91415596e16d387fa3ca"
     },
     "SERVER_API.md": {
       "role": "index",
@@ -93,9 +93,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "6a94677975824b7949273543a4a33d8b0cf80b552817e23b24d30a029ff7f18c",
-      "size": 49997,
-      "normalized_sha256": "6a94677975824b7949273543a4a33d8b0cf80b552817e23b24d30a029ff7f18c"
+      "sha256": "c623cfbd68af7cb22a7d1793b9a729ae702c8b7219b8c302349883f9e50733bc",
+      "size": 50146,
+      "normalized_sha256": "c623cfbd68af7cb22a7d1793b9a729ae702c8b7219b8c302349883f9e50733bc"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -566,9 +566,9 @@
     },
     "entry/src/main/ets/components/server/AddServerDialog.ets": {
       "role": "index",
-      "sha256": "503e2b57a501c7705ac6a13f7ae4e5e09121423dc1a760b1067679166b03a624",
-      "size": 5421,
-      "normalized_sha256": "503e2b57a501c7705ac6a13f7ae4e5e09121423dc1a760b1067679166b03a624"
+      "sha256": "43600a8bd8ef82a261d0425e6e5eca13fc492cf9a927f55e14f1e56748d3247c",
+      "size": 5264,
+      "normalized_sha256": "43600a8bd8ef82a261d0425e6e5eca13fc492cf9a927f55e14f1e56748d3247c"
     },
     "entry/src/main/ets/components/server/SampleCode.ets": {
       "role": "index",
@@ -578,9 +578,9 @@
     },
     "entry/src/main/ets/components/server/ServerList.ets": {
       "role": "index",
-      "sha256": "2de3f8806b86c51f9f771f6e80c7956e70ea491185b09a342ff39f58307ad331",
-      "size": 29134,
-      "normalized_sha256": "2de3f8806b86c51f9f771f6e80c7956e70ea491185b09a342ff39f58307ad331"
+      "sha256": "7fbc654bb004e11695cee62d08f448179efeb9fd6d8169b554f524698103a53d",
+      "size": 29163,
+      "normalized_sha256": "7fbc654bb004e11695cee62d08f448179efeb9fd6d8169b554f524698103a53d"
     },
     "entry/src/main/ets/components/settings/AntiPeepSettingsCard.ets": {
       "role": "index",
@@ -716,9 +716,9 @@
     },
     "entry/src/main/ets/services/DeviceRegisterService.ets": {
       "role": "index",
-      "sha256": "d4f95125aa871eb034d87f8c04999bcd40a51ccf926f520eea0bfab630899131",
-      "size": 23718,
-      "normalized_sha256": "d4f95125aa871eb034d87f8c04999bcd40a51ccf926f520eea0bfab630899131"
+      "sha256": "8b29ed65e75b20a274e8eb47d5a42e676d9540f64e197f6c454974b8f917e938",
+      "size": 24062,
+      "normalized_sha256": "8b29ed65e75b20a274e8eb47d5a42e676d9540f64e197f6c454974b8f917e938"
     },
     "entry/src/main/ets/services/EncryptedNotificationResendService.ets": {
       "role": "index",
@@ -794,9 +794,9 @@
     },
     "entry/src/main/ets/services/ServerManager.ets": {
       "role": "index",
-      "sha256": "25b17346edac2ed0cf02382913eba1ddb91ed06454957a3e9eaf92b79236ac98",
-      "size": 31873,
-      "normalized_sha256": "25b17346edac2ed0cf02382913eba1ddb91ed06454957a3e9eaf92b79236ac98"
+      "sha256": "ef5682a220f0e2a53ddf92e0559ef33cbf45471ec5dfae6abb1000a4500862e8",
+      "size": 32302,
+      "normalized_sha256": "ef5682a220f0e2a53ddf92e0559ef33cbf45471ec5dfae6abb1000a4500862e8"
     },
     "entry/src/main/ets/services/ThemeService.ets": {
       "role": "index",

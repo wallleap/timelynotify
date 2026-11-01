@@ -143,14 +143,8 @@ export struct AddServerDialog {
       this.adding = false;
       return;
     }
-    const entry: ServerEntry | null = await mgr.addServer(null, url, this.inputName.trim());
-    // addServer 成功后当前服务器已切换为新条目，若用户填写了 Token 则写入
-    if (entry) {
-      const token: string = this.inputToken.trim();
-      if (token.length > 0) {
-        await mgr.updateServerClientToken(null, entry.id, token);
-      }
-    }
+    // Token 随条目一起交给管理器保存，首次同步不能先读取到默认 Token。
+    const entry: ServerEntry | null = await mgr.addServer(null, url, this.inputName.trim(), this.inputToken.trim());
     this.adding = false;
     if (entry) {
       showToast(this.getUIContext(), '已添加并切换', 1200);

@@ -620,20 +620,31 @@ export class ServerManager {
   // 获取当前 server 应使用的 device_key：只认 per-server 保存的 deviceKey。
   // 若 per-server 为空，说明 syncKeyForServer 还没跑（如刚切 server 或首次使用），
 
-  // 新增自定义服务器（URL 已存在则只切过去）。返回新条目/命中条目。context 可传 null
-  async addServer(context: common.Context | null, rawURL: string, name: string): Promise<ServerEntry | null> {
+  // 添加时携带 Token 完成首次保存，再发布变更和注册；已有地址留空不清除原 Token。
+  async addServer(context: common.Context | null, rawURL: string, name: string,
+    clientToken: string = ''): Promise<ServerEntry | null> {
     const ctx: common.Context | null = resolveContext(context);
     const normalized: string = normalizeBaseURL(rawURL);
     if (!normalized) {
       return null;
     }
+    const token: string = clientToken.trim();
     const existed: ServerEntry | null = this.findByBaseURL(normalized);
     if (existed) {
+      if (token.length > 0 && existed.clientToken !== token) {
+        existed.clientToken = token;
+        // switchTo 对当前条目直接返回，需显式保存并通知 Token 变化。
+        if (this.currentId === existed.id) {
+          await this.persist(ctx);
+          this.emitChange();
+          return existed;
+        }
+      }
       await this.switchTo(ctx, existed.id);
       return existed;
     }
     const id: string = genId();
-    const entry = new ServerEntry(id, name ? name.trim() : '', normalized, false);
+    const entry = new ServerEntry(id, name ? name.trim() : '', normalized, false, '', token);
     this.servers.push(entry);
     this.currentId = id;
     await this.persist(ctx);
