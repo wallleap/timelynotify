@@ -2,6 +2,7 @@
   "src": [
     "pages/Index",
     "pages/SharePage",
-    "pages/PersonalizationSettings"
+    "pages/PersonalizationSettings",
+    "pages/LocalDocumentPage"
   ]
 }

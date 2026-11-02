@@ -51,6 +51,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # 使用仓库记录的文档版本，供原生离线阅读资源打包。
+          submodules: true
 
       - name: 检查沉浸光感工具边界
         run: bash .github/scripts/check-immersive-boundary.sh
@@ -103,6 +106,9 @@ jobs:
           if [ -z "${OHPM:-}" ]; then npm install -g @ohos/ohpm-cli 2>&1 | tail -3
             echo "OHPM=$(dirname $(dirname $(npm root -g)))/bin/ohpm" >> "$GITHUB_ENV"; fi
           ${OHPM:-ohpm} -v
+
+      - name: 检查本地文档打包
+        run: node --test scripts/package-local-docs.test.cjs
 
       - name: 缓存 ohpm 依赖
         uses: actions/cache@v6

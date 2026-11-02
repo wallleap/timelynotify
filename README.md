@@ -238,6 +238,16 @@ TODO:
     └─ timelynotify.encryption.{serverId}  各服务器的端到端解密 Key
 ```
 
+## 文档仓库
+
+`docs-source/` 是 [`timelynotify-docs`](https://github.com/wallleap/timelynotify-docs) Git 子模块，固定到客户端仓库记录的文档提交。首次克隆后运行 `git submodule update --init docs-source`；更新文档版本时，先在文档仓库提交，再更新客户端记录的子模块指针。
+
+应用内的使用指南、推送参数、常见问答、首次欢迎指南及客户端 Token 的部署文档入口，统一使用 `LocalDocumentPage` 和已有的 `@luvi/lv-markdown-in` 3.4.7 原生渲染。文档正文和引用的本地图片随安装包内置，阅读无需连接文档站点；远程图片显示“图片未内置”占位，不自动下载。文档内相对链接、本站链接及章节锚点在本地跳转，返回恢复阅读位置；未打包的文档不回退在线站点。只有主动点击外部 HTTP(S) 链接才打开网页，隐私协议等原有外部入口不变。渲染失败可阅读原文，资源读取失败提供重试。
+
+文档阅读页沿用 `SharePage` 的沉浸布局：正文铺满窗口并滚入悬浮标题栏背后，API 26+ 保留系统材质按钮及透明悬浮顶栏，显式关闭 Scroll 绑定默认启用的 `COMMON_BLUR` 滚动背景，避免形成整块色带；其它情况使用叠层玻璃顶栏。下滑超过 64vp 隐藏标题，回到顶部附近恢复。正文和滚动容器不裁剪溢出，首屏按标题栏实际遮挡高度留白；章节定位避开标题栏，历史返回仍恢复实际滚动位置。
+
+`entry/hvigorfile.ts` 在资源扫描前自动运行 `scripts/package-local-docs.cjs`，从子模块生成 `entry/src/main/resources/rawfile/local-docs/`（已忽略，不提交生成文件）。可手动执行 `node scripts/package-local-docs.cjs` 检查打包；脚本不联网，缺少子模块或本地图片时明确失败，不沿用旧资源。构建检查与发布构建的 checkout 拉取固定版本子模块，不执行文档站的 npm 构建或部署。新增文档需同步更新脚本中的打包清单；图片会增加安装包体积，实际增量以构建产物为准。
+
 ## 发版
 
 沉浸光感的能力判断和原始材质创建集中在 `entry/src/main/ets/utils/ImmersiveUtil.ets`。开发时可运行

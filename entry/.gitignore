@@ -4,3 +4,5 @@
 /build
 /.cxx
 /.test
+# 固定文档子模块经 Hvigor 插件生成，不提交派生资源。
+/src/main/resources/rawfile/local-docs/

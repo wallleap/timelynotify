@@ -175,7 +175,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          submodules: false
+          # 构建时内置固定版本文档；不跟随文档仓库远端分支。
+          submodules: true
 
       # --------------------------------------------------------
       # 环境准备：JDK 17（仅 self-hosted 兜底；CI 镜像内已内置 openjdk-17）

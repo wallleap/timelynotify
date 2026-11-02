@@ -5,21 +5,22 @@
 .gitignore[FC5T]: F:排除依赖、构建输出、本地环境与签名材料目录 | R:- | A:- | S:AOCI 主机集成配置仅供本机使用，不纳入版本控制
 AGENTS.md[SG8L]: F:规定 ArkTS 架构、Markdown受控依赖、修改授权、验证、Git 与 AOCI 认知治理规范 | R:- | A:- | S:源码改动须先提供文档并确认；Git提交推送及依赖配置修改需明确授权
 LICENSE[SG4T]: F:声明 MIT 授权、版权保留义务与免责条件 | R:- | A:- | S:-
-README.md[SG7M]: F:说明服务添加Token时序、通知点击偏好、首次指南、同步搜索详情、Markdown、防窥握姿及发布校验 | R:code:SERVER_API.md,code:bin/release | A:- | S:迁移后删远程不可清本地；旧通知缺失Markdown原文不能恢复；防窥仅通知服务，全屏不叠文字模糊且签名需ACL
+README.md[SG7M]: F:说明通知同步交互、Markdown防窥握姿、Token时序、离线文档透明悬浮阅读与打包及发布校验 | R:code:SERVER_API.md,code:bin/release,code:scripts/package-local-docs.cjs | A:- | S:迁移删远程不可清本地；旧通知缺Markdown不能恢复；全屏防窥不叠文字模糊且签名需ACL；离线文档随包更新，远程图片占位
 SERVER_API.md[SN8L]: F:定义推送与Markdown双平台处理、设备注册、消息删除流水及服务运维接口 | R:code:entry/src/main/ets/services/NotifyMessageService.ets | A:HTTP API、鉴权与加密载荷约定 | S:文档通用删除协议消费 ids/purges/reset；本客户端迁移链路另有只消费 extraIds 的约束
 build-profile.json5[FV8T]: F:配置 Harmony 产品、SDK 兼容范围、签名与 entry 模块 | R:code:entry/build-profile.json5,code:AppScope/app.json5 | A:default/release 产品 | S:target26兼容API23；CI剥离本地调试签名后整体重签，不复用本机加密材料
 code-linter.json5[FQ5T]: F:定义 ArkTS lint 范围、性能规则与密码算法安全规则 | R:- | A:files、ignore、ruleSet | S:-
 hvigorfile.ts[FV5T]: F:接入Hvigor应用级内置构建任务 | R:code:entry/hvigorfile.ts | A:appTasks | S:-
 oh-package-lock.json5[FV5T]: F:锁定Hypium与Hamock开发依赖版本来源及完整性 | R:code:oh-package.json5 | A:lockfileVersion3 | S:自动生成锁文件由OHPM维护，不能手动改写
 oh-package.json5[FV6T]: F:声明OHPM工程模型、空运行依赖与官方测试开发依赖 | R:code:oh-package-lock.json5 | A:Hypium1.0.25、Hamock1.0.0 | S:无第三方运行依赖不代表没有测试依赖
+.gitmodules[FV6T]: F:声明docs-source文档仓库子模块的检出位置和远程来源 | R:code:scripts/package-local-docs.cjs | A:docs-source | S:文档版本由父仓库gitlink固定，构建应检出该版本而非远端最新分支
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/.github/scripts/===
 check-immersive-boundary.sh[TQ7T]: F:扫描 ArkTS 代码并阻止组件绕过沉浸材质工具边界 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:脚本参数为可选源码根目录 | S:仅 ImmersiveUtil 可做能力判断与材质实例化；命中违规退出1，扫描错误退出2
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/.github/workflows/===
-build-check.yml[OV7S]: F:为推送与 PR 执行 debug/release 无签名 HAP 编译检查，采用 Node24 Action | R:code:.github/scripts/check-immersive-boundary.sh,code:docker/ci/Dockerfile | A:push、pull_request、workflow_dispatch | S:旧latest变量归一24.04并加载SDK容器；自托管保留预装SDK；本地单测失败容错，不能据流水线成功认定测试通过
+build-check.yml[OV7S]: F:拉取固定文档子模块并检查离线打包，执行推送与PR的debug/release无签名HAP编译 | R:code:scripts/package-local-docs.test.cjs,code:.github/scripts/check-immersive-boundary.sh,code:docker/ci/Dockerfile | A:push、pull_request、workflow_dispatch | S:托管归一24.04并加载SDK容器，自托管保留预装SDK；Hypium失败容错，流水线成功不代表该单测通过
 docker-image.yml[OV6S]: F:在固定 Ubuntu24.04 上手动下载校验 CLT 并构建推送 GHCR CI 镜像 | R:code:docker/ci/Dockerfile | A:workflow_dispatch | S:镜像不随源码变更自动重建；CLT压缩包按SHA256缓存并强制校验；宿主固定版本不改变Dockerfile基础镜像
-release.yml[OV8L]: F:由版本标签编译签名 APP、上传 AGC 并创建 GitHub Release，采用 Node24 Action | R:code:bin/versioning.sh,code:docker/ci/Dockerfile,code:entry/src/main/ets/generated/BuildInfo.ets | A:prepare、build-sign、upload-agc、github-release | S:整体重签.app不能拆包单签HAP；AGC仅登记需控制台发布；托管归一24.04且加载SDK容器，自托管需兼容Node24的Runner；多文件artifact保持archive=true供两路下载
+release.yml[OV8L]: F:由标签编译签名APP、上传AGC并建Release，构建拉取固定文档子模块 | R:code:bin/versioning.sh,code:docker/ci/Dockerfile,code:entry/src/main/ets/generated/BuildInfo.ets | A:prepare、build-sign、upload-agc、github-release | S:整体重签.app不能拆包单签HAP；AGC仅登记需控制台发布；托管归一24.04并加载SDK容器，自托管需兼容Node24的Runner；多文件artifact保持archive=true供两路下载
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/AppScope/===
 app.json5[FC7T]: F:声明应用包标识、图标、名称与构建版本占位值 | R:code:.github/workflows/release.yml | A:app 元数据 | S:发版版本由 CI 从 tag 注入，本地占位值不是已发布版本
@@ -39,9 +40,9 @@ versioning.sh[CV8T]: F:统一解析 stable/beta 标签并计算 AGC 包内版本
 Dockerfile[OV7T]: F:封装 JDK17 与 Harmony CLT 为 CI 构建运行环境 | R:code:.github/workflows/docker-image.yml | A:/workspace、hvigorw、ohpm | S:DEVECO_SDK_HOME 必须指向 sdk 而非 sdk/default；CLT zip 先验 SHA256 再解包
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/===
-.gitignore[FC3T]: F:排除 entry 模块依赖、预览、构建和测试生成目录 | R:- | A:- | S:-
+.gitignore[FC3T]: F:排除entry依赖、预览、构建、测试及派生离线文档资源 | R:- | A:- | S:-
 build-profile.json5[FV6T]: F:配置 Stage 模块资源拷贝、release 混淆选项与构建目标 | R:code:entry/obfuscation-rules.txt,code:entry/hvigorfile.ts | A:default、ohosTest | S:release 引用混淆规则但 enable=false，不能认为规则已启用
-hvigorfile.ts[FV5T]: F:接入 Hvigor HAP 内置构建任务 | R:code:entry/build-profile.json5 | A:hapTasks | S:-
+hvigorfile.ts[FV6T]: F:接入HAP任务并在配置期生成本地文档资源 | R:code:scripts/package-local-docs.cjs | A:hapTasks、timelynotify.local-docs | S:生成早于资源扫描，首次及增量构建都执行；缺文档时构建失败，不自动联网初始化
 obfuscation-rules.txt[FV4T]: F:列出属性、顶层、文件名与导出混淆规则 | R:code:entry/build-profile.json5 | A:- | S:-
 oh-package.json5[FV5T]: F:声明entry包元信息及固定的Markdown渲染运行依赖 | R:code:entry/oh-package-lock.json5 | A:dependencies | S:lv-markdown-in固定3.4.7，安装同时引入公式和代码高亮原生依赖
 oh-package-lock.json5[FV6T]: F:锁定Markdown3.4.7及HTML转换、公式、高亮传递依赖的版本来源和完整性 | R:code:entry/oh-package.json5 | A:lockfileVersion3 | S:由OHPM生成；entry独立锁文件含本地so绑定路径，不手改或当作应用源码
@@ -119,6 +120,7 @@ ServerEntry.ets[DD7T]: F:描述服务器配置、设备鉴权、数据库实例�
 Index.ets[AU7M]: F:承载三Tab、导航视觉及搜索多选返回，按主页显隐与Tab协调防窥范围 | R:code:entry/src/main/ets/views/NotifyView.ets,code:entry/src/main/ets/views/ServerView.ets,code:entry/src/main/ets/views/MineView.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:Index、onBackPress | S:Hds视觉先更新、业务待动画完；防窥仅可见通知/服务，切我的即停、路由隐藏即停；通知页搜索及转场先消费返回并发取消信号，多选先退编辑
 PersonalizationSettings.ets[CU6M]: F:按外观、通知点击及重发行为和鸿蒙特性展示偏好，独立检测握姿防窥能力并控制预览 | R:code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/services/AntiPeepService.ets,code:entry/src/main/ets/services/NotifyClickSettingsService.ets | A:PersonalizationSettings、onPageShow、onPageHide | S:能力独立，均不可用才隐藏鸿蒙分组；离页废弃异步结果；重发先确认且不改isArchive；点击跳转默认开，读完前禁切换、写失败回滚
 SharePage.ets[CU6M]: F:承载内嵌网页、下拉刷新、历史返回、分享与沉浸标题栏 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:SharePage、路由url/title参数 | S:强制联网应使用CacheMode.Online，None仍优先缓存；返回先走Web历史
+LocalDocumentPage.ets[CU6M]: F:原生渲染离线Markdown、主题色浅橙底行内代码、可缩放本地图片及下划线链接，按SharePage透明悬浮顶栏布局并管理章节历史与复制 | R:code:entry/src/main/ets/services/LocalDocumentService.ets,code:entry/src/main/ets/services/ExternalLinkService.ets,code:entry/src/main/resources/base/element/color.json | A:LocalDocumentPage、路由url参数 | S:绑定Scroll时显式关默认滚动背景以免COMMON_BLUR色带；章节扣遮挡、历史不扣；禁Web/Worker及远程图，失败不转在线
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/services/===
 AppInfoService.ets[DO6S]: F:读取应用版本签名指纹并组装溯源展示、复制文本及构建链接 | R:code:entry/src/main/ets/generated/BuildInfo.ets | A:AppInfoService | S:仅RUN_ID非空认定云端构建；签名显示尾8位，读取失败为空
@@ -130,7 +132,7 @@ DeviceRegisterService.ets[AI8L]: F:获取Push Token并注册验证还原各服�
 EncryptedNotificationResendService.ets[DC6T]: F:缓存并持久化归档加密通知的本地重发偏好 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets | A:isEnabled、setEnabled | S:默认关闭；写盘成功才更新内存，非归档通知补发不受此开关影响
 EncryptionConfigService.ets[DS8S]: F:校验生成每服务器AES配置，迁移旧明文Key并分离安全密钥与元数据 | R:code:entry/src/main/ets/services/EncryptionKeyStoreService.ets,code:entry/src/main/ets/model/EncryptionConfig.ets | A:get、save、remove、generateKey | S:保存或清除前先迁移旧配置，防止旧Key覆盖新Key或复活；全部旧Key安全写入后才清除Preferences明文
 EncryptionKeyStoreService.ets[PS8S]: F:使用 Asset Store 按服务器别名保存读取删除AES密钥 | R:code:entry/src/main/ets/services/EncryptionConfigService.ets | A:get、put、remove | S:禁止同步，首次解锁后可访问；get空串表示不存在，null表示不可用或读取错误
-ExternalLinkService.ets[IU5T]: F:统一通过内嵌SharePage打开使用文档与隐私链接 | R:code:entry/src/main/ets/pages/SharePage.ets | A:openSharePage、USE_DOCS_URL、PRIVACY_URL | S:-
+ExternalLinkService.ets[IU5T]: F:统一将文档本站链接路由至本地阅读页，其余链接交内嵌网页 | R:code:entry/src/main/ets/services/LocalDocumentService.ets,code:entry/src/main/ets/pages/SharePage.ets | A:openSharePage、USE_DOCS_URL、PRIVACY_URL | S:USE_DOCS_URL仅保留文档身份，不触发在线文档请求；隐私协议仍走网页
 FeedbackService.ets[IU5T]: F:构造含版本设备信息的反馈邮件并拉起系统邮件应用 | R:code:entry/src/main/ets/services/ClipboardService.ets | A:sendFeedback、fallbackCopyEmail | S:只拉起编辑入口；邮件应用不可用时复制反馈邮箱
 MessageCacheStore.ets[PD9L]: F:管理通知RDB迁移、正文与Markdown持久化、事务分页搜索删除及同步元数据 | R:code:entry/src/main/ets/model/NotifyMessage.ets,code:entry/src/main/ets/utils/NotifyIdentity.ets | A:upsertMessages、searchLocal、saveMeta、deleteByDeviceIdPairs | S:device_key实存历史命名空间；整页提交后才删远端；查询全序timestamp/id/device_key；LIKE转义通配符；非归档过期项移除旧缓存；Markdown补列默认空，不清历史或重置同步游标
 MessageCryptoService.ets[KS8T]: F:使用系统密码框架解密AES密文并验证明文为JSON对象 | R:code:entry/src/main/ets/services/EncryptionConfigService.ets | A:MessageCryptoService.decrypt | S:Key和IV按UTF8字节；CBC IV16字节，GCM IV12字节且尾16字节为tag，无AAD；ECB无IV
@@ -142,6 +144,7 @@ ThemeService.ets[DU6S]: F:持久化主题并即时应用颜色模式，保存沉
 HoldingHandService.ets[IU6M]: F:检测系统与实际握姿能力，保存独立开关偏好，共享页面订阅并协调前后台与右侧降级 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start、stop、isEnabled、setEnabled、checkSupport | S:缺能力/801才缓存不支持；默认开启偏好独立，读完再订阅、写成才生效；检测复用订阅，无需监听即退；owner共享末个释放；取消失败留标记
 AntiPeepService.ets[IS8M]: F:检测防窥能力并保存偏好，仅在前台指定页面按模式发布文字模糊或请求系统蒙层 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:entry/src/main/ets/utils/PreferencesUtil.ets,code:entry/src/main/module.json5 | A:start/stop、setPageActive、checkSupport、getSettings、setEnabled、setMode | S:默认关闭，单JSON写成生效；页面范围默认关，离开清模糊并废弃迟到查询/窗口请求，返回重读；设置改偏好不激活监听；801才缓存不支持，失败留偏好；全屏仅系统蒙层，等待或失败也不模糊，按风险轮去重且由系统解除；签名需ACL
 NotifyClickSettingsService.ets[DC6T]: F:缓存并持久化系统通知点击跳转链接偏好 | R:code:entry/src/main/ets/utils/PreferencesUtil.ets | A:isUrlEnabled、setUrlEnabled | S:默认开启；首次读取合并等待，写成才更新内存且先等待读取；仅控制系统点击，不约束主动链接
+LocalDocumentService.ets[IU6S]: F:读取本地文档清单和章节，解析本站目录、相对Markdown链接及锚点 | R:code:entry/src/main/ets/common/AppContextStore.ets,code:scripts/package-local-docs.cjs | A:getDocuments、getSections、resolveLink、isDocumentUrl | S:资源路径来自随包清单，不直接拼接路由参数；仅匹配清单文档，拒绝越界、未知及外部协议
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/utils/===
 HttpUtil.ets[IN7S]: F:封装JSON请求、总时限取消、网络错误分类与耗时及HTTP资源释放 | R:- | A:HttpUtil、HttpResponse、formatNetworkFailure | S:连接异常code=0且保留系统码；默认总时限10s，放宽读取同步延长；到限终止且仅释放一次，迟到结果不回写；仅2xx解析JSON，非JSON留空
@@ -160,7 +163,7 @@ ServerView.ets[AU6L]: F:承载服务器列表、添加、推送测试与文档�
 module.json5[FC8S]: F:注册入口扩展Ability、路由、Push元数据以及网络、握姿和防窥权限 | R:code:entry/src/main/ets/abilities/EntryAbility.ets,code:entry/src/main/resources/base/profile/main_pages.json,code:entry/src/main/ets/services/HoldingHandService.ets,code:entry/src/main/ets/services/AntiPeepService.ets | A:entry 模块 | S:全局UIMaterial启用并避让挖孔；远程通知扩展不导出，普通type0不进入；DETECT_GESTURE系统授予；DLP_GET_HIDE_STATUS声明仍须签名ACL，否则可导致安装失败
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/resources/base/element/===
-color.json[FU6S]: F:定义亮色主题品牌、文本、玻璃背景与语义状态色 | R:code:entry/src/main/resources/dark/element/color.json | A:color资源表 | S:新增颜色需同步暗色对应条目，透明度参与玻璃背板合成
+color.json[FU6S]: F:定义亮色主题品牌、文本、玻璃背景、语义状态及文档行内代码淡橙背景色 | R:code:entry/src/main/resources/dark/element/color.json | A:color资源表 | S:新增颜色需同步暗色对应条目，透明度参与玻璃背板合成
 float.json[FU3T]: F:声明页面文本字号浮点资源 | R:- | A:page_text_font_size | S:-
 string.json[FL4T]: F:声明entry模块说明、权限用途及三个主页Tab的中文文案 | R:code:entry/src/main/module.json5 | A:string资源表 | S:-
 
@@ -210,11 +213,11 @@ url.svg[CU3T]: F:提供链环图形用于通知链接操作 | R:code:entry/src/m
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/resources/base/profile/===
 backup_config.json[FR5T]: F:允许系统备份恢复应用数据 | R:code:entry/src/main/ets/abilities/EntryBackupAbility.ets | A:- | S:安全密钥另由Asset Store禁用同步，不能据应用备份开关推定密钥可恢复
-main_pages.json[FC6T]: F:注册主页、内嵌网页及个性化设置三条页面路由 | R:code:entry/src/main/module.json5 | A:- | S:新增页面必须同时加入此src列表
+main_pages.json[FC6T]: F:注册主页、内嵌网页、个性化设置与本地文档四条路由 | R:code:entry/src/main/module.json5 | A:- | S:新增页面必须同步加入src列表
 network_security_config.json[FN7T]: F:声明网络明文策略及局域网和本地开发域名规则 | R:code:entry/src/main/module.json5,code:entry/src/main/ets/config/ApiConfig.ets | A:- | S:顶层cleartextTrafficPermitted为true，不能理解成仅列出的局域网可明文访问
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/resources/dark/element/===
-color.json[FU6S]: F:定义暗色主题品牌文本玻璃背景及语义状态色 | R:code:entry/src/main/resources/base/element/color.json | A:- | S:保持与亮色同名资源对应，暗色玻璃透明度和对比度需单独验证
+color.json[FU6S]: F:定义暗色主题品牌、文本、玻璃背景、语义状态及文档行内代码暖深色背景 | R:code:entry/src/main/resources/base/element/color.json | A:- | S:保持与亮色同名资源对应，暗色玻璃透明度和对比度需单独验证
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/resources/rawfile/===
 agconnect-services.json[FI7T]: F:提供AGC区域网关、客户端应用身份与各Kit连接配置 | R:code:entry/src/main/module.json5 | A:- | S:配置含api_key及client_secret字段，不将实际值复制进索引或日志
@@ -241,3 +244,7 @@ hvigor-config.json5[FV5T]: F:声明Hvigor模型版本及执行日志调试配置
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/signature/===
 debug.cer[FI5T]: F:保存调试签名验证所用Huawei根CA证书 | R:code:build-profile.json5 | A:X.509 PEM证书 | S:证书是Huawei CBG Root CA G2，不能将链首根证书当作应用叶证书指纹
 release.cer[FI6T]: F:保存发布签名验证所用Huawei根CA证书 | R:code:build-profile.json5,code:.github/workflows/release.yml | A:X.509 PEM证书 | S:证书链首为根CA，应用签名身份应从实际签名信息或叶证书核验
+
+===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/scripts/===
+package-local-docs.cjs[XV6S]: F:将固定清单文档编为章节JSON、本地图片和清单，替换远程图片占位并清理派生资源 | R:code:.gitmodules,code:entry/hvigorfile.ts | A:packageLocalDocs、compileDocument、slugify | S:不联网或改子模块；缺源码或本地图即失败；围栏及行内代码保留；仅清理自有local-docs目录，拒绝越界与符号链接
+package-local-docs.test.cjs[TV6T]: F:回归文档锚点、示例保护、远程占位、本地图片去重、缺失越界、增量稳定及资源清理 | R:code:scripts/package-local-docs.cjs | A:node --test | S:临时复制真实文档检查打包，不验证原生Markdown布局或设备运行表现

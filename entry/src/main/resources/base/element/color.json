@@ -137,6 +137,10 @@
       "value": "#3578D4"
     },
     {
+      "name": "color_doc_code_background",
+      "value": "#FFF4ED"
+    },
+    {
       "name": "color_state_link_pressed",
       "value": "#1A3578D4"
     },
