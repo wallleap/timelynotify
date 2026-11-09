@@ -702,7 +702,54 @@ export class MessageCacheStore {
     return messages;
   }
 
-  /** 读取指定视图内仍待远端清理的解密失败项；可限定分组，包含未加载到列表的历史。 */
+  /** 单条及多选删除按复合主键检查失败项，避免读取当前视图的全部失败历史。 */
+  static async loadDecryptionFailuresByPairs(deviceKeys: string[], pairs: DeviceIdPair[]): Promise<NotifyMessage[]> {
+    const messages: NotifyMessage[] = [];
+    const visible: Set<string> = new Set<string>(deviceKeys);
+    const idsByDevice: Map<string, Set<number>> = new Map<string, Set<number>>();
+    for (const pair of pairs) {
+      if (visible.has(pair.deviceKey)) {
+        const ids: Set<number> = idsByDevice.get(pair.deviceKey) ?? new Set<number>();
+        ids.add(pair.id);
+        idsByDevice.set(pair.deviceKey, ids);
+      }
+    }
+    if (idsByDevice.size === 0) {
+      return messages;
+    }
+    const db = await MessageCacheStore.getStore();
+    if (!db) {
+      throw new Error('无法读取待删除通知');
+    }
+    // 每批最多 500 个 ID，避免多选数千条时超过 SQL 绑定参数限制。
+    const batchSize: number = 500;
+    const keys: string[] = Array.from(idsByDevice.keys());
+    for (const deviceKey of keys) {
+      const ids: number[] = Array.from(idsByDevice.get(deviceKey)!);
+      for (let offset: number = 0; offset < ids.length; offset += batchSize) {
+        const batch: number[] = ids.slice(offset, offset + batchSize);
+        const placeholders: string = batch.map(() => '?').join(',');
+        const args: Array<string | number> = [deviceKey, ...batch];
+        const rs: relationalStore.ResultSet = await db.querySql(
+          `SELECT * FROM ${TABLE_MSG} WHERE device_key=? AND id IN (${placeholders})`, args);
+        try {
+          if (rs.goToFirstRow()) {
+            do {
+              const message: NotifyMessage = rowToMessage(rs);
+              if (message.isDecryptionFailed()) {
+                messages.push(message);
+              }
+            } while (rs.goToNextRow());
+          }
+        } finally {
+          rs.close();
+        }
+      }
+    }
+    return messages;
+  }
+
+  /** 整组及全部删除读取指定视图内的失败项，包含未加载到列表的历史。 */
   static async loadDecryptionFailures(deviceKeys: string[], groupKey: string | null = null): Promise<NotifyMessage[]> {
     const messages: NotifyMessage[] = [];
     const db = await MessageCacheStore.getStore();
@@ -1292,12 +1339,27 @@ export class MessageCacheStore {
     }
     let transaction: relationalStore.Transaction | null = null;
     try {
-      // 跨服务器数字 id 可能相同；整批原子删除，失败时保留本地记录以便重试。
+      // 按来源去重，避免不同服务器的相同数字 ID 被合并或重复执行删除。
+      const idsByDevice: Map<string, Set<number>> = new Map<string, Set<number>>();
+      for (const pair of pairs) {
+        const ids: Set<number> = idsByDevice.get(pair.deviceKey) ?? new Set<number>();
+        ids.add(pair.id);
+        idsByDevice.set(pair.deviceKey, ids);
+      }
+      // 所有来源和批次共用一个事务，任一批失败时整批回滚。
       transaction = await db.createTransaction();
-      for (let i = 0; i < pairs.length; i++) {
-        await transaction.execute(
-          `DELETE FROM ${TABLE_MSG} WHERE device_key=? AND id=?`,
-          [pairs[i].deviceKey, pairs[i].id]);
+      const batchSize: number = 500;
+      const keys: string[] = Array.from(idsByDevice.keys());
+      for (const deviceKey of keys) {
+        const ids: number[] = Array.from(idsByDevice.get(deviceKey)!);
+        for (let offset: number = 0; offset < ids.length; offset += batchSize) {
+          // 限制绑定参数数量，兼容数千条多选；值仍全部使用参数绑定。
+          const batch: number[] = ids.slice(offset, offset + batchSize);
+          const placeholders: string = batch.map(() => '?').join(',');
+          const args: Array<string | number> = [deviceKey, ...batch];
+          await transaction.execute(
+            `DELETE FROM ${TABLE_MSG} WHERE device_key=? AND id IN (${placeholders})`, args);
+        }
       }
       await transaction.commit();
       return true;

@@ -162,7 +162,7 @@ export class NotifySyncService {
     return this.requestSync();
   }
 
-  /** 手动删除前等当前同步页安全完成，避免远端删除后被飞行中的同步结果重新写回本地。 */
+  /** 手动删除前等同步在安全边界让出执行，避免在途结果重新写回已删除通知。 */
   async beginManualDeletion(): Promise<void> {
     this.manualDeletions++;
     this.clearPollTimer();
@@ -321,14 +321,14 @@ export class NotifySyncService {
               if (error.length === 0) {
                 error = await this.syncServer(server, epoch, round!, version);
               }
-              if (state.version !== version || !this.foreground || epoch !== this.epoch) {
+              if (!this.attemptCurrent(server.id, version, epoch)) {
                 allTargetsCurrent = false;
                 continue;
               }
               this.recordServerResult(server.id, error);
               state.completedVersion = version;
             } catch (err) {
-              if (state.version === version) {
+              if (this.attemptCurrent(server.id, version, epoch)) {
                 this.recordServerResult(server.id, '同步异常；未完成的通知会在下次进入前台时重试');
                 state.completedVersion = version;
               }
@@ -345,7 +345,8 @@ export class NotifySyncService {
       AppStorage.setOrCreate(KEY_NOTIFY_SYNC_PROGRESS, '');
       // 首次历史播种只有完整扫完且无错误才算结束；空服务或后台中断不能提前开启自动复制。
       if (round && (!round.firstSync ||
-        (allTargetsCurrent && this.foreground && epoch === this.epoch && this.errors.size === 0))) {
+        (allTargetsCurrent && this.foreground && epoch === this.epoch && this.manualDeletions === 0 &&
+          this.errors.size === 0))) {
         try {
           await AutoCopyService.finishSyncRound(round, null);
         } catch (err) {
@@ -429,9 +430,17 @@ export class NotifySyncService {
         if (!(await MessageCacheStore.upsertMessages(sourceKey, result.messages))) {
           return '本地保存失败；远端通知已保留，稍后可重试';
         }
+        // 本地事务完成后才能让出；未清理的远端副本会在恢复同步时重新读取。
+        if (!this.attemptCurrent(server.id, version, epoch)) {
+          return '';
+        }
         // 每页处理前读取最新偏好：设置页开启后，后续同步页立即按新规则发布。
         const resendArchived: boolean = await EncryptedNotificationResendService.isEnabled();
         for (let i: number = 0; i < result.messages.length; i++) {
+          // 已开始的单条发布安全结束后，不再连续处理整页通知。
+          if (!this.attemptCurrent(server.id, version, epoch)) {
+            return '';
+          }
           const message: NotifyMessage = result.messages[i];
           message.deviceKey = sourceKey;
           if (message.needsDecryptedNotification(Date.now(), resendArchived) &&
@@ -449,8 +458,12 @@ export class NotifySyncService {
         if (!this.attemptCurrent(server.id, version, epoch)) {
           return '';
         }
-        if (await this.deleteMigratedRemoteMessages(server, result.messages) > 0) {
+        if (await this.deleteMigratedRemoteMessages(server, result.messages, epoch, version) > 0) {
           remoteDeleteFailed = true;
+        }
+        // 中断的页面不标记同步完成，保留游标供下一轮补拉未完成的副本。
+        if (!this.attemptCurrent(server.id, version, epoch)) {
+          return '';
         }
       }
       if (result.hasMore && nextAfter <= after) {
@@ -506,10 +519,15 @@ export class NotifySyncService {
     return (await MessageCacheStore.deleteByExtraIds(sourceKey, result.deletionExtraIds)).length > 0;
   }
 
-  private async deleteMigratedRemoteMessages(server: ServerEntry, messages: NotifyMessage[]): Promise<number> {
+  private async deleteMigratedRemoteMessages(server: ServerEntry, messages: NotifyMessage[],
+    epoch: number, version: number): Promise<number> {
     const ready: NotifyMessage[] = messages.filter((message: NotifyMessage) => message.migrationReady);
     let failed: number = 0;
     for (let offset: number = 0; offset < ready.length; offset += DELETE_CONCURRENCY) {
+      // 等当前最多六个请求结束后让出，避免手动删除继续等待整页远端清理。
+      if (!this.attemptCurrent(server.id, version, epoch)) {
+        break;
+      }
       const tasks: Promise<string>[] = [];
       for (let i: number = offset; i < Math.min(offset + DELETE_CONCURRENCY, ready.length); i++) {
         tasks.push(NotifyMessageService.getInstance().deleteMessage(ready[i].id, null, server));

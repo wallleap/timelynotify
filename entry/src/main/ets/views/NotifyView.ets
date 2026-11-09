@@ -318,6 +318,8 @@ export struct NotifyView {
   // 页级刷新合并：多个服务器同时提交时避免并行查询造成旧快照覆盖新快照。
   private pageRefreshInFlight: boolean = false;
   private pageRefreshPending: boolean = false;
+  // 只有列表已吸收当前同步版本时，删除刷新才可复用内存中的通知。
+  private displayedSyncRevision: number = -1;
   // 应用级同步服务保存错误，页面只负责按当前视图展示。
   private syncErrors: Map<string, string> = new Map<string, string>();
   // 失败服务器修复弹窗 controller（必须由成员持有，局部变量会被回收导致 close 失效）
@@ -3493,7 +3495,10 @@ export struct NotifyView {
     const failed: Set<string> = new Set<string>();
     let failures: NotifyMessage[];
     try {
-      failures = await MessageCacheStore.loadDecryptionFailures(this.getVisibleHistoryKeys(), groupKey);
+      // 指定通知时只检查目标主键；整组及全部删除仍覆盖尚未加载的历史。
+      failures = ids === null
+        ? await MessageCacheStore.loadDecryptionFailures(this.getVisibleHistoryKeys(), groupKey)
+        : await MessageCacheStore.loadDecryptionFailuresByPairs(this.getVisibleHistoryKeys(), pairs);
     } catch (_err) {
       result.localFailed = true;
       return result;
@@ -3555,7 +3560,7 @@ export struct NotifyView {
 
   private async finishManualDeletion(result: ManualDeleteResult, uiCtx: UIContext): Promise<void> {
     if (result.deletedIds.length > 0) {
-      await this.refreshVisibleAfterSyncPage(this.loadSeq);
+      await this.refreshVisibleAfterSyncPage(this.loadSeq, result.deletedIds);
       this.expandedGroups = retainExpandableGroups(this.messages, this.expandedGroups, this.groupTotals);
       this.exitEditMode();
     }
@@ -3693,7 +3698,7 @@ export struct NotifyView {
   }
 
   /** 多服务逐页提交后合并列表查询；代际变化时不把旧服务结果写回当前页面。 */
-  private async refreshVisibleAfterSyncPage(expectedSeq: number): Promise<void> {
+  private async refreshVisibleAfterSyncPage(expectedSeq: number, deletedIds: string[] | null = null): Promise<void> {
     if (this.pageRefreshInFlight) {
       this.pageRefreshPending = true;
       return;
@@ -3708,14 +3713,27 @@ export struct NotifyView {
         }
         const keys: string[] = this.getVisibleHistoryKeys();
         const grouped: boolean = this.groupEnabled;
+        const revision: number = this.syncRevision;
+        // 删除成功后复用已加载的其余通知；并发刷新要求重查时，下一轮恢复完整查询。
+        const deleted: Set<string> = new Set<string>(deletedIds ?? []);
+        const retained: NotifyMessage[] | null = deletedIds === null || this.displayedSyncRevision !== revision ? null :
+          this.messages.filter((message: NotifyMessage) => !deleted.has(notifyIdentity(message)));
+        deletedIds = null;
         let totals: Map<string, number>;
         let messages: NotifyMessage[];
         let requestedFlatLimit: number = this.flatLoadedLimit;
         if (grouped) {
           // 先取每组最新 500 条，再补回用户已加载的组内历史深度；同步刷新不能把追加的页抹掉。
-          const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, 500);
+          // 删除刷新只读各组最新一条及真实总数，缺少的历史由下方分页查询补齐。
+          const refreshed = await MessageCacheStore.loadAllGroupedLatest(keys, retained === null ? 500 : 1);
           totals = refreshed.totals;
           messages = refreshed.messages;
+          if (retained !== null) {
+            const existing: Set<string> = new Set<string>(messages.map((message: NotifyMessage) =>
+              notifyIdentity(message)));
+            messages = messages.concat(retained.filter((message: NotifyMessage) =>
+              totals.has(message.group) && !existing.has(notifyIdentity(message))));
+          }
           const loadedCounts: Map<string, number> = new Map<string, number>();
           for (let i = 0; i < this.messages.length; i++) {
             const groupKey: string = this.messages[i].group;
@@ -3758,8 +3776,16 @@ export struct NotifyView {
           // 新同步的通知位于顶部；增大读取深度以保住用户已经翻到的历史页。
           requestedFlatLimit = this.flatLoadedLimit + (this.messages.length > 0
             ? Math.max(0, latestTotal - this.totalCachedCount) : 0);
-          const flatMessages: NotifyMessage[] | null =
-            await MessageCacheStore.loadAllFlatLatest(keys, requestedFlatLimit);
+          // 平铺删除保留历史位置，只从剩余末项向后补足缺口；删空已加载页时重新取首屏。
+          let flatMessages: NotifyMessage[] | null;
+          if (retained !== null && retained.length > 0) {
+            const missing: number = Math.max(0, Math.min(latestTotal, requestedFlatLimit) - retained.length);
+            const older: NotifyMessage[] | null = missing > 0
+              ? await MessageCacheStore.loadAllFlatOlder(keys, retained[retained.length - 1], missing) : [];
+            flatMessages = older === null ? null : retained.concat(older);
+          } else {
+            flatMessages = await MessageCacheStore.loadAllFlatLatest(keys, requestedFlatLimit);
+          }
           if (flatMessages === null) {
             return;
           }
@@ -3770,6 +3796,7 @@ export struct NotifyView {
           continue;
         }
         if (seq === this.loadSeq && grouped === this.groupEnabled) {
+          this.displayedSyncRevision = revision;
           this.messages = messages;
           this.groupTotals = totals;
           // 统计所有可见 device_keys 的缓存消息总数，供"全选"计数使用。
