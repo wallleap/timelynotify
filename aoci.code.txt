@@ -98,7 +98,7 @@ ServerList.ets[AU7L]: F:管理服务器列表详情、鉴权加密配置和删�
 
 ===/Users/luwang/Workspace/code/Project/timelynotify/timelynotify-harmony/entry/src/main/ets/components/settings/===
 SettingArrow.ets[CU3T]: F:提供设置行统一右侧箭头图标 | R:- | A:SettingArrow | S:-
-SettingCell.ets[CU5T]: F:统一设置行文本留白图标及右侧控件槽位 | R:- | A:SettingCell、trailing、onActivate | S:-
+SettingCell.ets[CU5T]: F:统一设置行文本图标与右侧控件槽位，通过单向状态同步刷新说明文字及强调色 | R:- | A:SettingCell、trailing、onActivate | S:-
 SettingDivider.ets[CU3T]: F:提供设置卡片内分隔线样式 | R:- | A:SettingDivider | S:-
 SettingGroup.ets[CU4T]: F:提供圆角毛玻璃设置卡片容器与内容槽位 | R:code:entry/src/main/ets/utils/ImmersiveUtil.ets | A:SettingGroup、content | S:-
 SettingGroupTitle.ets[CU3T]: F:统一设置分组标题字体颜色及留白 | R:- | A:SettingGroupTitle | S:-

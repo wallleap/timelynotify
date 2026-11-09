@@ -4,9 +4,10 @@ export struct SettingCell {
   title: string = '';
   // 仅需要图标的入口传入，普通设置行保持原有布局。
   icon?: Resource;
-  description?: string;
-  // 保留已有状态描述的强调色；不在基础组件里判断业务状态。
-  descriptionColor?: ResourceColor;
+  // 单向同步父组件状态，保证开关切换或异步加载后说明文字及时刷新。
+  @Prop description?: string;
+  // 强调色与说明文字一同同步；业务状态仍由调用方决定。
+  @Prop descriptionColor?: ResourceColor;
   // 构建信息的单行省略规则由调用方指定，其它描述保持原有自然换行。
   descriptionMaxLines: number = 100;
   // 无点击行为的 Toggle / Select 行不触发业务回调。
