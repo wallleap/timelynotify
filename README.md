@@ -2,7 +2,7 @@
 
 TimelyNotify 是使用 ArkTS 开发的鸿蒙端通知 App，希望能尽量对齐 iOS 端的 Bark 功能。
 
-**下载链接**：<https://appgallery.huawei.com/link/invite-test-wap?taskId=8121c9f6a1255c454c2016bea2f7cce9>（在鸿蒙设备上打开链接）
+**下载链接**：<https://appgallery.huawei.com/app/detail?id=cn.oicode.timelynotify>（在鸿蒙设备上打开链接）
 
 ![](https://cdn.wallleap.cn/img/pic/illustration/20261017112747515.png?imageSlim)
 
