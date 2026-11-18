@@ -1,5 +1,6 @@
 import { util } from '@kit.ArkTS';
 import { AppContextStore } from '../common/AppContextStore';
+import { USE_DOCS_URL } from './ExternalLinkService';
 
 /** 构建时生成的文档清单，资源路径不接受路由参数直接拼接。 */
 export interface LocalDocumentInfo {
@@ -104,5 +105,27 @@ export class LocalDocumentService {
       }
     }
     return null;
+  }
+
+  /**
+   * 根据文档 path 和可选 anchor 构造在线文档 URL。
+   * 规则：index.md → 目录路径（/ 或 /fields/），非 index → 加 .html 后缀。
+   * path 非空、不以 / 开头、且以 .md 结尾时才返回有效值，否则返回 null。
+   */
+  static buildOnlineUrl(path: string, anchor: string = ''): string | null {
+    if (!path || path.startsWith('/') || !path.endsWith('.md')) {
+      return null;
+    }
+    const stem: string = path.slice(0, -'.md'.length);
+    let onlinePath: string;
+    if (stem === 'index') {
+      onlinePath = '/';
+    } else if (stem.endsWith('/index')) {
+      onlinePath = '/' + stem.slice(0, -'/index'.length) + '/';
+    } else {
+      onlinePath = '/' + stem + '.html';
+    }
+    const hash: string = anchor ? '#' + encodeURIComponent(anchor) : '';
+    return USE_DOCS_URL + onlinePath + hash;
   }
 }

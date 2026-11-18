@@ -1,7 +1,13 @@
 import { resourceManager } from '@kit.LocalizationKit';
 import { Markdown, MarkdownController } from '@luvi/lv-markdown-in';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { systemShare } from '@kit.ShareKit';
+import { uniformTypeDescriptor as utd } from '@kit.ArkData';
+import { common } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { AppContextStore } from '../common/AppContextStore';
+import { DOMAIN } from '../common/Constant';
 import showToast from '../components/showToast';
 import { ClipboardService } from '../services/ClipboardService';
 import { ExternalLinkService, USE_DOCS_URL } from '../services/ExternalLinkService';
@@ -12,6 +18,8 @@ import {
   LocalDocumentTarget
 } from '../services/LocalDocumentService';
 import { KEY_IMMERSIVE_LIGHT_ENABLED, resolveBlurStyle, shouldUseSystemMaterialPath } from '../utils/ImmersiveUtil';
+
+const TAG: string = 'LocalDocPage';
 
 /** 文档内历史不占路由栈；返回同时恢复原文档及阅读位置。 */
 interface DocumentHistory {
@@ -252,13 +260,58 @@ struct LocalDocumentPage {
       Text(this.pageTitle).fontSize(18).fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.color_text_primary')).layoutWeight(1)
         .textAlign(TextAlign.Center).opacity(this.titleVisible ? 1 : 0);
-      Row().width(32).height(32).hitTestBehavior(HitTestMode.None);
+      if (this.canShareOnline()) {
+        Image($r('app.media.share')).width(32).height(32).objectFit(ImageFit.Contain)
+          .fillColor($r('app.color.color_text_primary')).padding(4).draggable(false)
+          .onClick(() => { this.handleShare(); });
+      } else {
+        Row().width(32).height(32).hitTestBehavior(HitTestMode.None);
+      }
     }
     .width('100%').padding({ left: 8, right: 8, top: 12 + this.statusBarHeight, bottom: 12 })
     .backgroundBlurStyle(resolveBlurStyle('bar')!).backgroundColor($r('app.color.color_bg_glass'))
     .onAreaChange((_old: Area, area: Area) => {
       this.updateTitleBarBottom((area.globalPosition.y as number) + (area.height as number));
     });
+  }
+
+  /** 当前文档能否映射到在线文档 URL；不能映射时不显示分享按钮。 */
+  private canShareOnline(): boolean {
+    if (!this.currentTarget) {
+      return false;
+    }
+    return LocalDocumentService.buildOnlineUrl(this.currentTarget.document.path) !== null;
+  }
+
+  /** 分享当前文档的在线地址，系统面板让用户选择浏览器/复制/分享。 */
+  private handleShare(): void {
+    if (!this.currentTarget) {
+      return;
+    }
+    const url: string | null = LocalDocumentService.buildOnlineUrl(
+      this.currentTarget.document.path, this.currentTarget.anchor);
+    if (!url) {
+      return;
+    }
+    try {
+      const shareData: systemShare.SharedData = new systemShare.SharedData({
+        utd: utd.UniformDataType.HYPERLINK,
+        content: url,
+        title: this.currentTarget.document.title,
+        description: url
+      });
+      const controller: systemShare.ShareController = new systemShare.ShareController(shareData);
+      const context: common.UIAbilityContext =
+        this.getUIContext().getHostContext() as common.UIAbilityContext;
+      controller.show(context, {} as systemShare.ShareControllerOptions).then(() => {
+        hilog.info(DOMAIN, TAG, '分享面板展示成功');
+      }).catch((err: BusinessError) => {
+        hilog.warn(DOMAIN, TAG, '分享面板展示失败：code=%{public}d msg=%{public}s', err.code, err.message);
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, TAG, '分享调用异常：%{public}s', msg);
+    }
   }
 
   private goBack(): void {
@@ -373,7 +426,19 @@ struct LocalDocumentPage {
         content: {
           stackBuilder: (): void => { this.hdsTitleBarProbe(); },
           title: { mainTitle: this.titleVisible ? this.pageTitle : '' },
-          backIcon: { icon: $r('app.media.arrow_left'), action: (): void => { this.goBack(); } }
+          backIcon: { icon: $r('app.media.arrow_left'), action: (): void => { this.goBack(); } },
+          // 系统菜单槽位：右上分享按钮，拉起系统面板让用户选择浏览器/复制；
+          // 无法映射在线 URL 时不显示（menu 为 undefined 等同于无菜单项）。
+          menu: this.canShareOnline() ? {
+            value: [{
+              content: {
+                icon: $r('app.media.share'),
+                action: (): void => {
+                  this.handleShare();
+                }
+              }
+            }]
+          } : undefined
         },
         style: {
           // Scroll 绑定默认启用 COMMON_BLUR，会形成整块色带；显式关闭以匹配 SharePage 的透明悬浮外观。
