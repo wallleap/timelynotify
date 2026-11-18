@@ -277,6 +277,9 @@ TODO:
   从 [docker/ci/Dockerfile](docker/ci/Dockerfile) 构建推送；首次推送后需在 GitHub → Packages 中将包可见性改为
   Public）。流水线定义：[release.yml](.github/workflows/release.yml)（tag 触发：构建 → 重签名 → 上传 AGC → GitHub
   Release）、[build-check.yml](.github/workflows/build-check.yml)（push/PR 构建检查）
+- AGC 上传前会先查询版本列表：没有与发布类型匹配的草稿版本（`state=7`）时直接失败，并打印应用状态与全部版本，
+  避免传完 40MB 才报 `204144743`（官方释义「未找到可修改的版本」）。Publishing API 没有新建版本接口，
+  需在 AGC 控制台「版本信息 → 创建版本」生成草稿后重跑。
 
 ## 防伪校验
 
