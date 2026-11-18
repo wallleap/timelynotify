@@ -539,6 +539,104 @@ jobs:
     permissions:
       contents: read
     steps:
+      # --------------------------------------------------------
+      # 前置检查：AGC 是否存在可修改的版本（草稿 state=7）
+      #   app-package-info 只把包装到已存在的版本上，没有草稿时返回
+      #   204144743 "app state can not be modified!"（官方释义：未找到可修改的版本）。
+      #   先查版本列表再上传，避免白传 40MB 才失败；查询自身失败不阻断发版，
+      #   错误留给后续上传步骤暴露。
+      # --------------------------------------------------------
+      - name: AGC 前置检查（可修改版本）
+        env:
+          AGC_CLIENT_ID:     ${{ secrets.AGC_CLIENT_ID }}
+          AGC_CLIENT_SECRET: ${{ secrets.AGC_CLIENT_SECRET }}
+          AGC_APP_ID:        ${{ secrets.AGC_APP_ID }}
+          RELEASE_TYPE:      ${{ needs.prepare.outputs.release_type }}
+          VERSION:           ${{ needs.prepare.outputs.app_version }}
+          VERSION_CODE:      ${{ needs.prepare.outputs.version_code }}
+          BUNDLE_NAME:       cn.oicode.timelynotify
+        run: |
+          set -euo pipefail
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+          API="https://connect-api.cloud.huawei.com"
+
+          # releaseState 释义（releaseType=1；releaseType=6 时 7 表示「准备提交」）
+          state_name() {
+            case "$1" in
+              0) echo "已上架" ;;
+              1) echo "上架审核不通过" ;;
+              2) echo "已下架" ;;
+              3) echo "待上架/预约上架" ;;
+              4) echo "审核中" ;;
+              5) echo "升级审核中" ;;
+              6) echo "申请下架" ;;
+              7) echo "草稿（可修改）" ;;
+              8) echo "升级审核不通过" ;;
+              9) echo "下架审核不通过" ;;
+              10) echo "被开发者下架" ;;
+              11) echo "撤销上架" ;;
+              12) echo "预审中" ;;
+              13) echo "预审不通过" ;;
+              *) echo "未知($1)" ;;
+            esac
+          }
+
+          TOKEN_RESP="$(curl -sS -X POST "$API/api/oauth2/v1/token" \
+            -H "User-Agent: $UA" -H "Content-Type: application/json" \
+            -d "{\"grant_type\":\"client_credentials\",\"client_id\":\"$AGC_CLIENT_ID\",\"client_secret\":\"$AGC_CLIENT_SECRET\"}" || true)"
+          TOKEN="$(echo "$TOKEN_RESP" | jq -r '.access_token // empty' 2>/dev/null || true)"
+          if [ -z "$TOKEN" ]; then
+            echo "⚠️ 前置检查未取得 access_token，跳过（由上传步骤报错）：$TOKEN_RESP"
+            exit 0
+          fi
+
+          LIST_RESP="$(curl -sS -X POST "$API/api/publish/v3/version/brief-info/list" \
+            -H "User-Agent: $UA" -H "client_id: $AGC_CLIENT_ID" -H "appId: $AGC_APP_ID" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"packageName\":\"$BUNDLE_NAME\"}" || true)"
+          RET_CODE="$(echo "$LIST_RESP" | jq -r '.ret.code // empty' 2>/dev/null || true)"
+          if [ "$RET_CODE" != "0" ]; then
+            echo "⚠️ 查询版本列表失败 (ret.code=${RET_CODE:-无响应})，跳过前置检查：$LIST_RESP"
+            exit 0
+          fi
+
+          echo "--- 版本列表（versionId / releaseType / state / 包版本）---"
+          echo "$LIST_RESP" | jq -r '(.versionList // [])[] | "  - \(.versionId)  releaseType=\(.releaseType)  state=\(.state)  [\([.packageList[]? | "\(.versionName)(\(.versionCode))"] | join(", "))]"'
+
+          DRAFT="$(echo "$LIST_RESP" | jq -c --arg rt "$RELEASE_TYPE" \
+            '[(.versionList // [])[] | select(.state == 7 and (.releaseType|tostring) == $rt)] | sort_by(.updateTime) | last // empty')"
+          if [ -z "$DRAFT" ] || [ "$DRAFT" = "null" ]; then
+            echo "❌ 未找到可修改的版本（releaseType=${RELEASE_TYPE}，state=7），AGC 会拒绝登记软件包（204144743）"
+            if [ "$RELEASE_TYPE" = "1" ]; then
+              APP_RESP="$(curl -sS -G "$API/api/publish/v3/app-info" \
+                -H "User-Agent: $UA" -H "client_id: $AGC_CLIENT_ID" \
+                -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+                --data-urlencode "appId=$AGC_APP_ID" \
+                --data-urlencode "releaseType=1" || true)"
+              RS="$(echo "$APP_RESP" | jq -r '.appInfo.releaseState // empty' 2>/dev/null || true)"
+              if [ -n "$RS" ]; then
+                echo "应用状态 releaseState=$RS → $(state_name "$RS")"
+                echo "当前工作版本: $(echo "$APP_RESP" | jq -r '"\(.appInfo.versionNumber // "-") (\(.appInfo.versionCode // "-"))"' 2>/dev/null || echo '-')"
+                echo "在架版本:     $(echo "$APP_RESP" | jq -r '"\(.appInfo.onShelfVersionNumber // "-") (\(.appInfo.onShelfVersionCode // "-"))"' 2>/dev/null || echo '-')"
+              else
+                echo "查询应用状态失败：$APP_RESP"
+              fi
+            fi
+            echo "处理：AGC 控制台 → 我的应用 → 分发 → 版本信息"
+            echo "  · 审核中/待上架 → 撤回审核或取消发布，让版本回到可编辑状态"
+            echo "  · 已上架或没有版本 → 「创建版本」生成草稿（versionName=${VERSION} / versionCode=${VERSION_CODE}）后重跑本 job"
+            echo "  · Publishing API 没有新建版本接口，必须在控制台操作"
+            exit 1
+          fi
+
+          DRAFT_ID="$(echo "$DRAFT" | jq -r '.versionId // empty')"
+          DRAFT_NAME="$(echo "$DRAFT" | jq -r '.packageList[0].versionName // empty')"
+          DRAFT_CODE="$(echo "$DRAFT" | jq -r '.packageList[0].versionCode // empty')"
+          echo "✅ 找到可修改版本: versionId=$DRAFT_ID versionName=${DRAFT_NAME:-无包} versionCode=${DRAFT_CODE:-无包}"
+          if [ -n "$DRAFT_CODE" ] && [ "$DRAFT_CODE" != "$VERSION_CODE" ]; then
+            echo "⚠️ 草稿版本 versionCode=$DRAFT_CODE 与本次 tag 的 $VERSION_CODE 不一致；若 AGC 拒绝请确认草稿对应当前版本（${VERSION}）"
+          fi
+
       - name: 下载 artifact（APP）
         uses: actions/download-artifact@v8
         with:
