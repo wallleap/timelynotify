@@ -9,6 +9,7 @@ import { DeviceRegisterService } from '../services/DeviceRegisterService';
 import { ServerManager } from '../services/ServerManager';
 import { NotifySyncService } from '../services/NotifySyncService';
 import { AppUpdateService } from '../services/AppUpdateService';
+import { DonationService } from '../services/DonationService';
 import { NotifyClickSettingsService } from '../services/NotifyClickSettingsService';
 import {
   ensureImmersiveMaterial,
@@ -53,6 +54,10 @@ export default class EntryAbility extends UIAbility {
     this.silentRegister();
     // 点击系统通知冷启动：先读取用户偏好，再决定跳链接或定位通知详情。
     this.handlePushClick(want);
+    // 启动时补发货：查询已付款但未确认发货的捐赠订单，避免用户已支付却未完成流程。
+    DonationService.replenishUnfinished(this.context).catch((err: Error) => {
+      hilog.warn(DOMAIN, TAG, '捐赠补发货失败：%{public}s', err.message);
+    });
   }
 
   onDestroy(): void {

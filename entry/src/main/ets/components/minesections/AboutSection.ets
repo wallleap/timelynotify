@@ -1,5 +1,6 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { iap } from '@kit.IAPKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, KEY_APP_UPDATE_AVAILABLE } from '../../common/Constant';
@@ -9,6 +10,7 @@ import { ExternalLinkService, PRIVACY_URL } from '../../services/ExternalLinkSer
 import { FeedbackService } from '../../services/FeedbackService';
 import { ClipboardService } from '../../services/ClipboardService';
 import { ThemeService } from '../../services/ThemeService';
+import { DonationService } from '../../services/DonationService';
 import { getDialogMaterial } from '../../utils/ImmersiveUtil';
 import showToast from '../showToast';
 import { SettingGroup } from '../settings/SettingGroup';
@@ -18,7 +20,7 @@ import { SettingArrow } from '../settings/SettingArrow';
 import { SettingDivider } from '../settings/SettingDivider';
 
 /**
- * 「关于」板块：检测更新 + 开源代码 + 隐私协议 + 反馈问题；底部展示版本与备案号。
+ * 「关于」板块：检测更新 + 开源代码 + 隐私协议 + 反馈问题；捐赠版块；底部展示版本与备案号。
  * 全自治：自身管理 versionName/versionCode/certFingerprintTail，业务下沉到各 Service。
  *
  * 自身刷新版本号与签名指纹，用于版本展示、复制及反馈邮件。
@@ -39,10 +41,23 @@ export struct AboutSection {
   @StorageProp(KEY_APP_UPDATE_AVAILABLE) updateAvailable: boolean = false;
   // 签名证书指纹尾 8 位（点击复制版本信息时一并复制）
   @State certFingerprintTail: string = '';
+  // IAP 环境是否支持（目前仅中国大陆）；不支持时隐藏捐赠版块。
+  @State donationSupported: boolean = false;
 
   aboutToAppear() {
     this.refreshAppVersion();
     this.refreshCertFingerprint();
+    this.checkDonationEnvironment();
+  }
+
+  // 进入关于页时检查 IAP 环境，支持时才展示捐赠版块。
+  private async checkDonationEnvironment(): Promise<void> {
+    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(this.getUIContext());
+    if (!ctx) {
+      this.donationSupported = false;
+      return;
+    }
+    this.donationSupported = await DonationService.isEnvironmentSupported(ctx);
   }
 
   build() {
@@ -95,6 +110,43 @@ export struct AboutSection {
           clickable: true, onActivate: () => this.sendFeedback()
         }) {
           SettingArrow();
+        }
+      }
+
+      // 捐赠版块：仅在 IAP 环境支持时展示。
+      if (this.donationSupported) {
+        // 版块内分组标题：补 4 上间距，使「捐赠」与「关于」的上间距一致（均为 16）
+        SettingGroupTitle({ title: '捐赠' })
+          .margin({ top: 4 });
+
+        SettingGroup() {
+          // 一次性捐赠：消耗型商品，可重复购买。
+          SettingCell({
+            title: '一次性捐赠', icon: $r('app.media.handshake'),
+            clickable: true, onActivate: () => this.doDonate('one_time')
+          }) {
+            Row({ space: 4 }) {
+              Text('￥6')
+                .fontSize(14)
+                .fontColor($r('app.color.color_text_secondary'));
+              SettingArrow();
+            }
+          }
+
+          SettingDivider();
+
+          // 持续支持：自动续期订阅商品，按年自动续费。
+          SettingCell({
+            title: '持续支持', icon: $r('app.media.heart_handshake'),
+            clickable: true, onActivate: () => this.doDonate('yearly')
+          }) {
+            Row({ space: 4 }) {
+              Text('￥6/年')
+                .fontSize(14)
+                .fontColor($r('app.color.color_text_secondary'));
+              SettingArrow();
+            }
+          }
         }
       }
 
@@ -257,5 +309,37 @@ export struct AboutSection {
     }
     const appVersion: string = `TimelyNotify ${this.versionNameDisplay} (${this.versionCodeDisplay})`;
     FeedbackService.sendFeedback(uiCtx, ctx, appVersion);
+  }
+
+  // 执行捐赠购买；成功后提示感谢，失败按错误码友好提示。
+  private async doDonate(type: 'one_time' | 'yearly'): Promise<void> {
+    const uiCtx: UIContext = this.getUIContext();
+    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
+    if (!ctx) {
+      showToast(uiCtx, '上下文获取失败');
+      return;
+    }
+    try {
+      if (type === 'one_time') {
+        await DonationService.purchaseOneTime(ctx);
+      } else {
+        await DonationService.purchaseYearly(ctx);
+      }
+      showToast(uiCtx, '感谢你的支持！', 2000);
+    } catch (err) {
+      const be: BusinessError = err as BusinessError;
+      const msg: string = err instanceof Error ? err.message : String(err);
+      hilog.warn(DOMAIN, 'AboutSection', '捐赠失败：code=%{public}d msg=%{public}s', be.code, msg);
+      // 用户取消不提示错误。
+      if (be.code === iap.IAPErrorCode.USER_CANCELED) {
+        return;
+      } else if (be.code === iap.IAPErrorCode.ACCOUNT_NOT_LOGGED_IN) {
+        showToast(uiCtx, '请先登录华为账号');
+      } else if (be.code === iap.IAPErrorCode.ACCOUNT_TERRITORY_NOT_SUPPORTED) {
+        showToast(uiCtx, '当前地区不支持捐赠');
+      } else {
+        showToast(uiCtx, '捐赠失败，请稍后重试');
+      }
+    }
   }
 }
