@@ -1,6 +1,5 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { iap } from '@kit.IAPKit';
 import { promptAction, UIContext } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, KEY_APP_UPDATE_AVAILABLE } from '../../common/Constant';
@@ -8,9 +7,7 @@ import { AppInfoService, SOURCE_CODE_URL } from '../../services/AppInfoService';
 import { AppUpdateCheckStatus, AppUpdateService } from '../../services/AppUpdateService';
 import { ExternalLinkService, PRIVACY_URL } from '../../services/ExternalLinkService';
 import { FeedbackService } from '../../services/FeedbackService';
-import { ClipboardService } from '../../services/ClipboardService';
 import { ThemeService } from '../../services/ThemeService';
-import { DonationService } from '../../services/DonationService';
 import { getDialogMaterial } from '../../utils/ImmersiveUtil';
 import showToast from '../showToast';
 import { SettingGroup } from '../settings/SettingGroup';
@@ -20,52 +17,25 @@ import { SettingArrow } from '../settings/SettingArrow';
 import { SettingDivider } from '../settings/SettingDivider';
 
 /**
- * 「关于」板块：检测更新 + 开源代码 + 隐私协议 + 反馈问题；捐赠版块；底部展示版本与备案号。
- * 全自治：自身管理 versionName/versionCode/certFingerprintTail，业务下沉到各 Service。
- *
- * 自身刷新版本号与签名指纹，用于版本展示、复制及反馈邮件。
+ * 「关于」板块：检测更新 + 开源代码 + 隐私协议 + 反馈问题。
+ * 捐赠版块见 DonationSection，底部版本与备案号见 AboutFooter。
  */
 @Component
 export struct AboutSection {
   // 已上架应用的市场详情页；检测到新版本且用户确认后才打开。
   private readonly appGalleryUrl: string =
     'https://appgallery.huawei.com/app/detail?id=cn.oicode.timelynotify';
-  // 点击备案号时打开工信部备案管理系统。
-  private readonly icpRecordUrl: string = 'https://beian.miit.gov.cn/';
-  // 版本号展示（读取自 BundleInfo；异常时使用兜底常量）
-  @State versionNameDisplay: string = '1.0.0';
-  @State versionCodeDisplay: number = 1000000;
   // 避免连续点击并发调用应用市场更新检测接口。
   @State checkingUpdate: boolean = false;
   // 静默或手动检测到新版本时，在检测更新行右侧显示提示点。
   @StorageProp(KEY_APP_UPDATE_AVAILABLE) updateAvailable: boolean = false;
-  // 签名证书指纹尾 8 位（点击复制版本信息时一并复制）
-  @State certFingerprintTail: string = '';
-  // IAP 环境是否支持（目前仅中国大陆）；不支持时隐藏捐赠版块。
-  @State donationSupported: boolean = false;
-
-  aboutToAppear() {
-    this.refreshAppVersion();
-    this.refreshCertFingerprint();
-    this.checkDonationEnvironment();
-  }
-
-  // 进入关于页时检查 IAP 环境，支持时才展示捐赠版块。
-  private async checkDonationEnvironment(): Promise<void> {
-    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(this.getUIContext());
-    if (!ctx) {
-      this.donationSupported = false;
-      return;
-    }
-    this.donationSupported = await DonationService.isEnvironmentSupported(ctx);
-  }
 
   build() {
     Column({ space: 12 }) {
       SettingGroupTitle({ title: '关于' });
 
       SettingGroup() {
-        // 点击后检测应用市场更新；版本信息移到卡片下方。
+        // 点击后检测应用市场更新；版本信息由 AboutFooter 展示。
         SettingCell({
           title: '检测更新', icon: $r('app.media.update'),
           clickable: true, onActivate: () => this.checkUpdate()
@@ -112,89 +82,10 @@ export struct AboutSection {
           SettingArrow();
         }
       }
-
-      // 捐赠版块：仅在 IAP 环境支持时展示。
-      if (this.donationSupported) {
-        // 版块内分组标题：补 4 上间距，使「捐赠」与「关于」的上间距一致（均为 16）
-        SettingGroupTitle({ title: '捐赠' })
-          .margin({ top: 4 });
-
-        SettingGroup() {
-          // 一次性捐赠：消耗型商品，可重复购买。
-          SettingCell({
-            title: '一次性捐赠', icon: $r('app.media.handshake'),
-            clickable: true, onActivate: () => this.doDonate('one_time')
-          }) {
-            Row({ space: 4 }) {
-              Text('￥6')
-                .fontSize(14)
-                .fontColor($r('app.color.color_text_secondary'));
-              SettingArrow();
-            }
-          }
-
-          SettingDivider();
-
-          // 持续支持：自动续期订阅商品，按年自动续费。
-          SettingCell({
-            title: '持续支持', icon: $r('app.media.heart_handshake'),
-            clickable: true, onActivate: () => this.doDonate('yearly')
-          }) {
-            Row({ space: 4 }) {
-              Text('￥6/年')
-                .fontSize(14)
-                .fontColor($r('app.color.color_text_secondary'));
-              SettingArrow();
-            }
-          }
-        }
-      }
-
-      // 关于信息随页面滚动停留在所有设置项下方，点击版本仍可复制构建信息。
-      Column({ space: 6 }) {
-        Text(`版本 ${this.versionNameDisplay} (${this.versionCodeDisplay})`)
-          .fontSize(12)
-          .fontColor($r('app.color.color_text_tertiary'))
-          .onClick(() => this.copyVersionInfo());
-        Text('赣ICP备20000895号-3A')
-          .fontSize(12)
-          .fontColor($r('app.color.color_text_tertiary'))
-          .onClick(() => this.openIcpRecord());
-      }
-      .width('100%')
-      .alignItems(HorizontalAlign.Center)
-      .margin({ top: 8 });
     }.width('100%');
   }
 
-  // 读取自身应用版本号（Stage 模式官方接口，无需权限）
-  private async refreshAppVersion(): Promise<void> {
-    const info = await AppInfoService.fetchVersionInfo();
-    this.versionNameDisplay = info.name;
-    this.versionCodeDisplay = info.code;
-  }
-
-  // 运行时读取签名证书指纹尾 8 位
-  private async refreshCertFingerprint(): Promise<void> {
-    this.certFingerprintTail = await AppInfoService.fetchCertFingerprintTail();
-  }
-
-  // 点击底部版本信息：复制完整版本 + 构建溯源信息到剪贴板。
-  private async copyVersionInfo(): Promise<void> {
-    const uiCtx: UIContext = this.getUIContext();
-    const text: string = AppInfoService.buildVersionClipboardText(
-      this.versionNameDisplay, this.versionCodeDisplay, this.certFingerprintTail
-    );
-    const ok: boolean = await ClipboardService.copyText(text);
-    if (ok) {
-      showToast(uiCtx, `已复制版本：${this.versionNameDisplay}`, 1200);
-    } else {
-      // 复制失败时直接把文本作为 Toast 兜底展示
-      showToast(uiCtx, text, 1500);
-    }
-  }
-
-  // 先向应用市场检查更新；有新版本时先询问用户，不直接跳转。
+  // 静默或手动检测到新版本时显示红点；点击后先询问用户，不直接跳转。
   private async checkUpdate(): Promise<void> {
     if (this.checkingUpdate) {
       return;
@@ -282,64 +173,15 @@ export struct AboutSection {
     await ExternalLinkService.openSharePage(this.getUIContext(), PRIVACY_URL, '隐私协议');
   }
 
-  // 点击备案号：使用系统链接入口打开工信部备案管理系统。
-  private async openIcpRecord(): Promise<void> {
-    const uiCtx: UIContext = this.getUIContext();
-    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
-    if (!ctx) {
-      showToast(uiCtx, '无法打开备案网站');
-      return;
-    }
-    try {
-      await ctx.openLink(this.icpRecordUrl, { appLinkingOnly: false });
-    } catch (err) {
-      const msg: string = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, 'AboutSection', '打开备案网站失败：%{public}s', msg);
-      showToast(uiCtx, '无法打开备案网站');
-    }
-  }
-
   // 点击反馈问题行：通过 startAbilityByType 拉起系统邮件应用，自动附带设备信息
-  private sendFeedback(): void {
+  private async sendFeedback(): Promise<void> {
     const uiCtx: UIContext = this.getUIContext();
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
       showToast(uiCtx, '上下文获取失败');
       return;
     }
-    const appVersion: string = `TimelyNotify ${this.versionNameDisplay} (${this.versionCodeDisplay})`;
-    FeedbackService.sendFeedback(uiCtx, ctx, appVersion);
-  }
-
-  // 执行捐赠购买；成功后提示感谢，失败按错误码友好提示。
-  private async doDonate(type: 'one_time' | 'yearly'): Promise<void> {
-    const uiCtx: UIContext = this.getUIContext();
-    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
-    if (!ctx) {
-      showToast(uiCtx, '上下文获取失败');
-      return;
-    }
-    try {
-      if (type === 'one_time') {
-        await DonationService.purchaseOneTime(ctx);
-      } else {
-        await DonationService.purchaseYearly(ctx);
-      }
-      showToast(uiCtx, '感谢你的支持！', 2000);
-    } catch (err) {
-      const be: BusinessError = err as BusinessError;
-      const msg: string = err instanceof Error ? err.message : String(err);
-      hilog.warn(DOMAIN, 'AboutSection', '捐赠失败：code=%{public}d msg=%{public}s', be.code, msg);
-      // 用户取消不提示错误。
-      if (be.code === iap.IAPErrorCode.USER_CANCELED) {
-        return;
-      } else if (be.code === iap.IAPErrorCode.ACCOUNT_NOT_LOGGED_IN) {
-        showToast(uiCtx, '请先登录华为账号');
-      } else if (be.code === iap.IAPErrorCode.ACCOUNT_TERRITORY_NOT_SUPPORTED) {
-        showToast(uiCtx, '当前地区不支持捐赠');
-      } else {
-        showToast(uiCtx, '捐赠失败，请稍后重试');
-      }
-    }
+    const info = await AppInfoService.fetchVersionInfo();
+    FeedbackService.sendFeedback(uiCtx, ctx, `${info.name} (${info.code})`);
   }
 }

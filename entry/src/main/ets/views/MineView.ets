@@ -4,6 +4,7 @@ import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { ThemeService } from '../services/ThemeService';
+import { DonationService } from '../services/DonationService';
 import { HoldingHandService } from '../services/HoldingHandService';
 import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../common/Constant';
 import {
@@ -16,6 +17,8 @@ import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } 
 import { NotifySettingsSection } from '../components/minesections/NotifySettingsSection';
 import { AppInfoSection } from '../components/minesections/AppInfoSection';
 import { AboutSection } from '../components/minesections/AboutSection';
+import { AboutFooter } from '../components/minesections/AboutFooter';
+import { DonationSection } from '../components/minesections/DonationSection';
 import { SettingArrow } from '../components/settings/SettingArrow';
 import showToast from '../components/showToast';
 
@@ -67,6 +70,8 @@ export struct MineView {
   private holdingHandViewMounted: boolean = false;
   private requestedHoldingLeft: boolean = false;
   private handInitialized: boolean = false;
+  // 捐赠板块是否可用（华为 IAP 环境检查结果）
+  @State donationSupported: boolean = false;
   // 代次使离页后的动画结束回调失效；单帧定时器只用于换侧后的布局提交。
   private handAnimationGeneration: number = 0;
   private handFrameTimer: number = -1;
@@ -76,6 +81,17 @@ export struct MineView {
     this.updateHoldingHandSubscription();
     this.refreshColorMode();
     this.refreshNotificationPermission();
+    this.refreshDonationSupported();
+  }
+
+  // 捐赠板块依赖华为 IAP 环境（目前仅中国大陆），不支持时整块不渲染，避免留下空白间距。
+  private async refreshDonationSupported(): Promise<void> {
+    const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(this.getUIContext());
+    if (!ctx) {
+      this.donationSupported = false;
+      return;
+    }
+    this.donationSupported = await DonationService.isEnvironmentSupported(ctx);
   }
 
   aboutToDisappear(): void {
@@ -309,8 +325,16 @@ export struct MineView {
         // 信息板块（构建信息 + 推送 Token）
         AppInfoSection();
 
-        // 关于板块（检测更新 / 开源代码 / 隐私协议 / 反馈问题）及底部版本、备案信息
+        // 关于板块（检测更新 / 开源代码 / 隐私协议 / 反馈问题）
         AboutSection();
+
+        // 捐赠板块（一次性捐赠 / 持续支持）
+        if (this.donationSupported) {
+          DonationSection();
+        }
+
+        // 底部版本与备案信息
+        AboutFooter();
 
         // 底部占位：随内容一起滚动，末尾卡片才能滑入 TabBar 毛玻璃下方（padding 是硬边界做不到）
         // TabBar 总高 = 56 + 导航条高度，占位 72 保持视觉余量不变
