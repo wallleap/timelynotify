@@ -22,6 +22,9 @@ import { DonationSection } from '../components/minesections/DonationSection';
 import { SettingArrow } from '../components/settings/SettingArrow';
 import showToast from '../components/showToast';
 
+// 捐赠功能总开关：IAP 联运协议签署、服务激活前保持 false，避免审核因「接入 IAP 但无结算条件」被拒。
+const DONATION_ENABLED: boolean = false;
+
 // 系统通知权限读取状态；本地订阅开关不参与判断。
 enum NotificationPermissionStatus {
   LOADING,
@@ -81,7 +84,9 @@ export struct MineView {
     this.updateHoldingHandSubscription();
     this.refreshColorMode();
     this.refreshNotificationPermission();
-    this.refreshDonationSupported();
+    if (DONATION_ENABLED) {
+      this.refreshDonationSupported();
+    }
   }
 
   // 捐赠板块依赖华为 IAP 环境（目前仅中国大陆），不支持时整块不渲染，避免留下空白间距。
@@ -329,7 +334,7 @@ export struct MineView {
         AboutSection();
 
         // 捐赠板块（一次性捐赠 / 持续支持）
-        if (this.donationSupported) {
+        if (DONATION_ENABLED && this.donationSupported) {
           DonationSection();
         }
 
