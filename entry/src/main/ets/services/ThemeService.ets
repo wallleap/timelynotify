@@ -38,7 +38,7 @@ export class ThemeService {
         const msg = err instanceof Error ? err.message : String(err);
         hilog.warn(DOMAIN, TAG, 'setColorMode 失败：%{public}s', msg);
         if (uiCtx) {
-          showToast(uiCtx, '主题切换失败');
+          showToast(uiCtx, $r('app.string.theme_switch_failed'));
         }
       }
     }
@@ -71,7 +71,7 @@ export class ThemeService {
   static async restartApp(uiCtx: UIContext): Promise<boolean> {
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
-      showToast(uiCtx, '重启失败，请手动重启应用', 3000);
+      showToast(uiCtx, $r('app.string.theme_restart_failed'), 3000);
       return false;
     }
     const want: Want = {
@@ -86,7 +86,7 @@ export class ThemeService {
     } catch (err) {
       const e: BusinessError = err as BusinessError;
       hilog.warn(DOMAIN, TAG, '应用重启失败：code=%{public}d msg=%{public}s', e.code, e.message);
-      showToast(uiCtx, '重启失败，请手动重启应用', 3000);
+      showToast(uiCtx, $r('app.string.theme_restart_failed'), 3000);
       return false;
     }
   }

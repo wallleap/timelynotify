@@ -67,7 +67,7 @@ export struct DecryptionSettingsDialog {
     Column() {
       if (showFallbackTitle) {
         Column({ space: 4 }) {
-          Text('解密设置')
+          Text($r('app.string.decrypt_title'))
             .fontSize(17)
             .fontWeight(FontWeight.Bold)
             .width('100%')
@@ -88,10 +88,10 @@ export struct DecryptionSettingsDialog {
         Column({ space: 12 }) {
           Row() {
             Column({ space: 2 }) {
-              Text('端到端解密')
+              Text($r('app.string.decrypt_e2e_title'))
                 .fontSize(15)
                 .fontColor($r('app.color.color_text_primary'));
-              Text('Key 仅保存在本机，服务器不会解密')
+              Text($r('app.string.decrypt_e2e_hint'))
                 .fontSize(12)
                 .fontColor($r('app.color.color_text_hint'));
             }
@@ -105,7 +105,7 @@ export struct DecryptionSettingsDialog {
           }
           .width('100%');
 
-          Text('算法')
+          Text($r('app.string.decrypt_label_algorithm'))
             .fontSize(13)
             .fontColor($r('app.color.color_text_secondary'))
             .width('100%');
@@ -124,7 +124,7 @@ export struct DecryptionSettingsDialog {
           .bindMenu(this.algorithmMenu(),
             withImmersiveMenuMaterial({ placement: Placement.BottomLeft, showInSubWindow: true }));
 
-          Text('模式')
+          Text($r('app.string.decrypt_label_mode'))
             .fontSize(13)
             .fontColor($r('app.color.color_text_secondary'))
             .width('100%');
@@ -143,7 +143,7 @@ export struct DecryptionSettingsDialog {
           .bindMenu(this.modeMenu(),
             withImmersiveMenuMaterial({ placement: Placement.BottomLeft, showInSubWindow: true }));
 
-          Text('Padding（由模式自动决定）')
+          Text($r('app.string.decrypt_label_padding'))
             .fontSize(13)
             .fontColor($r('app.color.color_text_secondary'))
             .width('100%');
@@ -156,14 +156,15 @@ export struct DecryptionSettingsDialog {
           .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8);
 
-          Text('Key')
+          Text($r('app.string.decrypt_label_key'))
             .fontSize(13)
             .fontColor($r('app.color.color_text_secondary'))
             .width('100%');
           Row() {
             TextInput({
               text: this.keyText,
-              placeholder: `请输入 ${EncryptionConfigService.expectedKeyBytes(this.algorithm)} 字节 Key`,
+              placeholder: $r('app.string.decrypt_key_placeholder',
+                EncryptionConfigService.expectedKeyBytes(this.algorithm)),
             })
               .layoutWeight(1)
               .height(46)
@@ -185,11 +186,11 @@ export struct DecryptionSettingsDialog {
           .backgroundColor($r('app.color.color_bg_input_glass'))
           .borderRadius(8);
 
-          Text('IV 不在此保存：CBC 由发送端携带 16 字节 IV，GCM 携带 12 字节 IV；ECB 无 IV。')
+          Text($r('app.string.decrypt_iv_note'))
             .fontSize(12)
             .fontColor($r('app.color.color_text_hint'))
             .width('100%');
-          Text('清除解密配置')
+          Text($r('app.string.decrypt_clear_action'))
             .fontSize(13)
             .fontColor($r('app.color.color_error'))
             .padding(8)
@@ -205,7 +206,7 @@ export struct DecryptionSettingsDialog {
       .clip(showFallbackTitle);
 
       Row({ space: 8 }) {
-        Button('取消')
+        Button($r('app.string.common_cancel'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -213,7 +214,7 @@ export struct DecryptionSettingsDialog {
           .fontColor($r('app.color.color_text_secondary'))
           .borderRadius(8)
           .onClick(() => this.controller.close());
-        Button('保存')
+        Button($r('app.string.common_save'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -240,7 +241,7 @@ export struct DecryptionSettingsDialog {
       }
       .titleBar({
         enableComponentSafeArea: true,
-        content: { title: { mainTitle: '解密设置', subTitle: this.serverLabel } },
+        content: { title: { mainTitle: $r('app.string.decrypt_title'), subTitle: this.serverLabel } },
         style: {
           scrollEffectOpts: {
             enableScrollEffect: true,
@@ -320,7 +321,7 @@ export struct DecryptionSettingsDialog {
       this.keyText = EncryptionConfigService.generateKey(this.algorithm);
     } catch (_err) {
       hilog.error(DOMAIN, TAG, '生成随机 Key 失败');
-      showToast(this.getUIContext(), '生成 Key 失败');
+      showToast(this.getUIContext(), $r('app.string.decrypt_toast_generate_failed'));
     }
   }
 
@@ -339,7 +340,7 @@ export struct DecryptionSettingsDialog {
       return;
     }
     if (!this.configLoaded) {
-      showToast(this.getUIContext(), '解密配置尚未读取完成');
+      showToast(this.getUIContext(), $r('app.string.decrypt_toast_not_loaded'));
       return;
     }
     const config: EncryptionConfig = this.buildConfig();
@@ -358,7 +359,7 @@ export struct DecryptionSettingsDialog {
       }
     } catch (_err) {
       hilog.warn(DOMAIN, TAG, '保存解密配置失败');
-      showToast(this.getUIContext(), '保存失败');
+      showToast(this.getUIContext(), $r('app.string.decrypt_toast_save_failed'));
     } finally {
       this.saving = false;
     }
@@ -371,12 +372,13 @@ export struct DecryptionSettingsDialog {
   }
 
   private async confirmConfigChange(): Promise<boolean> {
-    return this.confirmDanger('确认更换解密配置',
-      '请先备份当前 Key，并同步更新发送端。保存后，使用旧 Key 或旧算法加密的历史通知可能无法继续解密。',
-      '确认更换');
+    return this.confirmDanger($r('app.string.decrypt_confirm_change_title'),
+      $r('app.string.decrypt_confirm_change_message'),
+      $r('app.string.decrypt_confirm_change'));
   }
 
-  private async confirmDanger(title: string, message: string, confirmText: string): Promise<boolean> {
+  private async confirmDanger(title: ResourceStr, message: ResourceStr,
+    confirmText: ResourceStr): Promise<boolean> {
     try {
       const background = getDialogBackgroundOptions();
       return await new Promise<boolean>((resolve: (confirmed: boolean) => void) => {
@@ -411,13 +413,13 @@ export struct DecryptionSettingsDialog {
       return;
     }
     if (!this.configLoaded) {
-      showToast(this.getUIContext(), '解密配置尚未读取完成');
+      showToast(this.getUIContext(), $r('app.string.decrypt_toast_not_loaded'));
       return;
     }
     try {
-      if (!await this.confirmDanger('清除解密配置',
-        '清除后 Key 将无法恢复，使用该 Key 加密的历史通知可能无法继续解密。请先备份 Key。',
-        '确认清除')) {
+      if (!await this.confirmDanger($r('app.string.decrypt_confirm_clear_title'),
+        $r('app.string.decrypt_confirm_clear_message'),
+        $r('app.string.decrypt_confirm_clear'))) {
         return;
       }
       this.saving = true;
@@ -426,7 +428,7 @@ export struct DecryptionSettingsDialog {
       }
     } catch (_err) {
       hilog.warn(DOMAIN, TAG, '清除解密配置失败');
-      showToast(this.getUIContext(), '清除失败');
+      showToast(this.getUIContext(), $r('app.string.decrypt_toast_clear_failed'));
     } finally {
       this.saving = false;
     }

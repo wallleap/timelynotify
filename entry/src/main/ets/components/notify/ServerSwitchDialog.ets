@@ -1,4 +1,5 @@
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, IconStyleMode } from '@kit.UIDesignKit';
+import { AppContextStore } from '../../common/AppContextStore';
 import { ServerEntry } from '../../model/ServerEntry';
 import { ServerManager } from '../../services/ServerManager';
 import { extractHost } from '../../utils/ServerUrlUtil';
@@ -114,6 +115,12 @@ export struct ServerSwitchDialog {
     return 64 + Math.min((this.serverList.length + 1) * (ROW_HEIGHT + 8), LIST_MAX_HEIGHT) + 24;
   }
 
+  /** HDS 标题栏 mainTitle 按当前语言同步取回资源文案。 */
+  private localizedTitle(): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync($r('app.string.ntf_switch_service_title').id) : '';
+  }
+
   // 单选指示器：选中=品牌色圆环+实心内点，未选中=描边圆环（仅展示，点击由整行 onClick 承接）
   @Builder
   private radioIndicator(selected: boolean) {
@@ -140,7 +147,7 @@ export struct ServerSwitchDialog {
 
   // 通用选项行：所有分支统一降级玻璃样式（选中=选中玻璃+品牌描边/主标题，未选中=抬升玻璃+默认描边）
   @Builder
-  private optionRow(primary: string, secondary: string, selected: boolean, onTap: () => void) {
+  private optionRow(primary: ResourceStr, secondary: ResourceStr, selected: boolean, onTap: () => void) {
     Row({ space: 12 }) {
       Column({ space: 4 }) {
         Text(primary)
@@ -178,9 +185,10 @@ export struct ServerSwitchDialog {
   // 「全部通知」行
   @Builder
   private allRow(): void {
-    this.optionRow('全部通知', '聚合展示所有服务器的通知', this.isAllSelected(), (): void => {
-      this.selectAll();
-    });
+    this.optionRow($r('app.string.ntf_all_notifications'), $r('app.string.ntf_all_notifications_desc'),
+      this.isAllSelected(), (): void => {
+        this.selectAll();
+      });
   }
 
   // 服务器行：主标题为名称（无名时取 host），副标题为 baseURL
@@ -215,7 +223,7 @@ export struct ServerSwitchDialog {
   @Builder
   private fallbackTitle() {
     Row() {
-      Text('切换通知服务')
+      Text($r('app.string.ntf_switch_service_title'))
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.color_text_primary'))
@@ -242,7 +250,8 @@ export struct ServerSwitchDialog {
       .titleBar({
         enableComponentSafeArea: true,
         content: {
-          title: { mainTitle: '切换通知服务' },
+          // HDS 标题栏主标题按当前语言同步取回字符串，兼容其 string 类型的标题字段。
+          title: { mainTitle: this.localizedTitle() },
           // 关闭按钮交给 HDS 标题栏绘制，才能与标题栏材质和滚动模糊保持一致。
           menu: {
             value: [{

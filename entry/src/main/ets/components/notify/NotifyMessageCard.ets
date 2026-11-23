@@ -161,7 +161,7 @@ export struct NotifyMessageCard {
               .draggable(false)
               .objectFit(ImageFit.Contain)
               .flexShrink(0);
-            Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
+            Text($r('app.string.ntf_copy_link')).fontSize(13).fontColor($r('app.color.color_text_secondary'));
           }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
           .onClick(() => this.onCopyUrl(url));
 
@@ -179,7 +179,7 @@ export struct NotifyMessageCard {
               .draggable(false)
               .objectFit(ImageFit.Contain)
               .flexShrink(0);
-            Text('访问链接').fontSize(13).fontColor($r('app.color.color_brand'));
+            Text($r('app.string.ntf_open_link')).fontSize(13).fontColor($r('app.color.color_brand'));
           }.layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
           .onClick(() => this.onOpenUrl(url));
         }

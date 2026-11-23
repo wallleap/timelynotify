@@ -28,10 +28,11 @@ export struct AboutFooter {
 
   build() {
     Column({ space: 6 }) {
-      Text(`版本 ${this.versionNameDisplay} (${this.versionCodeDisplay})`)
+      Text($r('app.string.mine_footer_version', this.versionNameDisplay, this.versionCodeDisplay))
         .fontSize(12)
         .fontColor($r('app.color.color_text_tertiary'))
         .onClick(() => this.copyVersionInfo());
+      // ICP 备案号为法律标识，保持原文不做多语言处理
       Text('赣ICP备20000895号-3A')
         .fontSize(12)
         .fontColor($r('app.color.color_text_tertiary'))
@@ -61,7 +62,7 @@ export struct AboutFooter {
     );
     const ok: boolean = await ClipboardService.copyText(text);
     if (ok) {
-      showToast(uiCtx, `已复制版本：${this.versionNameDisplay}`, 1200);
+      showToast(uiCtx, $r('app.string.mine_footer_version_copied', this.versionNameDisplay), 1200);
     } else {
       // 复制失败时直接把文本作为 Toast 兜底展示
       showToast(uiCtx, text, 1500);
@@ -73,7 +74,7 @@ export struct AboutFooter {
     const uiCtx: UIContext = this.getUIContext();
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
-      showToast(uiCtx, '无法打开备案网站');
+      showToast(uiCtx, $r('app.string.mine_footer_open_icp_failed'));
       return;
     }
     try {
@@ -81,7 +82,7 @@ export struct AboutFooter {
     } catch (err) {
       const msg: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, 'AboutFooter', '打开备案网站失败：%{public}s', msg);
-      showToast(uiCtx, '无法打开备案网站');
+      showToast(uiCtx, $r('app.string.mine_footer_open_icp_failed'));
     }
   }
 }

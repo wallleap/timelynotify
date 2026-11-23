@@ -16,9 +16,9 @@ export struct ListStatusFooter {
   // 加载失败时提示用户重试，重试动作由外层列表项处理。
   @Prop failed: boolean = false;
   // 仅定制文案，各业务继续共用同一套视觉规则和状态优先级。
-  @Prop loadingText: string = '加载中...';
-  @Prop failureText: string = '加载失败，点击重试';
-  @Prop emptyText: string = '没有更多了';
+  @Prop loadingText: ResourceStr = $r('app.string.footer_loading');
+  @Prop failureText: ResourceStr = $r('app.string.footer_load_failed_retry');
+  @Prop emptyText: ResourceStr = $r('app.string.footer_no_more');
   // 底栏高度（vp），默认与普通通知列表一致。
   @Prop rowHeight: number = 40;
 
@@ -30,7 +30,7 @@ export struct ListStatusFooter {
       } else if (this.failed) {
         Text(this.failureText).fontSize(13).fontColor($r('app.color.color_error'));
       } else if (this.hasMore) {
-        Text('加载更多').fontSize(13).fontColor($r('app.color.color_brand'));
+        Text($r('app.string.footer_load_more')).fontSize(13).fontColor($r('app.color.color_brand'));
       } else {
         Text(this.emptyText).fontSize(13).fontColor($r('app.color.color_text_hint'));
       }

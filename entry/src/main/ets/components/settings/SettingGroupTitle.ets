@@ -5,9 +5,9 @@
 @Component
 export struct SettingGroupTitle {
   // 分组标题文案
-  title: string = '';
+  title: ResourceStr = '';
   // 标题下方补充说明（可选），用于「捐赠」等需要弱提示的分组
-  hint: string = '';
+  hint: ResourceStr = '';
 
   build() {
     Column({ space: 2 }) {
@@ -16,7 +16,7 @@ export struct SettingGroupTitle {
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.color_text_hint'))
         .width('100%');
-      if (this.hint.length > 0) {
+      if (this.hint !== '') {
         Text(this.hint)
           .fontSize(12)
           .fontColor($r('app.color.color_text_hint'))

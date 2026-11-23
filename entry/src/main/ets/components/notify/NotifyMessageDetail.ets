@@ -10,6 +10,7 @@ import {
   buildNotifyCopyText,
   formatNotifyTime,
   formatExpiryDescription,
+  hasExpiryDescription,
   NOTIFY_SEGMENT_CODE,
   NOTIFY_SEGMENT_URL,
   NotifyTextSegment,
@@ -271,6 +272,12 @@ export struct NotifyMessageDetail {
     this.temporaryRevealSeconds = 0;
   }
 
+  /** 同步取回字符串资源的当前语言文案；用于仅接受 string 的三方库 API 与复制标签回调。 */
+  private localizedString(resource: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(resource.id) : '';
+  }
+
   /** 入口位于受保护卡片之外，文字模糊时仍能主动选择临时显示或提前恢复。 */
   @Builder
   private temporaryRevealControl() {
@@ -279,14 +286,16 @@ export struct NotifyMessageDetail {
         Row({ space: 6 }) {
           SymbolGlyph($r('sys.symbol.eye')).fontSize(16)
             .fontColor([$r('app.color.color_text_secondary')]);
-          Text(this.temporaryRevealSeconds > 0 ? `恢复保护 · ${this.temporaryRevealSeconds}s` : '临时显示')
+          Text(this.temporaryRevealSeconds > 0 ?
+            $r('app.string.ntf_restore_protection', this.temporaryRevealSeconds) :
+            $r('app.string.ntf_temporary_reveal'))
             .fontSize(13).fontColor($r('app.color.color_text_secondary'));
         }.justifyContent(FlexAlign.Center);
       }
       .height(36).padding({ left: 16, right: 16 }).borderRadius(18)
       .backgroundColor($r('app.color.color_bg_action')).enabled(this.temporaryRevealAvailable)
       .onClick(() => this.toggleTemporaryReveal());
-      Text('显示当前通知 30 秒。').fontSize(12).fontColor($r('app.color.color_text_hint'));
+      Text($r('app.string.ntf_temporary_reveal_hint')).fontSize(12).fontColor($r('app.color.color_text_hint'));
     }.width('100%').alignItems(HorizontalAlign.Center);
   }
 
@@ -302,7 +311,9 @@ export struct NotifyMessageDetail {
 
   /** Markdown 的所有复制入口都经应用回调，迟到事件必须重新检查保护状态。 */
   private copyMarkdownText(text: string): void {
-    if (this.detailMounted && !this.antiPeepBlur) this.onCopyText(text, '内容');
+    if (this.detailMounted && !this.antiPeepBlur) {
+      this.onCopyText(text, this.localizedString($r('app.string.ntf_label_content')));
+    }
   }
 
   private clearMarkdownSelection(): boolean {
@@ -352,17 +363,19 @@ export struct NotifyMessageDetail {
       // 通知内图片只加载网络地址，不让外部正文访问应用或设备本地文件。
       .setImageLoadProxy((url: string): string => /^https?:\/\//i.test(url) ? url : '')
       .setTextSelectionActionItems([
-        new TextSelectionActionItem('复制', (selection) => {
+        new TextSelectionActionItem(this.localizedString($r('app.string.common_copy')), (selection) => {
           this.copyMarkdownText(selection.selectedText);
           this.clearMarkdownSelection();
         }),
-        new TextSelectionActionItem('全选', (selection) => {
+        new TextSelectionActionItem(this.localizedString($r('app.string.ntf_select_all')), (selection) => {
           if (this.detailMounted && !this.antiPeepBlur) {
             this.markdownSelecting = true;
             selection.selectAll();
           }
         }),
-        new TextSelectionActionItem('取消', () => { this.clearMarkdownSelection(); })
+        new TextSelectionActionItem(this.localizedString($r('app.string.common_cancel')), () => {
+          this.clearMarkdownSelection();
+        })
       ]);
     this.markdownController.setTableNormalTextColor($r('app.color.color_text_secondary'));
     this.markdownController.setTableInterleaveTextColor($r('app.color.color_text_secondary'));
@@ -426,7 +439,7 @@ export struct NotifyMessageDetail {
       } else {
         // 普通文本可直接复制该连续片段；空白区域由外层 Text 复制整段内容。
         Span(segment.text).fontColor($r('app.color.color_text_secondary')).fontSize(15)
-          .onClick(() => this.onCopyText(segment.text, '内容'));
+          .onClick(() => this.onCopyText(segment.text, this.localizedString($r('app.string.ntf_label_content'))));
       }
     }, (segment: NotifyTextSegment, index: number) => `${index}_${segment.type}_${segment.text}`)
   }
@@ -439,7 +452,7 @@ export struct NotifyMessageDetail {
       .onTextSelectionChange((start: number, end: number) => {
         this.onTextSelectionChanged(this.bodyTextController, start, end);
       })
-      .onClick(() => this.onCopyText(text, '内容'));
+      .onClick(() => this.onCopyText(text, this.localizedString($r('app.string.ntf_label_content'))));
   }
 
   @Builder
@@ -452,7 +465,7 @@ export struct NotifyMessageDetail {
           .onTextSelectionChange((start: number, end: number) => {
             this.onTextSelectionChanged(this.getInboxTextController(index), start, end);
           })
-          .onClick(() => this.onCopyText(line, '内容'));
+          .onClick(() => this.onCopyText(line, this.localizedString($r('app.string.ntf_label_content'))));
       }, (line: string, index: number) => `${index}_${line}`)
     }.width('100%').alignItems(HorizontalAlign.Start);
   }
@@ -513,7 +526,8 @@ export struct NotifyMessageDetail {
         ForEach(segments, (segment: NotifyTextSegment, index: number) => {
           Row({ space: 12 }) {
             Column({ space: 2 }) {
-              Text(this.isUrlSegment(segment) ? '识别到链接' : '识别到验证码').fontSize(12)
+              Text(this.isUrlSegment(segment) ? $r('app.string.ntf_recognized_link') :
+                $r('app.string.ntf_recognized_code')).fontSize(12)
                 .fontColor($r('app.color.color_text_tertiary')).width('100%');
               Text(this.displayRecognizedText(segment)).blur(this.isTextConcealed() ? 22 : 0).fontSize(14).fontWeight(FontWeight.Medium)
                 .fontColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_text_primary'))
@@ -525,7 +539,8 @@ export struct NotifyMessageDetail {
               Image(this.isUrlSegment(segment) ? $r('app.media.url') : $r('app.media.copy'))
                 .width(14).height(14).objectFit(ImageFit.Contain).draggable(false)
                 .fillColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_brand'));
-              Text(this.isUrlSegment(segment) ? '访问' : '复制').fontSize(13).fontWeight(FontWeight.Medium)
+              Text(this.isUrlSegment(segment) ? $r('app.string.ntf_action_visit') :
+                $r('app.string.common_copy')).fontSize(13).fontWeight(FontWeight.Medium)
                 .fontColor(this.isUrlSegment(segment) ? $r('app.color.color_link') : $r('app.color.color_brand'));
             }
             .padding({ left: 10, right: 10, top: 8, bottom: 8 }).borderRadius(16)
@@ -564,7 +579,7 @@ export struct NotifyMessageDetail {
           Row({ space: 4 }) {
             Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
               .objectFit(ImageFit.Contain).flexShrink(0);
-            Text('复制 Copy 参数内容').fontSize(13).fontColor($r('app.color.color_text_secondary'));
+            Text($r('app.string.ntf_copy_copy_param')).fontSize(13).fontColor($r('app.color.color_text_secondary'));
           }
           .width('100%').height(42).justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
           .onClick(() => this.onCopyContent(copy));
@@ -579,7 +594,7 @@ export struct NotifyMessageDetail {
             Row({ space: 4 }) {
               Image($r('app.media.copy')).width(13).height(13).fillColor($r('app.color.color_text_secondary')).draggable(false)
                 .objectFit(ImageFit.Contain).flexShrink(0);
-              Text('复制链接').fontSize(13).fontColor($r('app.color.color_text_secondary'));
+              Text($r('app.string.ntf_copy_link')).fontSize(13).fontColor($r('app.color.color_text_secondary'));
             }
             .layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
             .onClick(() => this.onCopyUrl(url));
@@ -587,7 +602,7 @@ export struct NotifyMessageDetail {
             Row({ space: 4 }) {
               Image($r('app.media.url')).width(13).height(13).fillColor($r('app.color.color_brand')).draggable(false)
                 .objectFit(ImageFit.Contain).flexShrink(0);
-              Text('访问链接').fontSize(13).fontColor($r('app.color.color_brand'));
+              Text($r('app.string.ntf_open_link')).fontSize(13).fontColor($r('app.color.color_brand'));
             }
             .layoutWeight(1).height('100%').justifyContent(FlexAlign.Center).alignItems(VerticalAlign.Center)
             .onClick(() => this.onOpenUrl(url));
@@ -602,14 +617,14 @@ export struct NotifyMessageDetail {
   @Builder
   private bottomActions() {
     Row({ space: 12 }) {
-      Button('删除')
+      Button($r('app.string.common_delete'))
         .layoutWeight(1).height(DETAIL_DELETE_BUTTON_HEIGHT)
         .buttonStyle(ButtonStyleMode.NORMAL)
         .backgroundColor($r('app.color.color_bg_action'))
         .fontSize(16).fontColor($r('app.color.color_error'))
         .borderRadius(DETAIL_DELETE_BUTTON_HEIGHT / 2)
         .onClick(() => this.onDelete());
-      Button('复制全文')
+      Button($r('app.string.ntf_copy_all'))
         .layoutWeight(1).height(DETAIL_DELETE_BUTTON_HEIGHT)
         .backgroundColor($r('app.color.color_brand'))
         .fontSize(16).fontColor(Color.White)
@@ -617,7 +632,8 @@ export struct NotifyMessageDetail {
         .enabled(this.message ? buildNotifyCopyText(this.message).length > 0 : false)
         .onClick(() => {
           if (this.message) {
-            this.onCopyText(buildNotifyCopyText(this.message), '全文');
+            this.onCopyText(buildNotifyCopyText(this.message),
+              this.localizedString($r('app.string.ntf_label_full_text')));
           }
         });
     }
@@ -663,7 +679,8 @@ export struct NotifyMessageDetail {
                       .onTextSelectionChange((start: number, end: number) => {
                         this.onTextSelectionChanged(this.titleTextController, start, end);
                       })
-                      .onClick(() => this.onCopyText(this.message ? this.message.title : '', '标题'));
+                      .onClick(() => this.onCopyText(this.message ? this.message.title : '',
+                        this.localizedString($r('app.string.ntf_label_title'))));
                   }
                   if (this.message.subtitle.length > 0) {
                     Text(this.message.subtitle, { controller: this.subtitleTextController })
@@ -673,7 +690,8 @@ export struct NotifyMessageDetail {
                       .onTextSelectionChange((start: number, end: number) => {
                         this.onTextSelectionChanged(this.subtitleTextController, start, end);
                       })
-                      .onClick(() => this.onCopyText(this.message ? this.message.subtitle : '', '副标题'));
+                      .onClick(() => this.onCopyText(this.message ? this.message.subtitle : '',
+                        this.localizedString($r('app.string.ntf_label_subtitle'))));
                   }
                 }
                 .layoutWeight(1).alignItems(HorizontalAlign.Start);
@@ -703,7 +721,7 @@ export struct NotifyMessageDetail {
                   .maxLines(1);
               }
               .width('100%').margin({ top: 14 }).alignItems(VerticalAlign.Center);
-              if (formatExpiryDescription(this.message.expiresAt).length > 0) {
+              if (hasExpiryDescription(this.message.expiresAt)) {
                 Text(formatExpiryDescription(this.message.expiresAt)).blur(this.isTextConcealed() ? 22 : 0)
                   .fontSize(12)
                   .fontColor($r('app.color.color_warning'))
@@ -733,8 +751,9 @@ export struct NotifyMessageDetail {
           top: DETAIL_EDGE_SPACING });
         ListItem() {
           if (this.message) {
-            Text(this.antiPeepBlur ? '临时显示仅供查看' :
-              (this.message.hasMarkdown() ? '长按正文可选择复制' : '点按标题或内容，可分别复制'))
+            Text(this.antiPeepBlur ? $r('app.string.ntf_temp_show_view_only') :
+              (this.message.hasMarkdown() ? $r('app.string.ntf_longpress_to_copy') :
+                $r('app.string.ntf_tap_to_copy')))
               .width('100%').textAlign(TextAlign.Center)
               .fontSize(12).fontColor($r('app.color.color_text_hint'));
           }

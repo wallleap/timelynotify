@@ -207,7 +207,7 @@ export struct NotifyGroupCard {
   @Builder
   private groupCount() {
     if (this.isEditing) {
-      Text(`已选 ${this.selectedCount} / ${this.section.total}`)
+      Text($r('app.string.ntf_selected_progress', this.selectedCount, this.section.total))
         .fontSize(10)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.color_text_badge'))

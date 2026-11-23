@@ -48,7 +48,7 @@ export struct HoldingHandSettingsCard {
     Column({ space: 10 }) {
       Stack({ alignContent: Alignment.TopStart }) {
         Row() {
-          Text('全部通知')
+          Text($r('app.string.holdcard_preview_title'))
             .fontSize(13)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.color_text_primary'));
@@ -110,7 +110,8 @@ export struct HoldingHandSettingsCard {
       .clip(true)
       .accessibilityLevel('no-hide-descendants');
 
-      Text(this.holdingEnabled ? (this.previewLeft ? '左手握持' : '右手握持') : '固定右侧')
+      Text(this.holdingEnabled ? (this.previewLeft ? $r('app.string.holdcard_left_hand') :
+        $r('app.string.holdcard_right_hand')) : $r('app.string.holdcard_fixed_right'))
         .fontSize(12)
         .fontColor(this.holdingEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_tertiary'));
     }
@@ -118,14 +119,15 @@ export struct HoldingHandSettingsCard {
     .padding({ top: 16, bottom: 12 })
     .backgroundColor($r('app.color.color_bg_surface_muted'))
     .borderRadius(12)
-    .accessibilityText(this.holdingEnabled ? '智感握姿效果预览，按钮随握姿左右切换' : '智感握姿已关闭，按钮固定右侧')
+    .accessibilityText(this.holdingEnabled
+      ? $r('app.string.holdcard_accessibility_on') : $r('app.string.holdcard_accessibility_off'))
     .hitTestBehavior(HitTestMode.None);
   }
 
   build() {
     Column() {
       SettingGroup() {
-        SettingCell({ title: '智感握姿' }) {
+        SettingCell({ title: $r('app.string.holdcard_title') }) {
           Toggle({ type: ToggleType.Switch, isOn: this.holdingEnabled })
             .id('holding_hand_enabled_toggle')
             .selectedColor($r('app.color.color_brand'))
@@ -134,7 +136,7 @@ export struct HoldingHandSettingsCard {
         }
         Column({ space: 12 }) {
           this.preview();
-          Text(this.holdingEnabled ? '按钮随握姿左右切换，单手操作更顺手。' : '按钮固定在右侧，不随握姿切换。')
+          Text(this.holdingEnabled ? $r('app.string.holdcard_desc_on') : $r('app.string.holdcard_desc_off'))
             .fontSize(12)
             .fontColor($r('app.color.color_text_tertiary'))
             .width('100%');
@@ -179,12 +181,12 @@ export struct HoldingHandSettingsCard {
     try {
       if (!(await HoldingHandService.setEnabled(enabled)) && this.mounted) {
         this.holdingEnabled = previous;
-        showToast(this.getUIContext(), '保存失败，设置未生效');
+        showToast(this.getUIContext(), $r('app.string.holdcard_toast_save_failed'));
       }
     } catch (_err) {
       if (this.mounted) {
         this.holdingEnabled = previous;
-        showToast(this.getUIContext(), '保存失败，设置未生效');
+        showToast(this.getUIContext(), $r('app.string.holdcard_toast_save_failed'));
       }
     } finally {
       if (this.mounted) {

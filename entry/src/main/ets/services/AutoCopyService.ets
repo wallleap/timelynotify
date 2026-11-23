@@ -137,7 +137,7 @@ export class AutoCopyService {
       const display: string = selectedText.length > AutoCopyService.TOAST_TEXT_CAP
         ? `${selectedText.substring(0, AutoCopyService.TOAST_TEXT_CAP)}…`
         : selectedText;
-      showToast(uiContext, `已复制 ${display}`, 1500, TAG);
+      showToast(uiContext, $r('app.string.autocopy_copied', display), 1500, TAG);
     }
     hilog.info(DOMAIN, TAG, '自动复制成功：id=%{public}d len=%{public}d', selected.id, selectedText.length);
   }

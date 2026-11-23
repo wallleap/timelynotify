@@ -13,6 +13,7 @@ import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../common/Co
 import { SampleCode } from '../components/server/SampleCode';
 import { ExternalLinkService, USE_DOCS_URL } from '../services/ExternalLinkService';
 import { HoldingHandService } from '../services/HoldingHandService';
+import { AppContextStore } from '../common/AppContextStore';
 
 const TAG: string = 'ServerView';
 const PUSH_FIELDS_URL: string = `${USE_DOCS_URL}/fields/`;
@@ -143,7 +144,7 @@ export struct ServerView {
   @Builder
   private customTitleContent() {
     Row() {
-      Text('服务').fontSize(24).fontWeight(FontWeight.Bold)
+      Text($r('app.string.server_title')).fontSize(24).fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.color_text_primary'));
     }
     .width('100%')
@@ -176,7 +177,7 @@ export struct ServerView {
   @Builder
   fallbackTitleBar() {
     Row() {
-      Text('服务')
+      Text($r('app.string.server_title'))
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.color_text_primary'));
@@ -216,7 +217,7 @@ export struct ServerView {
             .objectFit(ImageFit.Contain)
             .draggable(false);
 
-          Text('文档')
+          Text($r('app.string.server_docs'))
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.color_text_primary'));
@@ -233,7 +234,7 @@ export struct ServerView {
         .strokeWidth(1)
 
       Row() {
-        Text('使用指南')
+        Text($r('app.string.server_usage_guide'))
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_primary'))
@@ -252,7 +253,7 @@ export struct ServerView {
       // 用行内边距扩展点击区域，替代 Column 的不可点击间距。
       .padding({ top: 16, bottom: 16 })
       .onClick(() => {
-        this.openDocument(`${USE_DOCS_URL}/`, '使用指南');
+        this.openDocument(`${USE_DOCS_URL}/`, this.titleText($r('app.string.server_usage_guide')));
       })
 
       Divider()
@@ -260,7 +261,7 @@ export struct ServerView {
         .strokeWidth(1)
 
       Row() {
-        Text('推送参数')
+        Text($r('app.string.server_push_fields'))
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.color_text_primary'))
@@ -278,7 +279,7 @@ export struct ServerView {
       .justifyContent(FlexAlign.SpaceBetween)
       .padding({ top: 16, bottom: 20 })
       .onClick(() => {
-        this.openDocument(PUSH_FIELDS_URL, '推送参数');
+        this.openDocument(PUSH_FIELDS_URL, this.titleText($r('app.string.server_push_fields')));
       })
     }
     .padding({
@@ -303,7 +304,7 @@ export struct ServerView {
             .objectFit(ImageFit.Contain)
             .draggable(false);
 
-          Text('常见问答')
+          Text($r('app.string.server_faq'))
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.color_text_primary'));
@@ -325,7 +326,7 @@ export struct ServerView {
     .borderRadius(10)
     .backgroundColor($r('app.color.color_bg_surface'))
     .onClick(() => {
-      this.openDocument(FAQ_URL, '常见问答');
+      this.openDocument(FAQ_URL, this.titleText($r('app.string.server_faq')));
     })
   }
 
@@ -473,5 +474,11 @@ export struct ServerView {
   // 使用现有的内嵌 WebView 打开文档页，导航失败由 ExternalLinkService 提示
   private async openDocument(url: string, title: string): Promise<void> {
     await ExternalLinkService.openSharePage(this.getUIContext(), url, title);
+  }
+
+  // 路由标题参数需要原始 string：资源经 resourceManager 还原为当前语言文案
+  private titleText(res: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id) : '';
   }
 }

@@ -10,6 +10,21 @@ import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'DeviceRegister';
 
+/** 读取当前语言的字符串资源（注册错误文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
+
 // 服务端统一返回格式：{code, message, data, timestamp}
 export class RegisterPayload extends Object {
   device_token: string = '';
@@ -191,7 +206,7 @@ export class DeviceRegisterService {
     const target: ServerEntry | undefined = ServerManager.getInstance().getList()
       .find((server: ServerEntry) => server.id === serverId);
     return this.registrationErrors.get(JSON.stringify([serverId, baseURL, savedDeviceKey, target?.deviceKey ?? ''])) ??
-      '设备注册未完成，请重试';
+      tr($r('app.string.devreg_register_incomplete'));
   }
 
   /** 同一目标只允许一次注册；下次重试在前一次任务结束后重新发起。 */
@@ -263,11 +278,11 @@ export class DeviceRegisterService {
         const saved: ServerEntry | undefined = ServerManager.getInstance().getList()
           .find((server: ServerEntry) => server.id === serverId);
         if (!saved || saved.baseURL !== baseURL || saved.deviceKey !== finalKey) {
-          this.registrationErrors.set(taskKey, '设备注册信息保存失败，请重试');
+          this.registrationErrors.set(taskKey, tr($r('app.string.devreg_save_info_failed')));
           return null;
         }
       } catch (err) {
-        this.registrationErrors.set(taskKey, '设备注册信息保存失败，请重试');
+        this.registrationErrors.set(taskKey, tr($r('app.string.devreg_save_info_failed')));
         hilog.warn(DOMAIN, TAG, 'syncKeyForServer：回写 per-server deviceKey 失败：%{public}s', String(err));
         return null;
       }
@@ -296,15 +311,15 @@ export class DeviceRegisterService {
     try {
       const deadline: Promise<string> = new Promise<string>((resolve) => {
         timer = setTimeout(() => {
-          this.tokenError = '获取推送标识超时，请重试';
+          this.tokenError = tr($r('app.string.devreg_push_token_timeout'));
           resolve('');
         }, 10000);
       });
       const token: string = await Promise.race([this.tokenProvider(), deadline]);
-      if (!token && !this.tokenError) this.tokenError = '获取推送标识失败，请重试';
+      if (!token && !this.tokenError) this.tokenError = tr($r('app.string.devreg_push_token_failed'));
       return token;
     } catch (_err) {
-      this.tokenError = '获取推送标识失败，请重试';
+      this.tokenError = tr($r('app.string.devreg_push_token_failed'));
       return '';
     } finally {
       if (timer >= 0) clearTimeout(timer);
@@ -458,7 +473,7 @@ export class DeviceRegisterService {
       if (resp.code === 400 || resp.code === 404 ||
         (resp.code === 200 && resp.result && (resp.result.code === 400 || resp.result.code === 404))) return false;
       this.registrationErrors.set(taskKey, resp.code === 0 ? resp.message :
-        `设备注册校验失败（HTTP ${resp.code}），请重试`);
+        tr($r('app.string.devreg_verify_http_failed'), resp.code));
       hilog.warn(
         DOMAIN, TAG,
         'device_key 验证失败：httpCode=%{public}d bizCode=%{public}d',
@@ -467,7 +482,7 @@ export class DeviceRegisterService {
       return null;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'device_key 验证异常：%{public}s', String(err));
-      this.registrationErrors.set(taskKey, '设备注册校验失败，请重试');
+      this.registrationErrors.set(taskKey, tr($r('app.string.devreg_verify_failed')));
       return null;
     }
   }
@@ -487,7 +502,7 @@ export class DeviceRegisterService {
         }
       }
       if (!deviceToken || deviceToken.length === 0) {
-        this.registrationErrors.set(taskKey, this.tokenError || '获取推送标识失败，请重试');
+        this.registrationErrors.set(taskKey, this.tokenError || tr($r('app.string.devreg_push_token_failed')));
         hilog.error(DOMAIN, TAG, 'doRegisterWithBaseURL：device_token 为空，中止注册');
         return null;
       }
@@ -507,7 +522,7 @@ export class DeviceRegisterService {
 
       if (!(resp.code >= 200 && resp.code < 300) || !resp.result || resp.result.code !== 200 || !resp.result.data) {
         this.registrationErrors.set(taskKey, resp.code === 0 ? resp.message :
-          `设备注册失败（HTTP ${resp.code}），请重试`);
+          tr($r('app.string.devreg_register_http_failed'), resp.code));
         hilog.error(DOMAIN, TAG, '设备注册失败：httpCode=%{public}d networkCode=%{public}d',
           resp.code, resp.networkErrorCode);
         return null;
@@ -521,10 +536,10 @@ export class DeviceRegisterService {
         hilog.info(DOMAIN, TAG, 'doRegisterWithBaseURL：完成，device_key=%{public}s', newDeviceKey);
         return newDeviceKey;
       }
-      this.registrationErrors.set(taskKey, '设备注册响应缺少设备标识，请重试');
+      this.registrationErrors.set(taskKey, tr($r('app.string.devreg_missing_device_id')));
       return null;
     } catch (err) {
-      this.registrationErrors.set(taskKey, '设备注册失败，请重试');
+      this.registrationErrors.set(taskKey, tr($r('app.string.devreg_register_failed')));
       hilog.error(DOMAIN, TAG, 'doRegisterWithBaseURL 异常：%{public}s', String(err));
       return null;
     }

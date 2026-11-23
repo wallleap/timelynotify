@@ -10,6 +10,7 @@ import { ServerManager } from '../services/ServerManager';
 import { NotifySyncService } from '../services/NotifySyncService';
 import { AppUpdateService } from '../services/AppUpdateService';
 import { DonationService } from '../services/DonationService';
+import { LanguageService } from '../services/LanguageService';
 import { NotifyClickSettingsService } from '../services/NotifyClickSettingsService';
 import {
   ensureImmersiveMaterial,
@@ -39,6 +40,8 @@ export default class EntryAbility extends UIAbility {
     }
     // 最早拿到 UIAbilityContext 的时机，注入全局存储，之后组件/dialog/持久化都可以用
     AppContextStore.getInstance().setContext(this.context);
+    // 恢复用户语言偏好（跟随系统/中文/English），保证界面资源与设置一致
+    LanguageService.applySavedLanguage();
     // 读取用户主题偏好（跟随系统/浅色/深色）并应用
     this.applySavedColorMode();
     hilog.info(DOMAIN, TAG, 'Ability onCreate');

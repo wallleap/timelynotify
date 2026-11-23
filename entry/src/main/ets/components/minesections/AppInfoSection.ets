@@ -32,13 +32,13 @@ export struct AppInfoSection {
 
   build() {
     Column({ space: 12 }) {
-      SettingGroupTitle({ title: '信息' });
+      SettingGroupTitle({ title: $r('app.string.mine_appinfo_section_title') });
 
       Column({ space: 12 }) {
         // 构建信息行（展示云端构建编号 / commit / 签名指纹尾串；点击打开构建记录页供用户比对防伪）
         SettingGroup() {
           SettingCell({
-            title: '构建信息',
+            title: $r('app.string.mine_appinfo_build_info'),
             icon: $r('app.media.shield_keyhole'),
             description: AppInfoService.buildInfoDisplay(this.certFingerprintTail),
             descriptionMaxLines: 1,
@@ -62,17 +62,17 @@ export struct AppInfoSection {
             .draggable(false);
           Column({ space: 4 }) {
             Row() {
-              Text('推送 Token')
+              Text($r('app.string.mine_appinfo_push_token'))
                 .fontSize(16)
                 .fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.color_text_primary'));
-              Text(' (自动生成)')
+              Text($r('app.string.mine_appinfo_auto_generated'))
                 .fontSize(14)
                 .fontColor($r('app.color.color_text_tertiary'))
                 .maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis });
               Blank();
-              Text('点击复制').fontSize(12).fontColor($r('app.color.color_brand'));
+              Text($r('app.string.mine_appinfo_tap_to_copy')).fontSize(12).fontColor($r('app.color.color_brand'));
             }.width('100%');
 
             Text(this.buildDeviceTokenDisplay())
@@ -108,18 +108,17 @@ export struct AppInfoSection {
   }
 
   // 掩码展示：只保留最后 4 位可辨识，其余为圆点，避免卡片上泄露长 token
-  private buildDeviceTokenDisplay(): string {
+  private buildDeviceTokenDisplay(): ResourceStr {
     const t: string = this.deviceTokenDisplay;
     if (!t || t.length === 0) {
-      return '未获取';
+      return $r('app.string.mine_appinfo_not_fetched');
     }
     if (t.length <= 8) {
       const dots: string = '••'.padEnd(t.length, '•');
-      return `${dots} (${t.length} 位)`;
+      return $r('app.string.mine_appinfo_token_masked', dots, t.length);
     }
     const tail: string = t.substring(t.length - 4);
-    const prefixMasked: string = '••••••••';
-    return `${prefixMasked}${tail} (${t.length} 位)`;
+    return $r('app.string.mine_appinfo_token_masked_tail', tail, t.length);
   }
 
   // 点击卡片：把 Device Token 完整明文复制到剪贴板
@@ -127,14 +126,14 @@ export struct AppInfoSection {
     const uiCtx: UIContext = this.getUIContext();
     const t: string = this.deviceTokenDisplay;
     if (!t || t.length === 0) {
-      showToast(uiCtx, '推送 Token 尚未获取', 3000);
+      showToast(uiCtx, $r('app.string.mine_appinfo_token_not_ready'), 3000);
       return;
     }
     const ok: boolean = await ClipboardService.copyText(t);
     if (ok) {
-      showToast(uiCtx, '已复制推送 Token', 1200);
+      showToast(uiCtx, $r('app.string.mine_appinfo_token_copied'), 1200);
     } else {
-      showToast(uiCtx, '复制失败');
+      showToast(uiCtx, $r('app.string.mine_appinfo_copy_failed'));
     }
   }
 
@@ -142,12 +141,12 @@ export struct AppInfoSection {
   private async openBuildInfo(): Promise<void> {
     const uiCtx: UIContext = this.getUIContext();
     if (!AppInfoService.hasCloudBuild()) {
-      showToast(uiCtx, '本地构建，无云端构建记录', 2000);
+      showToast(uiCtx, $r('app.string.mine_appinfo_local_build'), 2000);
       return;
     }
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
-      showToast(uiCtx, '无法打开构建记录页面');
+      showToast(uiCtx, $r('app.string.mine_appinfo_open_build_failed'));
       return;
     }
     try {
@@ -155,7 +154,7 @@ export struct AppInfoSection {
     } catch (err) {
       const msg: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, 'AppInfoSection', '打开构建记录页面失败：%{public}s', msg);
-      showToast(uiCtx, '无法打开构建记录页面');
+      showToast(uiCtx, $r('app.string.mine_appinfo_open_build_failed'));
     }
   }
 }

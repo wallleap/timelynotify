@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { NotifyMessageService } from '../services/NotifyMessageService';
 import { ExternalLinkService } from '../services/ExternalLinkService';
+import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 import showToast from './showToast';
 
@@ -39,23 +40,23 @@ export struct ClientTokenDialog {
 
   build() {
     Column({ space: 12 }) {
-      Text('客户端 Token')
+      Text($r('app.string.clitoken_title'))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .width('100%')
         .textAlign(TextAlign.Center);
 
       Column({ space: 4 }) {
-        Text('用于同步历史通知（X-Gotify-Key 认证）')
+        Text($r('app.string.clitoken_hint_usage'))
           .fontSize(12)
           .fontColor($r('app.color.color_text_hint'))
           .width('100%');
         Row() {
-          Text('自建服务需要填写，可查看：')
+          Text($r('app.string.clitoken_hint_docs'))
             .fontSize(12)
             .fontColor($r('app.color.color_text_hint'));
           // 点击跳转部署文档（内嵌 WebView，定位到 client_token 说明）
-          Text('部署文档')
+          Text($r('app.string.clitoken_docs_link'))
             .fontSize(12)
             .fontColor($r('app.color.color_brand'))
             .onClick(() => {
@@ -67,7 +68,7 @@ export struct ClientTokenDialog {
       .width('100%');
 
       // 密码样式输入框：全程掩码显示，无查看明文入口（与密码体验一致）
-      TextInput({ placeholder: '粘贴 client token', text: this.inputToken })
+      TextInput({ placeholder: $r('app.string.clitoken_input_placeholder'), text: this.inputToken })
         .type(InputType.Password)
         .width('100%')
         .height(42)
@@ -79,7 +80,7 @@ export struct ClientTokenDialog {
         });
 
       Row({ space: 8 }) {
-        Button('取消')
+        Button($r('app.string.common_cancel'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -90,7 +91,7 @@ export struct ClientTokenDialog {
             this.close();
           });
 
-        Button('保存')
+        Button($r('app.string.common_save'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -123,7 +124,14 @@ export struct ClientTokenDialog {
       this.onOpenDocs();
       return;
     }
-    ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL, '部署文档');
+    ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL,
+      this.titleText($r('app.string.clitoken_docs_link')));
+  }
+
+  // 路由标题参数需要原始 string：资源经 resourceManager 还原为当前语言文案
+  private titleText(res: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id) : '';
   }
 
   private async save(): Promise<void> {
@@ -133,10 +141,10 @@ export struct ClientTokenDialog {
       : await NotifyMessageService.getInstance().setClientToken(null, token);
     this.close();
     if (ok) {
-      showToast(this.getUIContext(), '已保存', 1200);
+      showToast(this.getUIContext(), $r('app.string.clitoken_toast_saved'), 1200);
       this.onSaved();
     } else {
-      showToast(this.getUIContext(), '保存失败');
+      showToast(this.getUIContext(), $r('app.string.clitoken_toast_save_failed'));
     }
   }
 }

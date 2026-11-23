@@ -65,7 +65,8 @@ export struct NotifyTitleBar {
   @Builder
   private selectionPill() {
     Row() {
-      Text(this.isEditing ? '取消' : '多选').fontSize(16).fontWeight(FontWeight.Medium)
+      Text(this.isEditing ? $r('app.string.common_cancel') : $r('app.string.ntf_multi_select'))
+        .fontSize(16).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.color_text_primary'));
     }
     .height(38)

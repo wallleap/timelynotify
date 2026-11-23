@@ -14,9 +14,11 @@ class NotificationContent implements pushCommon.RemoteNotificationContent {
 // 扩展只返回替换后的通知文案，不向服务器上传配置或明文。
 export default class RemoteNotificationExtAbility extends RemoteNotificationExtensionAbility {
   async onReceiveMessage(info: pushCommon.RemoteNotificationInfo): Promise<pushCommon.RemoteNotificationContent> {
+    // 扩展进程上下文独立，用应用级 Context 的 resourceManager 取当前语言文案
     const fallback = new NotificationContent();
-    fallback.title = '加密通知';
-    fallback.text = '无法解密，请打开应用检查加密设置';
+    const resourceManager = application.getApplicationContext().resourceManager;
+    fallback.title = resourceManager.getStringSync($r('app.string.ext_encryption_title').id);
+    fallback.text = resourceManager.getStringSync($r('app.string.ext_decrypt_failed_text').id);
     try {
       const payload: Record<string, Object> = this.parsePayload(info.data);
       const deviceKey: string = this.readString(payload, 'device_key', 'deviceKey');

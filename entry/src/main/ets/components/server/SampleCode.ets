@@ -52,14 +52,14 @@ export struct SampleCode {
             .objectFit(ImageFit.Contain)
             .draggable(false);
 
-          Text('推送测试')
+          Text($r('app.string.samplecode_title'))
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.color_text_primary'));
         }
 
         Row({ space: 2 }) {
-          Text('切换服务')
+          Text($r('app.string.samplecode_switch_service'))
             .fontSize(14)
             .fontColor($r('app.color.color_text_secondary'));
           Image($r('app.media.select_more'))
@@ -137,7 +137,7 @@ export struct SampleCode {
       Row({ space: 8 }) {
         // 复制操作合并为分段按钮：主区域复制 Key，右侧菜单提供地址及完整推送地址。
         Row() {
-          Button('复制 Key')
+          Button($r('app.string.samplecode_copy_key'))
             .layoutWeight(1)
             .height(44)
             .fontSize(14)
@@ -180,7 +180,7 @@ export struct SampleCode {
               .fillColor(Color.White)
               .objectFit(ImageFit.Contain)
               .draggable(false);
-            Text(this.testing ? '发送中…' : '发送通知')
+            Text(this.testing ? $r('app.string.samplecode_sending') : $r('app.string.samplecode_send'))
               .fontSize(14)
               .fontColor(Color.White);
           }
@@ -326,7 +326,7 @@ export struct SampleCode {
   private serverMenu() {
     Menu() {
       if (this.serverList.length === 0) {
-        MenuItem({ content: '暂无服务器' }).enabled(false);
+        MenuItem({ content: $r('app.string.samplecode_menu_no_server') }).enabled(false);
       }
       ForEach(this.serverList, (server: ServerEntry) => {
         MenuItem(this.serverMenuLabel(server))
@@ -348,10 +348,10 @@ export struct SampleCode {
   @Builder
   private copyMenu() {
     Menu() {
-      MenuItem({ content: '复制地址' }).onClick(() => {
+      MenuItem({ content: $r('app.string.samplecode_menu_copy_address') }).onClick(() => {
         this.copyAddress();
       }).enabled(!this.antiPeepBlur);
-      MenuItem({ content: '复制地址和 Key' }).onClick(() => {
+      MenuItem({ content: $r('app.string.samplecode_menu_copy_address_key') }).onClick(() => {
         this.copyAddressAndKey();
       }).enabled(!this.antiPeepBlur);
     }
@@ -365,12 +365,12 @@ export struct SampleCode {
     if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
-      showToast(this.getUIContext(), '暂无可用服务器');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_server'));
       return;
     }
     const key: string = await this.ensureDeviceKey(server);
     if (!key) {
-      showToast(this.getUIContext(), '未获取到设备 Key');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_key'));
       return;
     }
     const code: string = this.requestMethod === 'POST' ?
@@ -378,7 +378,8 @@ export struct SampleCode {
     // 异步取 Key 后重新检查，防止保护开始后仍复制明文地址。
     if (this.antiPeepBlur) return;
     const ok: boolean = await ClipboardService.copyText(code);
-    showToast(this.getUIContext(), ok ? '代码已复制' : '复制失败');
+    showToast(this.getUIContext(),
+      ok ? $r('app.string.samplecode_toast_code_copied') : $r('app.string.samplecode_toast_copy_failed'));
   }
 
   // 复制卡片选中服务器的推送地址与设备 Key。
@@ -386,18 +387,19 @@ export struct SampleCode {
     if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
-      showToast(this.getUIContext(), '暂无可用服务器');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_server'));
       return;
     }
     const key: string = await this.ensureDeviceKey(server);
     if (!key) {
-      showToast(this.getUIContext(), '未获取到设备 Key');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_key'));
       return;
     }
     const baseURL: string = server.baseURL.replace(/\/+$/, '');
     if (this.antiPeepBlur) return;
     const ok: boolean = await ClipboardService.copyText(`${baseURL}/${key}`);
-    showToast(this.getUIContext(), ok ? '已复制地址和 Key' : '复制失败');
+    showToast(this.getUIContext(),
+      ok ? $r('app.string.samplecode_toast_address_key_copied') : $r('app.string.samplecode_toast_copy_failed'));
   }
 
   // 单独复制服务器地址，不依赖设备 Key 是否已注册。
@@ -405,11 +407,12 @@ export struct SampleCode {
     if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
-      showToast(this.getUIContext(), '暂无可用服务器');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_server'));
       return;
     }
     const ok: boolean = await ClipboardService.copyText(server.baseURL.replace(/\/+$/, ''));
-    showToast(this.getUIContext(), ok ? '已复制地址' : '复制失败');
+    showToast(this.getUIContext(),
+      ok ? $r('app.string.samplecode_toast_address_copied') : $r('app.string.samplecode_toast_copy_failed'));
   }
 
   // 单独复制当前服务器的设备 Key；缺失时先复用原有注册流程获取。
@@ -417,17 +420,18 @@ export struct SampleCode {
     if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
-      showToast(this.getUIContext(), '暂无可用服务器');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_server'));
       return;
     }
     const key: string = await this.ensureDeviceKey(server);
     if (!key) {
-      showToast(this.getUIContext(), '未获取到设备 Key');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_key'));
       return;
     }
     if (this.antiPeepBlur) return;
     const ok: boolean = await ClipboardService.copyText(key);
-    showToast(this.getUIContext(), ok ? '已复制 Key' : '复制失败');
+    showToast(this.getUIContext(),
+      ok ? $r('app.string.samplecode_toast_key_copied') : $r('app.string.samplecode_toast_copy_failed'));
   }
 
   // 向选中的服务器发送与代码块相同参数的 POST 测试推送。
@@ -437,22 +441,22 @@ export struct SampleCode {
     }
     const server: ServerEntry | null = this.selectedServer();
     if (!server) {
-      showToast(this.getUIContext(), '暂无可用服务器');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_server'));
       return;
     }
     this.testing = true;
     try {
       const key: string = await this.ensureDeviceKey(server);
       if (!key) {
-        showToast(this.getUIContext(), '未获取到设备 Key');
+        showToast(this.getUIContext(), $r('app.string.samplecode_toast_no_key'));
         return;
       }
       const error: string = await NotifyMessageService.getInstance().sendTestPush(server, key);
-      showToast(this.getUIContext(), error.length > 0 ? error : '测试通知已发送，请查看通知栏',
+      showToast(this.getUIContext(), error.length > 0 ? error : $r('app.string.samplecode_toast_test_sent'),
         error.length > 0 ? 3000 : 2000);
     } catch (err) {
       hilog.warn(DOMAIN, TAG, '测试通知发送失败：%{public}s', err instanceof Error ? err.message : String(err));
-      showToast(this.getUIContext(), '发送失败，请稍后重试');
+      showToast(this.getUIContext(), $r('app.string.samplecode_toast_send_failed'));
     } finally {
       this.testing = false;
     }

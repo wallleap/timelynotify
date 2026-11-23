@@ -15,6 +15,21 @@ import { createTestPushPayload, TestPushPayload } from '../utils/TestPushExample
 
 const TAG: string = 'NotifyMsgSvc';
 
+/** 读取当前语言的字符串资源（服务层原始 string 场景）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
+
 // 内置默认客户端 Token（BASE64，运行时 decode 后使用）
 // 用户未自定义时自动使用该 token 拉取消息
 const DEFAULT_CLIENT_TOKEN_BASE64: string = 'OTkwMDgzODA0';
@@ -56,28 +71,41 @@ class GotifyMessageResponse extends Object {
 
 /** 把 getMessages 失败的 errorMsg 映射为列表上展示的简短错误文案 */
 export function toShortSyncError(error: string, client_token: string = ''): string {
-  if (error.includes('Token')) {
-    if (error.includes('无效') || error.includes('过期') || error.includes('401')) {
+  // 中英文错误文案都参与分类：中文匹配原文子串，英文匹配翻译中的稳定标记词。
+  const e: string = error.toLowerCase();
+  if (e.includes('token')) {
+    if (e.includes('无效') || e.includes('过期') || e.includes('401') ||
+      e.includes('invalid') || e.includes('expired')) {
       if (client_token === decodeDefaultClientToken()) {
-        return '客户端 Token 待配置';
+        return tr($r('app.string.nfetch_token_pending'));
       }
-      return '客户端 Token 错误';
+      return tr($r('app.string.nfetch_token_error'));
     }
-    return '客户端 Token 待配置';
+    return tr($r('app.string.nfetch_token_pending'));
   }
-  if (error.includes('未注册')) {
-    return '设备 Key 未注册';
+  if (e.includes('未注册') || e.includes('not registered')) {
+    return tr($r('app.string.nfetch_key_unregistered'));
   }
-  if (error.includes('不存在')) {
-    return '设备 Key 不存在';
+  if (e.includes('不存在') || e.includes('not found')) {
+    return tr($r('app.string.nfetch_key_not_found'));
   }
   // 服务列表的简短状态也保留连接类别，不能把详细诊断再次压成同一句连接失败。
-  if (error.includes('域名解析')) return '域名解析失败';
-  if (error.includes('安全连接')) return '安全连接失败';
-  if (error.includes('超时')) return '连接超时';
-  if (error.includes('推送标识')) return '推送标识未就绪';
-  if (error.includes('设备注册')) return '设备注册失败';
-  return '连接失败';
+  if (e.includes('域名解析') || e.includes('dns')) {
+    return tr($r('app.string.nfetch_dns_failed'));
+  }
+  if (e.includes('安全连接') || e.includes('secure connection')) {
+    return tr($r('app.string.nfetch_secure_failed'));
+  }
+  if (e.includes('超时') || e.includes('timeout') || e.includes('timed out')) {
+    return tr($r('app.string.nfetch_timeout'));
+  }
+  if (e.includes('推送标识') || e.includes('push identifier')) {
+    return tr($r('app.string.nfetch_push_not_ready'));
+  }
+  if (e.includes('设备注册') || e.includes('registration')) {
+    return tr($r('app.string.nfetch_register_failed'));
+  }
+  return tr($r('app.string.nfetch_connect_failed'));
 }
 
 // 调用结果
@@ -269,13 +297,13 @@ export class NotifyMessageService {
       activeServer = ServerManager.getInstance().getCurrentServer();
     }
     if (!deviceKey || deviceKey.length === 0) {
-      result.errorMsg = '设备未注册';
+      result.errorMsg = tr($r('app.string.nfetch_device_not_registered'));
       return result;
     }
 
     const clientToken: string = await this.getEffectiveClientToken(context, server);
     if (!clientToken || clientToken.length === 0) {
-      result.errorMsg = '未配置客户端 Token，请到服务器设置中配置';
+      result.errorMsg = tr($r('app.string.nfetch_token_unset_hint'));
       return result;
     }
 
@@ -315,22 +343,22 @@ export class NotifyMessageService {
     const resp: HttpResponse<GotifyMessageResponse> = await HttpUtil.get<GotifyMessageResponse>(fullURL, headers);
 
     if (resp.code === 401) {
-      result.errorMsg = '客户端 Token 无效或已过期，请到服务器设置中重新配置';
+      result.errorMsg = tr($r('app.string.nfetch_token_invalid_hint'));
       return result;
     }
     if (resp.code === 404) {
-      result.errorMsg = '设备不存在';
+      result.errorMsg = tr($r('app.string.nfetch_device_missing'));
       return result;
     }
     if (resp.code < 200 || resp.code >= 300) {
       // 连接层保留统一封装的分类文案和错误码，便于定位部分设备的失败原因。
       result.errorMsg = resp.code === 0
         ? resp.message
-        : `请求失败（HTTP ${resp.code}）`;
+        : tr($r('app.string.nfetch_http_error'), resp.code);
       return result;
     }
     if (!resp.result) {
-      result.errorMsg = '响应为空';
+      result.errorMsg = tr($r('app.string.nfetch_empty_response'));
       return result;
     }
 
@@ -349,8 +377,9 @@ export class NotifyMessageService {
           continue;
         }
         if (!encryption.enabled) {
-          message.title = NotifyMessage.ENCRYPTION_TITLE;
-          message.body = NotifyMessage.MISSING_KEY_BODY;
+          // 占位文案按当前语言写入；isDecryptionFailed 同时匹配历史中文与当前语言变体
+          message.title = NotifyMessage.localizedEncryptionTitle();
+          message.body = NotifyMessage.localizedMissingKeyBody();
           continue;
         }
         try {
@@ -361,8 +390,8 @@ export class NotifyMessageService {
           // 不记录密钥、IV 或密文，仅记录无敏感信息的失败原因。
           hilog.warn(DOMAIN, TAG, '消息解密失败：%{public}s',
             err instanceof Error ? err.message : String(err));
-          message.title = NotifyMessage.ENCRYPTION_TITLE;
-          message.body = NotifyMessage.DECRYPTION_FAILED_BODY;
+          message.title = NotifyMessage.localizedEncryptionTitle();
+          message.body = NotifyMessage.localizedDecryptionFailedBody();
         }
       }
     }
@@ -426,7 +455,7 @@ export class NotifyMessageService {
   async deleteMessage(messageId: number, context: common.Context | null = null,
     server: ServerEntry | null = null): Promise<string> {
     if (messageId <= 0) {
-      return '通知 ID 无效';
+      return tr($r('app.string.nfetch_invalid_message_id'));
     }
     const ctx: common.Context | null = resolveContext(context);
     await ServerManager.getInstance().ensureLoaded();
@@ -440,11 +469,11 @@ export class NotifyMessageService {
       baseURL = ServerManager.getInstance().getCurrentBaseURL();
     }
     if (!deviceKey || deviceKey.length === 0) {
-      return '设备未注册';
+      return tr($r('app.string.nfetch_device_not_registered'));
     }
     const clientToken: string = await this.getEffectiveClientToken(ctx, server);
     if (!clientToken || clientToken.length === 0) {
-      return '未配置客户端 Token';
+      return tr($r('app.string.nfetch_token_unset'));
     }
     if (baseURL.length > 0 && baseURL[baseURL.length - 1] === '/') {
       baseURL = baseURL.substring(0, baseURL.length - 1);
@@ -455,7 +484,7 @@ export class NotifyMessageService {
     try {
       const resp = await HttpUtil.delete<Object>(fullURL, headers);
       if (resp.code === 401) {
-        return '客户端 Token 无效';
+        return tr($r('app.string.nfetch_token_invalid'));
       }
       if (resp.code === 404) {
         // 记录可能已被其他终端或删除流水清除；DELETE 在此按幂等成功处理，
@@ -466,14 +495,14 @@ export class NotifyMessageService {
       if (resp.code < 200 || resp.code >= 300) {
         return resp.code === 0
           ? resp.message
-          : `删除失败（HTTP ${resp.code}）`;
+          : tr($r('app.string.nfetch_delete_http_error'), resp.code);
       }
       hilog.info(DOMAIN, TAG, '消息 %{public}d 删除成功', messageId);
       return '';
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '删除消息异常：%{public}s', msg);
-      return `删除失败：${msg}`;
+      return tr($r('app.string.nfetch_delete_failed'), msg);
     }
   }
 
@@ -524,11 +553,11 @@ export class NotifyMessageService {
       baseURL = ServerManager.getInstance().getCurrentBaseURL();
     }
     if (!deviceKey || deviceKey.length === 0) {
-      return '设备未注册';
+      return tr($r('app.string.nfetch_device_not_registered'));
     }
     const clientToken: string = await this.getEffectiveClientToken(ctx, server);
     if (!clientToken || clientToken.length === 0) {
-      return '未配置客户端 Token';
+      return tr($r('app.string.nfetch_token_unset'));
     }
     if (baseURL.length > 0 && baseURL[baseURL.length - 1] === '/') {
       baseURL = baseURL.substring(0, baseURL.length - 1);
@@ -539,19 +568,19 @@ export class NotifyMessageService {
     try {
       const resp = await HttpUtil.delete<Object>(fullURL, headers);
       if (resp.code === 401) {
-        return '客户端 Token 无效';
+        return tr($r('app.string.nfetch_token_invalid'));
       }
       if (resp.code < 200 || resp.code >= 300) {
         return resp.code === 0
           ? resp.message
-          : `清空失败（HTTP ${resp.code}）`;
+          : tr($r('app.string.nfetch_clear_http_error'), resp.code);
       }
       hilog.info(DOMAIN, TAG, '全部消息清空成功');
       return '';
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '清空消息异常：%{public}s', msg);
-      return `清空失败：${msg}`;
+      return tr($r('app.string.nfetch_clear_failed'), msg);
     }
   }
 
@@ -559,7 +588,7 @@ export class NotifyMessageService {
   // 请求体与卡片 GET/POST 示例共用参数；返回 '' 表示成功，非空为错误描述。
   async sendTestPush(server: ServerEntry, deviceKey: string): Promise<string> {
     if (!deviceKey || deviceKey.length === 0) {
-      return '设备未注册';
+      return tr($r('app.string.nfetch_device_not_registered'));
     }
 
     const req: TestPushPayload = createTestPushPayload(deviceKey);
@@ -571,10 +600,10 @@ export class NotifyMessageService {
         // 连接层沿用统一分类文案，不丢弃系统错误码。
         return resp.code === 0
           ? resp.message
-          : `推送失败（HTTP ${resp.code}）`;
+          : tr($r('app.string.nfetch_push_http_error'), resp.code);
       }
       if (!resp.result) {
-        return '响应为空';
+        return tr($r('app.string.nfetch_empty_response'));
       }
       // 服务端信封 code 非 200 时透出原因（正常应与 HTTP 状态一致）
       if (resp.result.code !== 200 && resp.result.message.length > 0) {
@@ -585,7 +614,7 @@ export class NotifyMessageService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '测试推送异常：%{public}s', msg);
-      return `推送失败：${msg}`;
+      return tr($r('app.string.nfetch_push_failed'), msg);
     }
   }
 }

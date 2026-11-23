@@ -1,4 +1,5 @@
 import { KEY_HOME_TAB_INDEX, KEY_INDEX_PAGE_VISIBLE } from '../../common/Constant';
+import { AppContextStore } from '../../common/AppContextStore';
 import { NotifyMessage } from '../../model/NotifyMessage';
 import { KEY_ANTI_PEEP_BLUR } from '../../services/AntiPeepService';
 import { notifyIdentity } from '../../utils/NotifyIdentity';
@@ -143,7 +144,8 @@ export struct NotifyContextMenu {
     Scroll() {
       Column({ space: 10 }) {
         if (this.getTarget().grouped) {
-          Text(`${this.getTarget().groupKey || '默认'} · ${this.getTarget().groupTotal} 条通知`)
+          Text($r('app.string.ntf_group_preview_title', this.displayGroupName(),
+            this.getTarget().groupTotal))
             .fontSize(13).fontColor($r('app.color.color_brand')).width('100%').maxLines(2)
             .blur(this.antiPeepBlur ? 22 : 0);
         }
@@ -191,31 +193,31 @@ export struct NotifyContextMenu {
   private menu() {
     Menu() {
       if (this.getTarget().grouped) {
-        MenuItem({ content: '展开分组' })
+        MenuItem({ content: $r('app.string.ntf_expand_group') })
           .onClick(() => this.choose(NotifyContextAction.ExpandGroup));
-        MenuItem({ content: '多选分组' })
+        MenuItem({ content: $r('app.string.ntf_select_group') })
           .onClick(() => this.choose(NotifyContextAction.SelectGroup));
-        MenuItem({ content: '删除分组' })
+        MenuItem({ content: $r('app.string.ntf_delete_group') })
           .contentFontColor($r('app.color.color_error'))
           .onClick(() => this.choose(NotifyContextAction.DeleteGroup));
       } else {
-        MenuItem({ content: '查看详情' })
+        MenuItem({ content: $r('app.string.ntf_view_detail') })
           .onClick(() => this.choose(NotifyContextAction.ViewDetail));
-        MenuItem({ content: '多选' })
+        MenuItem({ content: $r('app.string.ntf_multi_select') })
           .onClick(() => this.choose(NotifyContextAction.Select));
-        MenuItem({ content: '复制全文' })
+        MenuItem({ content: $r('app.string.ntf_copy_all') })
           .onClick(() => this.choose(NotifyContextAction.CopyAll));
         if (this.getTarget().message.copy.length > 0) {
-          MenuItem({ content: '复制 Copy 参数内容' })
+          MenuItem({ content: $r('app.string.ntf_copy_copy_param') })
             .onClick(() => this.choose(NotifyContextAction.CopyContent));
         }
         if (this.getTarget().message.url.length > 0) {
-          MenuItem({ content: '复制链接' })
+          MenuItem({ content: $r('app.string.ntf_copy_link') })
             .onClick(() => this.choose(NotifyContextAction.CopyUrl));
-          MenuItem({ content: '访问链接' })
+          MenuItem({ content: $r('app.string.ntf_open_link') })
             .onClick(() => this.choose(NotifyContextAction.OpenUrl));
         }
-        MenuItem({ content: '删除' })
+        MenuItem({ content: $r('app.string.common_delete') })
           .contentFontColor($r('app.color.color_error'))
           .onClick(() => this.choose(NotifyContextAction.Delete));
       }
@@ -239,6 +241,16 @@ export struct NotifyContextMenu {
   private getTarget(): NotifyContextTarget {
     return this.pinned ?? { message: this.message, grouped: this.grouped,
       groupKey: this.groupKey, groupTotal: this.groupTotal };
+  }
+
+  /** 分组预览标题中的组名：空 group_key 显示「默认」，按当前语言同步取回字符串。 */
+  private displayGroupName(): string {
+    const groupKey: string = this.getTarget().groupKey;
+    if (groupKey.length > 0) {
+      return groupKey;
+    }
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync($r('app.string.ntf_group_default').id) : '';
   }
 
   private isAvailable(): boolean {

@@ -4,9 +4,25 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { UIContext } from '@kit.ArkUI';
 import showToast from '../components/showToast';
 import { ClipboardService } from './ClipboardService';
+import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'FeedbackSvc';
+
+/** 读取当前语言的字符串资源（邮件模板文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
 
 /** 反馈邮箱常量（MineView 顶部常量搬入服务层） */
 export const FEEDBACK_EMAIL: string = 'vonnelu@163.com';
@@ -32,10 +48,13 @@ export class FeedbackService {
       } catch (_e) {
         // 设备信息读取失败时留空，不阻断发邮件
       }
-      const body: string = '请在此描述你遇到的问题或建议：\n\n' + '---------------- 设备信息 ----------------\n' +
-        `应用版本：${appVersion}\n` + `设备型号：${model}\n` + `系统版本：${osVer}\n` +
-        `反馈时间：${new Date().toLocaleString()}\n`;
-      const subject: string = `TimelyNotify 反馈 - ${model}`;
+      const body: string = tr($r('app.string.feedback_mail_intro')) +
+        tr($r('app.string.feedback_mail_device_info_header')) +
+        tr($r('app.string.feedback_mail_app_version'), appVersion) +
+        tr($r('app.string.feedback_mail_device_model'), model) +
+        tr($r('app.string.feedback_mail_os_version'), osVer) +
+        tr($r('app.string.feedback_mail_time'), new Date().toLocaleString());
+      const subject: string = tr($r('app.string.feedback_mail_subject'), model);
       const wantParam: Record<string, Object> = {
         'sceneType': 1,
         'email': [encodeURI(FEEDBACK_EMAIL)],
@@ -71,9 +90,9 @@ export class FeedbackService {
   static async fallbackCopyEmail(uiCtx: UIContext): Promise<void> {
     const ok: boolean = await ClipboardService.copyText(FEEDBACK_EMAIL);
     if (ok) {
-      showToast(uiCtx, `已复制邮箱：${FEEDBACK_EMAIL}`);
+      showToast(uiCtx, $r('app.string.feedback_email_copied', FEEDBACK_EMAIL));
     } else {
-      showToast(uiCtx, `请发送邮件至：${FEEDBACK_EMAIL}`);
+      showToast(uiCtx, $r('app.string.feedback_email_send_to', FEEDBACK_EMAIL));
     }
   }
 }

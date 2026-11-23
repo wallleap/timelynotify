@@ -15,14 +15,17 @@ export struct NotifyEditActionBar {
 
   build() {
     Row() {
-      Text('取消').fontSize(15).fontColor($r('app.color.color_text_tertiary')).onClick(() => this.onCancel());
+      Text($r('app.string.common_cancel')).fontSize(15)
+        .fontColor($r('app.color.color_text_tertiary')).onClick(() => this.onCancel());
       Blank();
-      Text(this.selectedCount === this.messageCount ? '取消全选' : '全选').fontSize(15)
+      Text(this.selectedCount === this.messageCount ? $r('app.string.ntf_deselect_all') :
+        $r('app.string.ntf_select_all')).fontSize(15)
         .fontColor($r('app.color.color_text_tertiary')).padding({ right: 16 }).onClick(() => this.onToggleAll());
-      Text(this.exporting ? '导出中…' : `导出(${this.selectedCount})`).fontSize(15)
+      Text(this.exporting ? $r('app.string.ntf_exporting') :
+        $r('app.string.ntf_export_count', this.selectedCount)).fontSize(15)
         .fontColor(this.selectedCount > 0 && !this.exporting ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
         .padding({ right: 16 }).onClick(() => this.onExport());
-      Text(`删除(${this.selectedCount})`).fontSize(15)
+      Text($r('app.string.ntf_delete_count', this.selectedCount)).fontSize(15)
         .fontColor(this.selectedCount > 0 ? $r('app.color.color_error') : $r('app.color.color_text_hint'))
         .onClick(() => this.onDelete());
     }

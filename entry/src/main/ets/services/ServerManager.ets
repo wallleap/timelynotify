@@ -11,6 +11,21 @@ import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'ServerMgr';
 
+/** 读取当前语言的字符串资源（校验/诊断文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
+
 // 解析 context：优先入参，否则回退全局
 function resolveContext(ctx: common.Context | null): common.Context | null {
   if (ctx) {
@@ -59,7 +74,7 @@ function normalizeBaseURL(url: string): string {
 function validateURL(input: string): string {
   const trimmed: string = input.trim();
   if (trimmed.length === 0) {
-    return '请输入服务器地址';
+    return tr($r('app.string.srvstore_url_required'));
   }
   // 允许用户输入纯域名/IP/带端口/带路径，normalizeBaseURL 会补协议
   // 验证域名格式：支持 domain.com, IP, localhost, 带端口
@@ -69,7 +84,7 @@ function validateURL(input: string): string {
   if (protoEnd >= 0) {
     const proto: string = hostPart.substring(0, protoEnd);
     if (proto !== 'http' && proto !== 'https') {
-      return '仅支持 http 或 https 协议';
+      return tr($r('app.string.srvstore_scheme_unsupported'));
     }
     hostPart = hostPart.substring(protoEnd + 3);
   }
@@ -84,12 +99,12 @@ function validateURL(input: string): string {
     const portStr: string = hostPart.substring(colonIdx + 1);
     const portNum: number = parseInt(portStr);
     if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
-      return '端口号无效';
+      return tr($r('app.string.srvstore_port_invalid'));
     }
     hostPart = hostPart.substring(0, colonIdx);
   }
   if (hostPart.length === 0) {
-    return '请输入服务器地址';
+    return tr($r('app.string.srvstore_url_required'));
   }
   // 域名/IP 验证
   // 允许: 域名、IP、localhost
@@ -97,7 +112,7 @@ function validateURL(input: string): string {
   const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
   const localhostRegex = /^localhost$/;
   if (!domainRegex.test(hostPart) && !ipRegex.test(hostPart) && !localhostRegex.test(hostPart)) {
-    return '请输入合法的域名或 IP 地址';
+    return tr($r('app.string.srvstore_host_invalid'));
   }
   return '';
 }
@@ -600,18 +615,18 @@ export class ServerManager {
       // code=0 为连接层异常（网络超时、DNS 失败、服务器无响应、地址错误等），
       // 用用户可理解的文案替代技术性的 "HTTP 0"
       return resp.code === 0
-        ? '无法连接到服务器，请检查网络或服务器地址'
-        : `服务器无响应（HTTP ${resp.code}）`;
+        ? tr($r('app.string.srvstore_ping_unreachable'))
+        : tr($r('app.string.srvstore_ping_http_error'), resp.code);
     }
     if (!resp.result) {
-      return '服务器返回格式无效';
+      return tr($r('app.string.srvstore_ping_bad_format'));
     }
     const pingResp: PingResponse = resp.result as PingResponse;
     if (pingResp.code !== 200) {
-      return `服务器返回错误（code=${pingResp.code}）`;
+      return tr($r('app.string.srvstore_ping_biz_error'), pingResp.code);
     }
     if (pingResp.message !== 'pong') {
-      return `服务器响应异常（message=${pingResp.message}）`;
+      return tr($r('app.string.srvstore_ping_bad_message'), pingResp.message);
     }
     hilog.info(DOMAIN, TAG, 'ping 成功：%{public}s', pingURL);
     return '';
@@ -703,7 +718,7 @@ export class ServerManager {
   private getBuiltInServers(): ServerEntry[] {
     const prod = new ServerEntry(
       'builtin-prod',
-      '默认服务',
+      tr($r('app.string.srvstore_default_server_name')),
       normalizeBaseURL(ApiConfig.PROD_BASE_URL),
       true,
     );

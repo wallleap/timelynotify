@@ -34,7 +34,7 @@ struct LocalDocumentPage {
   @StorageProp('statusBarHeight') statusBarHeight: number = 36;
   @StorageProp('navBarHeight') navBarHeight: number = 24;
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
-  @State pageTitle: string = '文档';
+  @State pageTitle: string = '';
   @State loading: boolean = true;
   @State loadFailed: boolean = false;
   @State renderFailed: boolean = false;
@@ -58,6 +58,8 @@ struct LocalDocumentPage {
   private pendingOffset: number = 0;
 
   aboutToAppear(): void {
+    // 默认标题从资源读取；文档加载完成后由文档自身标题覆盖
+    this.pageTitle = this.resString($r('app.string.docpage_default_title'));
     this.configureMarkdown();
     const params = this.getUIContext().getRouter().getParams() as Record<string, string> | undefined;
     if (params && params['url']) {
@@ -123,7 +125,7 @@ struct LocalDocumentPage {
       this.pendingOffset = offset;
       if (target.anchor && !sections.some(section => section.anchor === target.anchor)) {
         this.pendingAnchor = '';
-        showToast(this.getUIContext(), '未找到对应章节，已打开文档');
+        showToast(this.getUIContext(), $r('app.string.docpage_section_missing_opened'));
       }
       this.renderFailed = false;
       this.renderVersion++;
@@ -133,7 +135,7 @@ struct LocalDocumentPage {
       if (sequence === this.loadSequence) {
         this.loading = false;
         if (this.sections.length > 0) {
-          showToast(this.getUIContext(), '无法读取文档，请重试');
+          showToast(this.getUIContext(), $r('app.string.docpage_read_failed_retry'));
         } else {
           this.loadFailed = true;
         }
@@ -189,7 +191,7 @@ struct LocalDocumentPage {
 
   private async copyText(text: string): Promise<void> {
     const copied: boolean = await ClipboardService.copyText(text);
-    showToast(this.getUIContext(), copied ? '已复制' : '复制失败');
+    showToast(this.getUIContext(), copied ? $r('app.string.docpage_copied') : $r('app.string.docpage_copy_failed'));
   }
 
   /** 文档链接本地消化；只有用户主动点击的外部 HTTP(S) 链接才进入网页。 */
@@ -201,7 +203,7 @@ struct LocalDocumentPage {
     if (target) {
       if (target.document.path === this.currentTarget.document.path) {
         if (target.anchor && !this.sections.some(section => section.anchor === target.anchor)) {
-          showToast(this.getUIContext(), '未找到对应章节');
+          showToast(this.getUIContext(), $r('app.string.docpage_section_missing'));
           return;
         }
         this.history.push({ target: this.currentTarget, offset: this.scroller.currentOffset().yOffset });
@@ -213,9 +215,9 @@ struct LocalDocumentPage {
         this.loadDocument(target, 0, true);
       }
     } else if (/^https?:\/\//i.test(url) && !LocalDocumentService.isDocumentUrl(url)) {
-      ExternalLinkService.openSharePage(this.getUIContext(), url, '网页');
+      ExternalLinkService.openSharePage(this.getUIContext(), url, this.resString($r('app.string.docpage_webpage')));
     } else {
-      showToast(this.getUIContext(), '此链接未内置或暂不支持');
+      showToast(this.getUIContext(), $r('app.string.docpage_link_unsupported'));
     }
   }
 
@@ -340,6 +342,12 @@ struct LocalDocumentPage {
     }
   }
 
+  // 路由标题参数与默认标题需要原始 string：资源经 resourceManager 还原为当前语言文案
+  private resString(res: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id) : '';
+  }
+
   onBackPress(): boolean {
     this.goBack();
     return true;
@@ -350,12 +358,12 @@ struct LocalDocumentPage {
     if (this.loading) {
       Column({ space: 12 }) {
         LoadingProgress().width(28).height(28).color($r('app.color.color_brand'));
-        Text('正在打开文档').fontColor($r('app.color.color_text_tertiary')).fontSize(14);
+        Text($r('app.string.docpage_opening')).fontColor($r('app.color.color_text_tertiary')).fontSize(14);
       }.width('100%').height('100%').justifyContent(FlexAlign.Center);
     } else if (this.loadFailed) {
       Column({ space: 16 }) {
-        Text('无法读取内置文档').fontColor($r('app.color.color_text_secondary')).fontSize(16);
-        Button('重试').fontColor($r('app.color.color_brand')).backgroundColor(Color.Transparent)
+        Text($r('app.string.docpage_load_failed')).fontColor($r('app.color.color_text_secondary')).fontSize(16);
+        Button($r('app.string.common_retry')).fontColor($r('app.color.color_brand')).backgroundColor(Color.Transparent)
           .onClick(() => { this.initialize(); });
       }.width('100%').height('100%').justifyContent(FlexAlign.Center);
     } else {
