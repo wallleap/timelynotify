@@ -396,6 +396,8 @@ export struct MineView {
       })
       .hideBackButton(true)
       .titleMode(HdsNavigationTitleMode.MINI)
+      // 强制单栏 Stack：容器 ≥600vp 时 Auto 模式会切 Split（navBar 240vp + 空白内容区），平板必现异常
+      .mode(NavigationMode.Stack)
       // 官方：绑定 Scroll 滚动 → scrollEffectOpts 才会根据滚动偏移激活 GradientBlur 渐变模糊
       .bindToScrollable([this.scroller])
       .width('100%')

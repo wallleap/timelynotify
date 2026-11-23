@@ -451,6 +451,8 @@ struct LocalDocumentPage {
       })
       .hideBackButton(false)
       .titleMode(HdsNavigationTitleMode.MINI)
+      // 强制单栏 Stack：容器 ≥600vp 时 Auto 模式会切 Split（navBar 240vp + 空白内容区），平板必现异常
+      .mode(NavigationMode.Stack)
       // 原生 Scroll 保留导航绑定，但不启用默认滚动背景；标题显隐由 onDidScroll 单独控制。
       .bindToScrollable([this.scroller])
       .width('100%').height('100%').backgroundColor($r('app.color.color_bg_page'));
