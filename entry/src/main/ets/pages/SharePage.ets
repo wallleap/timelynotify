@@ -282,6 +282,8 @@ struct SharePage {
       // 返回键走 backIcon 自定义 action（「先 Web 后退、再路由返回」），系统返回键保持显示
       .hideBackButton(false)
       .titleMode(HdsNavigationTitleMode.MINI)
+      // 强制单栏 Stack：容器 ≥600vp 时 Auto 模式会切 Split（navBar 240vp + 空白内容区），平板必现异常
+      .mode(NavigationMode.Stack)
       // Web 本身无 ArkTS Scroller 控制器（NestedScrollInfo.parent 要求 Scroller），
       // 故此处不通过 bindToNestedScrollable 绑定 Web 嵌套滚动；titleBar 原生 systemMaterialEffect
       // 仍可在内容滚入顶栏背面时提供沉浸光感视觉效果

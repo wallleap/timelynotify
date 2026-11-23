@@ -254,6 +254,8 @@ export struct DecryptionSettingsDialog {
       })
       .hideBackButton(true)
       .titleMode(HdsNavigationTitleMode.MODAL)
+      // 强制单栏 Stack：弹窗容器 ≥600vp 时 Auto 模式会切 Split，出现窄 navBar + 空白内容区
+      .mode(NavigationMode.Stack)
       .bindToScrollable([this.formScroller])
       .width('100%')
       .height('80%')
