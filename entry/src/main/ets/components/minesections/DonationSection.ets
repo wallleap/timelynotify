@@ -20,20 +20,33 @@ import { SettingArrow } from '../settings/SettingArrow';
 import { SettingDivider } from '../settings/SettingDivider';
 
 /**
+ * 捐赠板块的底部面板模式。
+ */
+enum DonationSheetMode {
+  NONE = 0,
+  ONE_TIME = 1,
+  SUBSCRIPTION = 2
+}
+
+/**
  * 「捐赠」板块：一次性捐赠（消耗型）与持续支持（自动续期订阅）。
  * 是否展示由父组件按 IAP 环境检查结果决定；本组件只负责交互与购买。
  *
  * 自动续期订阅先展示订阅详情面板（金额/周期/《自动续费服务协议》/取消流程），
- * 用户确认后才拉起收银台，满足应用市场对自动续费商品的展示要求。
+ * 用户勾选同意协议并确认后才拉起收银台，满足应用市场对自动续费商品的展示要求。
  */
 @Component
 export struct DonationSection {
-  // 订阅详情面板。
-  @State showSubscriptionSheet: boolean = false;
+  // 面板模式：根节点只能挂一个 bindSheet，多个面板共用一个并按模式切换内容。
+  @State sheetMode: DonationSheetMode = DonationSheetMode.NONE;
   // 自动续费服务协议面板。
   @State showAgreementSheet: boolean = false;
   // 购买进行中：避免连点重复调用 IAP 触发限流（1001860004）。
   @State purchasing: boolean = false;
+  // 用户是否主动勾选同意《自动续费服务协议》，默认不勾选（不得默认同意）。
+  @State agreedToAgreement: boolean = false;
+  // 用户是否主动勾选确认一次性捐赠须知，默认不勾选（不得默认同意）。
+  @State agreedToOneTime: boolean = false;
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   @StorageProp(KEY_MATERIAL_LOADED) immersiveMaterialLoaded: boolean = false;
   // 《自动续费服务协议》正文，购买页可随时查看。
@@ -53,10 +66,10 @@ export struct DonationSection {
       SettingGroupTitle({ title: '捐赠', hint: '不捐赠不影响使用' });
 
       SettingGroup() {
-        // 一次性捐赠：消耗型商品，可重复购买，点击直接拉起收银台。
+        // 一次性捐赠：消耗型商品，可重复购买；先展示确认面板再拉起收银台。
         SettingCell({
           title: '一次性捐赠', icon: $r('app.media.handshake'),
-          clickable: true, onActivate: () => this.doDonate('one_time')
+          clickable: true, onActivate: () => this.openOneTimeSheet()
         }) {
           Row({ space: 4 }) {
             Text('￥6')
@@ -83,7 +96,8 @@ export struct DonationSection {
       }
     }
     .width('100%')
-    .bindSheet(this.showSubscriptionSheet, this.subscriptionSheetBuilder(), {
+    // 根节点只能挂一个 bindSheet，一次性捐赠与订阅面板共用，按 sheetMode 切换内容。
+    .bindSheet(this.sheetMode !== DonationSheetMode.NONE, this.donationSheetBuilder(), {
       detents: [SheetSize.FIT_CONTENT, SheetSize.LARGE],
       preferType: SheetType.BOTTOM,
       showClose: false,
@@ -96,9 +110,22 @@ export struct DonationSection {
         ? undefined : BlurStyle.COMPONENT_ULTRA_THIN,
       systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
       onDisappear: () => {
-        this.showSubscriptionSheet = false;
+        this.sheetMode = DonationSheetMode.NONE;
+        // 每次关闭后复位，避免下次进入时沿用上一次的同意状态。
+        this.agreedToAgreement = false;
+        this.agreedToOneTime = false;
       }
     });
+  }
+
+  // 按当前模式渲染面板内容。
+  @Builder
+  donationSheetBuilder() {
+    if (this.sheetMode === DonationSheetMode.ONE_TIME) {
+      this.oneTimeSheetBuilder();
+    } else {
+      this.subscriptionSheetBuilder();
+    }
   }
 
   // 订阅详情面板：合规展示付费金额、续费周期、自动续费协议与取消流程。
@@ -131,23 +158,6 @@ export struct DonationSection {
       .borderRadius(12);
 
       Column() {
-        Row({ space: 4 }) {
-          Text('《自动续费服务协议》')
-            .fontSize(14)
-            .fontColor($r('app.color.color_brand'));
-          Blank();
-          Image($r('app.media.arrow_right'))
-            .width(16)
-            .height(16)
-            .fillColor($r('app.color.color_text_tertiary'))
-            .draggable(false);
-        }
-        .width('100%')
-        .padding({ top: 2, bottom: 14 })
-        .onClick(() => {
-          this.showAgreementSheet = true;
-        });
-
         Divider()
           .color($r('app.color.color_border_subtle'))
           .strokeWidth(1);
@@ -177,6 +187,33 @@ export struct DonationSection {
       .alignItems(HorizontalAlign.Start);
 
       Column({ space: 12 }) {
+        // 主动勾选同意，默认不勾选；未勾选时不允许提交订阅。
+        Row({ space: 8 }) {
+          Checkbox({ name: 'donationAgreement', group: 'donation' })
+            .select(this.agreedToAgreement)
+            .selectedColor($r('app.color.color_brand'))
+            .width(18)
+            .height(18)
+            .onChange((checked: boolean) => {
+              this.agreedToAgreement = checked;
+            });
+
+          Text() {
+            Span('我已阅读并同意');
+            Span('《自动续费服务协议》')
+              .fontColor($r('app.color.color_brand'))
+              .onClick(() => {
+                this.showAgreementSheet = true;
+              });
+          }
+          .fontSize(12)
+          .lineHeight(18)
+          .fontColor($r('app.color.color_text_secondary'))
+          .layoutWeight(1);
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center);
+
         Button(this.purchasing ? '正在拉起支付…' : '确认订阅 ￥6.00 / 年')
           .width('100%')
           .height(46)
@@ -184,7 +221,8 @@ export struct DonationSection {
           .fontWeight(FontWeight.Medium)
           .fontColor(Color.White)
           .backgroundColor($r('app.color.color_brand'))
-          .enabled(!this.purchasing)
+          .opacity(this.agreedToAgreement ? 1 : 0.4)
+          .enabled(this.agreedToAgreement && !this.purchasing)
           .onClick(() => this.confirmYearly());
 
         Text('订阅由华为应用内支付提供，可在华为账号中随时管理')
@@ -272,17 +310,116 @@ export struct DonationSection {
     .backgroundColor(Color.Transparent);
   }
 
+  // 打开一次性捐赠确认面板；购买进行中不重复打开。
+  private openOneTimeSheet(): void {
+    if (this.purchasing) {
+      return;
+    }
+    this.sheetMode = DonationSheetMode.ONE_TIME;
+  }
+
+  // 用户在一次性捐赠确认面板勾选并确认后才拉起收银台。
+  private async confirmOneTime(): Promise<void> {
+    if (!this.agreedToOneTime) {
+      return;
+    }
+    this.sheetMode = DonationSheetMode.NONE;
+    await this.doDonate('one_time');
+  }
+
+  // 一次性捐赠确认面板：告知金额、说明是消耗型虚拟商品、不可退款，勾选确认后拉起收银台。
+  @Builder
+  oneTimeSheetBuilder() {
+    Column({ space: 20 }) {
+      Column({ space: 6 }) {
+        Text('一次性捐赠')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.color_text_primary'))
+          .width('100%');
+        Text('自愿捐赠，不影响应用免费功能使用。')
+          .fontSize(13)
+          .fontColor($r('app.color.color_text_secondary'))
+          .width('100%');
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start);
+
+      // 信息卡
+      Column({ space: 0 }) {
+        Row() {
+          Text('付款金额')
+            .fontSize(13)
+            .fontColor($r('app.color.color_text_secondary'));
+          Blank();
+          Text('￥6.00')
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.color_text_primary'));
+        }
+        .width('100%');
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 16, bottom: 16 })
+      .backgroundColor($r('app.color.color_bg_card_glass'))
+      .borderRadius(12);
+
+      // 主动勾选确认，默认不勾选
+      Row({ space: 8 }) {
+        Checkbox({ name: 'oneTimeConfirm', group: 'oneTime' })
+          .select(this.agreedToOneTime)
+          .selectedColor($r('app.color.color_brand'))
+          .width(18)
+          .height(18)
+          .onChange((checked: boolean) => {
+            this.agreedToOneTime = checked;
+          });
+
+        Text('我了解该捐赠为一次性消耗型虚拟商品，付款后不可退款')
+          .fontSize(12)
+          .lineHeight(18)
+          .fontColor($r('app.color.color_text_secondary'))
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center);
+
+      Button(this.purchasing ? '正在拉起支付…' : '确认捐赠 ￥6.00')
+        .width('100%')
+        .height(46)
+        .fontSize(15)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(Color.White)
+        .backgroundColor($r('app.color.color_brand'))
+        .opacity(this.agreedToOneTime ? 1 : 0.4)
+        .enabled(this.agreedToOneTime && !this.purchasing)
+        .onClick(() => this.confirmOneTime());
+
+      Text('捐赠由华为应用内支付提供')
+        .fontSize(11)
+        .fontColor($r('app.color.color_text_tertiary'))
+        .width('100%')
+        .textAlign(TextAlign.Center);
+    }
+    .width('100%')
+    .padding(20);
+  }
+
   // 打开订阅详情面板；购买进行中不重复打开。
   private openSubscriptionSheet(): void {
     if (this.purchasing) {
       return;
     }
-    this.showSubscriptionSheet = true;
+    this.sheetMode = DonationSheetMode.SUBSCRIPTION;
   }
 
   // 用户在订阅详情面板确认后才拉起收银台。
   private async confirmYearly(): Promise<void> {
-    this.showSubscriptionSheet = false;
+    // 未勾选同意《自动续费服务协议》不允许订阅。
+    if (!this.agreedToAgreement) {
+      return;
+    }
+    this.sheetMode = DonationSheetMode.NONE;
     await this.doDonate('yearly');
   }
 
