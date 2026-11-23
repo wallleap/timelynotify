@@ -14,6 +14,7 @@ import { ExternalLinkService } from '../../services/ExternalLinkService';
 import { DecryptionSettingsDialog } from '../DecryptionSettingsDialog';
 import { DangerConfirmDialog } from '../DangerConfirmDialog';
 import showToast from '../showToast';
+import { AppContextStore } from '../../common/AppContextStore';
 import { DOMAIN, KEY_HOME_TAB_INDEX, KEY_NOTIFY_REFRESH_SIGNAL } from '../../common/Constant';
 import {
   getDialogBackgroundOptions,
@@ -99,7 +100,7 @@ export struct ServerList {
   itemRow(s: ServerEntry) {
     Row({ space: 12 }) {
       Column({ space: 2 }) {
-        if (this.badgeTextFor(s).length > 0) {
+        if (this.badgeTextFor(s) !== '') {
           Text(this.badgeTextFor(s))
             .fontSize(10)
             .fontWeight(FontWeight.Medium)
@@ -160,7 +161,7 @@ export struct ServerList {
           .objectFit(ImageFit.Contain)
           .draggable(false);
 
-        Text('服务器列表')
+        Text($r('app.string.srvlist_title'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.color_text_primary'));
@@ -202,7 +203,7 @@ export struct ServerList {
       // 测量时强制填满父约束会让自适应退化为全屏。根节点改用普通 Column + 玻璃化自定义标题栏。
       Column() {
         Row() {
-          Text('服务器详情')
+          Text($r('app.string.srvlist_detail_title'))
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.color_text_primary'));
@@ -268,27 +269,27 @@ export struct ServerList {
       Column({ space: 16 }) {
         // 操作列表
         Column({ space: 0 }) {
-          this.detailActionItem('复制地址和 Key', () => {
+          this.detailActionItem($r('app.string.srvlist_action_copy_addr_key'), () => {
             this.handleCopy();
           });
           this.detailDivider();
-          this.detailActionItem('重置 / 还原 Key', () => {
+          this.detailActionItem($r('app.string.srvlist_action_reset_key'), () => {
             this.openKeyDialog();
           });
           this.detailDivider();
-          this.detailActionItem('客户端 Token', () => {
+          this.detailActionItem($r('app.string.srvlist_action_client_token'), () => {
             this.openClientTokenDialog();
           });
           this.detailDivider();
-          this.detailActionItem('解密设置', () => {
+          this.detailActionItem($r('app.string.srvlist_action_decryption'), () => {
             this.openEncryptionDialog();
           });
           this.detailDivider();
-          this.detailActionItem('重命名', () => {
+          this.detailActionItem($r('app.string.srvlist_action_rename'), () => {
             this.openRenameDialog();
           });
           this.detailDivider();
-          this.detailActionItem('删除服务器', () => {
+          this.detailActionItem($r('app.string.srvlist_action_delete'), () => {
             this.handleDelete(this.targetId);
           }, true);
         }
@@ -324,7 +325,7 @@ export struct ServerList {
   }
 
   @Builder
-  detailActionItem(label: string, action: () => void, isDestructive?: boolean) {
+  detailActionItem(label: ResourceStr, action: () => void, isDestructive?: boolean) {
     Row() {
       Text(label)
         .fontSize(16)
@@ -396,13 +397,13 @@ export struct ServerList {
   }
 
   // 列表项错误胶囊：仅展示主动检测错误与设备未注册；默认 Token 可用不提示
-  private badgeTextFor(s: ServerEntry): string {
+  private badgeTextFor(s: ServerEntry): ResourceStr {
     const detected: string | undefined = this.serverErrors[s.id];
     if (detected && detected.length > 0) {
       return detected;
     }
     if (!s.deviceKey || s.deviceKey.length === 0) {
-      return '设备 Key 未注册';
+      return $r('app.string.srvlist_badge_key_unregistered');
     }
     return '';
   }
@@ -454,7 +455,7 @@ export struct ServerList {
   private async openRenameDialog(): Promise<void> {
     const target: ServerEntry | null = this.findTarget();
     if (!target) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return;
     }
     try {
@@ -480,14 +481,14 @@ export struct ServerList {
       this.renameController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'rename dialog open 失败');
-      showToast(this.getUIContext(), '弹窗无法打开');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_dialog_failed'));
     }
   }
 
   private async openKeyDialog(): Promise<void> {
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return;
     }
     try {
@@ -512,14 +513,14 @@ export struct ServerList {
       this.keyController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'key dialog open 失败');
-      showToast(this.getUIContext(), '弹窗无法打开');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_dialog_failed'));
     }
   }
 
   private async openClientTokenDialog(): Promise<void> {
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return;
     }
     try {
@@ -548,12 +549,14 @@ export struct ServerList {
               return;
             }
             if (!this.showDetail) {
-              ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL, '部署文档');
+              ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL,
+                this.titleText($r('app.string.srvlist_deploy_docs')));
               return;
             }
             this.pendingDeployDocs = true;
             this.showDetail = false;
-            ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL, '部署文档');
+            ExternalLinkService.openSharePage(this.getUIContext(), DEPLOY_DOCS_URL,
+              this.titleText($r('app.string.srvlist_deploy_docs')));
           },
         }),
         alignment: DialogAlignment.Center,
@@ -567,14 +570,14 @@ export struct ServerList {
       this.clientTokenController.open();
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'client token dialog open 失败');
-      showToast(this.getUIContext(), '弹窗无法打开');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_dialog_failed'));
     }
   }
 
   private async openEncryptionDialog(): Promise<void> {
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return;
     }
     try {
@@ -597,14 +600,14 @@ export struct ServerList {
       this.encryptionController.open();
     } catch (_err) {
       hilog.warn(DOMAIN, TAG, 'encryption dialog open 失败');
-      showToast(this.getUIContext(), '弹窗无法打开');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_dialog_failed'));
     }
   }
 
   private async saveEncryption(config: EncryptionConfig): Promise<boolean> {
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return false;
     }
     config.deviceKey = server.deviceKey;
@@ -623,11 +626,12 @@ export struct ServerList {
           hilog.warn(DOMAIN, TAG, '重试服务器同步失败');
         }
       }
-      showToast(this.getUIContext(), ok ? '解密设置已保存' : '保存失败');
+      showToast(this.getUIContext(),
+        ok ? $r('app.string.srvlist_toast_decrypt_saved') : $r('app.string.srvlist_toast_save_failed'));
       return ok;
     } catch (_err) {
       hilog.warn(DOMAIN, TAG, '保存解密设置失败');
-      showToast(this.getUIContext(), '保存失败');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_save_failed'));
       return false;
     }
   }
@@ -635,7 +639,7 @@ export struct ServerList {
   private async clearEncryption(): Promise<boolean> {
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return false;
     }
     try {
@@ -653,11 +657,12 @@ export struct ServerList {
           hilog.warn(DOMAIN, TAG, '清除后重试服务器同步失败');
         }
       }
-      showToast(this.getUIContext(), ok ? '解密设置已清除' : '清除失败');
+      showToast(this.getUIContext(),
+        ok ? $r('app.string.srvlist_toast_decrypt_cleared') : $r('app.string.srvlist_toast_clear_failed'));
       return ok;
     } catch (_err) {
       hilog.warn(DOMAIN, TAG, '清除解密设置失败');
-      showToast(this.getUIContext(), '清除失败');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_clear_failed'));
       return false;
     }
   }
@@ -675,7 +680,7 @@ export struct ServerList {
     if (this.antiPeepBlur) return;
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return;
     }
     let key: string = server.deviceKey;
@@ -687,14 +692,15 @@ export struct ServerList {
       this.refresh();
     }
     if (!key || key.length === 0) {
-      showToast(this.getUIContext(), '未获取到 Key');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_no_key'));
       return;
     }
     const text: string = `${server.baseURL}/${key}`;
     // 注册等待期间可能进入防窥，写入剪贴板前再次检查。
     if (this.antiPeepBlur) return;
     const ok: boolean = await this.copyText(text);
-    showToast(this.getUIContext(), ok ? '已复制地址和 Key' : '复制失败', ok ? 1200 : undefined);
+    showToast(this.getUIContext(),
+      ok ? $r('app.string.srvlist_toast_copied') : $r('app.string.srvlist_toast_copy_failed'), ok ? 1200 : undefined);
   }
 
   private async copyText(text: string): Promise<boolean> {
@@ -715,13 +721,14 @@ export struct ServerList {
       return;
     }
     const ok: boolean = await ServerManager.getInstance().renameServer(null, this.targetId, newName);
-    showToast(this.getUIContext(), ok ? '已重命名' : '重命名失败');
+    showToast(this.getUIContext(),
+      ok ? $r('app.string.srvlist_toast_renamed') : $r('app.string.srvlist_toast_rename_failed'));
   }
 
   private async handleResetOrRestore(inputKey: string): Promise<void> {
     const server: ServerEntry | null = this.findTarget();
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_server_missing'));
       return;
     }
     const key: string | null = await DeviceRegisterService.getInstance()
@@ -730,13 +737,14 @@ export struct ServerList {
     if (key && key.length > 0) {
       this.refresh();
       this.checkServers();
-      showToast(this.getUIContext(), inputKey.length > 0 ? '已还原 Key' : '已重置 Key');
+      showToast(this.getUIContext(),
+        inputKey.length > 0 ? $r('app.string.srvlist_toast_key_restored') : $r('app.string.srvlist_toast_key_reset'));
     } else {
-      showToast(this.getUIContext(), '操作失败');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_action_failed'));
     }
   }
 
-  private async confirmDialog(title: string, message: string): Promise<boolean> {
+  private async confirmDialog(title: ResourceStr, message: ResourceStr): Promise<boolean> {
     try {
       const background = getDialogBackgroundOptions();
       return await new Promise<boolean>((resolve: (confirmed: boolean) => void) => {
@@ -769,19 +777,26 @@ export struct ServerList {
   private async handleDelete(id: string): Promise<void> {
     const mgr: ServerManager = ServerManager.getInstance();
     if (mgr.getList().length <= 1) {
-      showToast(this.getUIContext(), '至少保留一个服务器');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_keep_one'));
       return;
     }
-    const confirmed: boolean = await this.confirmDialog('删除服务器', '确定删除该服务器吗？');
+    const confirmed: boolean = await this.confirmDialog($r('app.string.srvlist_action_delete'),
+      $r('app.string.srvlist_delete_message'));
     if (!confirmed) {
       return;
     }
     const ok: boolean = await mgr.deleteServer(null, id);
     if (ok) {
       await EncryptionConfigService.remove(null, id);
-      showToast(this.getUIContext(), '已删除', 1200);
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_deleted'), 1200);
     } else {
-      showToast(this.getUIContext(), '删除失败');
+      showToast(this.getUIContext(), $r('app.string.srvlist_toast_delete_failed'));
     }
+  }
+
+  // 路由标题参数需要原始 string：资源经 resourceManager 还原为当前语言文案
+  private titleText(res: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id) : '';
   }
 }

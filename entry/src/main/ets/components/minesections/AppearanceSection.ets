@@ -22,9 +22,9 @@ export struct AppearanceSection {
   build() {
     // 由“个性化设置”页面承载；卡片本身仅保留标题与当前状态。
     SettingGroup() {
-      SettingCell({ title: '沉浸光感', clickable: true, onActivate: () => this.onImmersiveRowClick() }) {
+      SettingCell({ title: $r('app.string.mine_appear_immersive'), clickable: true, onActivate: () => this.onImmersiveRowClick() }) {
         Row() {
-          Text(this.immersiveLightEnabled ? '已开启' : '已关闭')
+          Text(this.immersiveLightEnabled ? $r('app.string.mine_appear_enabled') : $r('app.string.mine_appear_disabled'))
             .fontSize(12)
             .fontColor(this.immersiveLightEnabled ? $r('app.color.color_brand') :
               $r('app.color.color_text_hint'));
@@ -39,12 +39,12 @@ export struct AppearanceSection {
     const uiCtx: UIContext = this.getUIContext();
     // 目标状态（当前状态的反向）与对应文案
     const enable: boolean = !this.immersiveLightEnabled;
-    const title: string = enable ? '开启沉浸光感' : '关闭沉浸光感';
-    const message: string = enable
-      ? '开启后界面将呈现沉浸光感材质。设置需重启应用后生效，是否立即重启？'
-      : '关闭后界面将回退为毛玻璃效果。设置需重启应用后生效，是否立即重启？';
-    const buttons: promptAction.Button[] = [{ text: '取消', color: $r('app.color.color_text_tertiary') },
-      { text: '立即重启', color: $r('app.color.color_brand') },];
+    const title: ResourceStr = enable ? $r('app.string.mine_appear_enable_title') : $r('app.string.mine_appear_disable_title');
+    const message: ResourceStr = enable
+      ? $r('app.string.mine_appear_enable_msg')
+      : $r('app.string.mine_appear_disable_msg');
+    const buttons: promptAction.Button[] = [{ text: $r('app.string.common_cancel'), color: $r('app.color.color_text_tertiary') },
+      { text: $r('app.string.mine_appear_restart_now'), color: $r('app.color.color_brand') },];
     uiCtx.getPromptAction().showDialog({
       title: title,
       message: message,
@@ -61,7 +61,7 @@ export struct AppearanceSection {
         if (ok) {
           ThemeService.restartApp(uiCtx);
         } else {
-          showToast(this.getUIContext(), '保存失败，设置未生效', 2000);
+          showToast(this.getUIContext(), $r('app.string.mine_appear_save_failed'), 2000);
         }
       });
     });

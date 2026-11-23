@@ -3,9 +3,25 @@ import { cryptoFramework } from '@kit.CryptoArchitectureKit';
 import { util } from '@kit.ArkTS';
 import { EncryptionConfig } from '../model/EncryptionConfig';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
+import { AppContextStore } from '../common/AppContextStore';
 import { EncryptionKeyStoreService } from './EncryptionKeyStoreService';
 
 const KEY_SERVER_ENCRYPTION_CONFIGS: string = 'server_encryption_configs';
+
+/** 读取当前语言的字符串资源（配置校验文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
 // 64 个单字节可打印字符，随机字节取低 6 位时分布均匀，生成结果便于复制到发送端。
 const GENERATED_KEY_CHARACTERS: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
@@ -59,18 +75,18 @@ export class EncryptionConfigService {
       return '';
     }
     if (config.algorithm !== 'AES128' && config.algorithm !== 'AES192' && config.algorithm !== 'AES256') {
-      return '不支持的 AES 算法';
+      return tr($r('app.string.encconf_unsupported_algorithm'));
     }
     if (config.mode !== 'CBC' && config.mode !== 'ECB' && config.mode !== 'GCM') {
-      return '不支持的加密模式';
+      return tr($r('app.string.encconf_unsupported_mode'));
     }
     const expected: number = EncryptionConfigService.expectedKeyBytes(config.algorithm);
     if (EncryptionConfigService.utf8Length(config.key) !== expected) {
-      return `Key 必须为 ${expected} 个 UTF-8 字节`;
+      return tr($r('app.string.encconf_key_bytes'), expected);
     }
     const expectedPadding: string = config.mode === 'GCM' ? 'NoPadding' : 'PKCS7';
     if (config.padding !== expectedPadding) {
-      return `${config.mode} 必须使用 ${expectedPadding}`;
+      return tr($r('app.string.encconf_padding'), config.mode, expectedPadding);
     }
     return '';
   }

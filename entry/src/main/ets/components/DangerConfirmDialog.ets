@@ -10,9 +10,9 @@ export struct DangerConfirmDialog {
     autoCancel: false,
     alignment: DialogAlignment.Center,
   });
-  title: string = '';
-  message: string = '';
-  confirmText: string = '确定';
+  title: ResourceStr = '';
+  message: ResourceStr = '';
+  confirmText: ResourceStr = $r('app.string.common_confirm');
   onResult: (confirmed: boolean) => void = (_confirmed: boolean) => {};
 
   build() {
@@ -40,7 +40,7 @@ export struct DangerConfirmDialog {
       .constraintSize({ maxHeight: 240 })
       .margin({ top: 12, bottom: 18 });
       Row({ space: 8 }) {
-        Button('取消')
+        Button($r('app.string.common_cancel'))
           .layoutWeight(1)
           .height(42)
           .fontSize(14)

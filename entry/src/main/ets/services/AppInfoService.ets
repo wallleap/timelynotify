@@ -1,9 +1,25 @@
-import { bundleManager } from '@kit.AbilityKit';
+import { bundleManager, common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { BuildInfo } from '../generated/BuildInfo';
+import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'AppInfoSvc';
+
+/** 读取当前语言的字符串资源（构建信息文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
 
 /** 版本信息兜底常量，与 AppScope/app.json5 保持一致，防止 bundleManager 返回空时显示异常 */
 const FALLBACK_VERSION_NAME: string = '1.0.0';
@@ -89,12 +105,13 @@ export class AppInfoService {
       parts.push(BuildInfo.COMMIT_SHA.substring(0, 7));
     }
     if (certFingerprintTail.length > 0) {
-      parts.push(`指纹…${certFingerprintTail}`);
+      parts.push(tr($r('app.string.appinfosvc_fingerprint_abbrev'), certFingerprintTail));
     }
     if (AppInfoService.hasCloudBuild()) {
       return `Build #${BuildInfo.RUN_NUMBER} · ${parts.join(' · ')}`;
     }
-    return `本地构建${parts.length > 0 ? ' · ' + parts.join(' · ') : ''}`;
+    return tr($r('app.string.appinfosvc_local_build')) +
+      (parts.length > 0 ? ' · ' + parts.join(' · ') : '');
   }
 
   /**
@@ -108,15 +125,15 @@ export class AppInfoService {
   ): string {
     const lines: string[] = [`TimelyNotify ${versionName} (${versionCode})`];
     if (AppInfoService.hasCloudBuild()) {
-      lines.push(`构建：GitHub Actions Run #${BuildInfo.RUN_NUMBER} (${BuildInfo.RUN_ID})`);
+      lines.push(tr($r('app.string.appinfosvc_clip_cloud_build'), BuildInfo.RUN_NUMBER, BuildInfo.RUN_ID));
     } else {
-      lines.push('构建：本地构建');
+      lines.push(tr($r('app.string.appinfosvc_clip_local_build')));
     }
     if (BuildInfo.COMMIT_SHA.length > 0) {
-      lines.push(`commit：${BuildInfo.COMMIT_SHA}`);
+      lines.push(tr($r('app.string.appinfosvc_clip_commit'), BuildInfo.COMMIT_SHA));
     }
     if (certFingerprintTail.length > 0) {
-      lines.push(`签名指纹尾 8 位：${certFingerprintTail}`);
+      lines.push(tr($r('app.string.appinfosvc_clip_fingerprint'), certFingerprintTail));
     }
     return lines.join('\n');
   }

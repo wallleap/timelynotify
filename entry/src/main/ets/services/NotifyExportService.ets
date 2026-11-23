@@ -5,9 +5,25 @@ import { NotifyMessage } from '../model/NotifyMessage';
 import { compareNotifyOrder, notifyIdentity, originalDeviceKey } from '../utils/NotifyIdentity';
 import { MessageCacheStore } from './MessageCacheStore';
 import { ServerManager } from './ServerManager';
+import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 
 const EXPORT_TAG: string = 'NotifyExportSvc';
+
+/** 读取当前语言的字符串资源（导出结果文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
 
 /** 导出文件中通知 extras 的显式类型，满足 ArkTS 对对象字面量的约束。 */
 class NotifyExportExtras {
@@ -78,7 +94,7 @@ export class NotifyExportService {
     }
     const options = new picker.DocumentSaveOptions();
     options.newFileNames = [`timelynotify_selected_${NotifyExportService.fileTime(new Date())}.txt`];
-    options.fileSuffixChoices = ['文档|.txt'];
+    options.fileSuffixChoices = [tr($r('app.string.nexport_txt_file_type'))];
     const uris: string[] = await new picker.DocumentViewPicker(context).save(options);
     if (uris.length === 0) {
       return 0;
@@ -124,12 +140,12 @@ export class NotifyExportService {
     try {
       const messages: NotifyMessage[] | null = await MessageCacheStore.loadEveryStoredForExport();
       if (messages === null) {
-        result.errorMsg = '读取本地通知失败';
+        result.errorMsg = tr($r('app.string.nexport_read_failed'));
         return result;
       }
       messages.sort(compareNotifyOrder);
       if (messages.length === 0) {
-        result.errorMsg = '暂无可导出的通知';
+        result.errorMsg = tr($r('app.string.nexport_none'));
         return result;
       }
       const text: string = NotifyExportService.serializeMessages(messages, '');
@@ -137,7 +153,7 @@ export class NotifyExportService {
       // 系统保存对话框：预设文件名 + txt 过滤；Picker 保存无需申请权限
       const saveOptions = new picker.DocumentSaveOptions();
       saveOptions.newFileNames = [`timelynotify_export_${NotifyExportService.fileTime(new Date())}.txt`];
-      saveOptions.fileSuffixChoices = ['文档|.txt'];
+      saveOptions.fileSuffixChoices = [tr($r('app.string.nexport_txt_file_type'))];
       const docPicker = new picker.DocumentViewPicker(context);
       const uris: string[] = await docPicker.save(saveOptions);
       if (uris.length === 0) {
@@ -165,7 +181,7 @@ export class NotifyExportService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, EXPORT_TAG, '导出通知失败：%{public}s', msg);
-      result.errorMsg = '导出失败';
+      result.errorMsg = tr($r('app.string.nexport_failed'));
     }
     return result;
   }

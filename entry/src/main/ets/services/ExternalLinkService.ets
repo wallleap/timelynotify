@@ -33,7 +33,7 @@ export class ExternalLinkService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '打开阅读页面失败：%{public}s', msg);
-      showToast(uiCtx, '无法打开页面');
+      showToast(uiCtx, $r('app.string.extlink_open_failed'));
     }
   }
 }

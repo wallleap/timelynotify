@@ -1,5 +1,7 @@
+import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DOMAIN, KEY_NOTIFY_SYNC_FEEDBACK, KEY_NOTIFY_SYNC_PROGRESS, KEY_NOTIFY_SYNC_REVISION } from '../common/Constant';
+import { AppContextStore } from '../common/AppContextStore';
 import { NotifyMessage } from '../model/NotifyMessage';
 import { ServerEntry } from '../model/ServerEntry';
 import { notifySourceKey } from '../utils/NotifyIdentity';
@@ -12,6 +14,21 @@ import { ServerManager } from './ServerManager';
 import { DeviceRegisterService } from './DeviceRegisterService';
 
 const TAG: string = 'NotifySync';
+
+/** 读取当前语言的字符串资源（同步进度/错误文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
 const PAGE_SIZE: number = 100;
 const SERVER_CONCURRENCY: number = 2;
 const DELETE_CONCURRENCY: number = 6;
@@ -241,7 +258,7 @@ export class NotifySyncService {
   private recordPage(count: number): void {
     this.processed += count;
     if (this.foreground) {
-      AppStorage.setOrCreate(KEY_NOTIFY_SYNC_PROGRESS, `正在同步 · 已处理 ${this.processed} 条`);
+      AppStorage.setOrCreate(KEY_NOTIFY_SYNC_PROGRESS, tr($r('app.string.nsync_progress'), this.processed));
     }
     this.publishRevision();
   }
@@ -329,7 +346,7 @@ export class NotifySyncService {
               state.completedVersion = version;
             } catch (err) {
               if (this.attemptCurrent(server.id, version, epoch)) {
-                this.recordServerResult(server.id, '同步异常；未完成的通知会在下次进入前台时重试');
+                this.recordServerResult(server.id, tr($r('app.string.nsync_sync_exception')));
                 state.completedVersion = version;
               }
               hilog.warn(DOMAIN, TAG, '服务器同步异常：%{public}s',
@@ -360,7 +377,8 @@ export class NotifySyncService {
       }
       if (this.foreground && epoch === this.epoch && this.processed > 0) {
         const feedback: string = this.errors.size > 0
-          ? `已处理 ${this.processed} 条，部分待重试` : `本轮已处理 ${this.processed} 条`;
+          ? tr($r('app.string.nsync_feedback_partial'), this.processed)
+          : tr($r('app.string.nsync_feedback_done'), this.processed);
         AppStorage.setOrCreate(KEY_NOTIFY_SYNC_FEEDBACK, feedback);
         this.feedbackTimer = setTimeout(() => {
           this.feedbackTimer = -1;
@@ -404,7 +422,7 @@ export class NotifySyncService {
       const responseSource: string = notifySourceKey(result.instanceId, server.id, deviceKey);
       if (responseSource !== sourceKey) {
         if (instanceRestarted) {
-          return '服务器历史实例在同步中变化';
+          return tr($r('app.string.nsync_instance_changed'));
         }
         instanceRestarted = true;
         sourceKey = responseSource;
@@ -416,7 +434,7 @@ export class NotifySyncService {
       }
       if (server.instanceId !== result.instanceId || server.historyKeys.indexOf(sourceKey) < 0) {
         if (!(await ServerManager.getInstance().rememberHistory(server.id, result.instanceId, sourceKey))) {
-          return '无法保存服务器历史身份';
+          return tr($r('app.string.nsync_history_save_failed'));
         }
       }
       if (await this.applyDeletionExtraIds(sourceKey, result)) {
@@ -428,7 +446,7 @@ export class NotifySyncService {
       let nextAfter: number = after;
       if (result.messages.length > 0) {
         if (!(await MessageCacheStore.upsertMessages(sourceKey, result.messages))) {
-          return '本地保存失败；远端通知已保留，稍后可重试';
+          return tr($r('app.string.nsync_local_save_failed'));
         }
         // 本地事务完成后才能让出；未清理的远端副本会在恢复同步时重新读取。
         if (!this.attemptCurrent(server.id, version, epoch)) {
@@ -467,10 +485,10 @@ export class NotifySyncService {
         }
       }
       if (result.hasMore && nextAfter <= after) {
-        return '服务器分页游标未推进，稍后可重试';
+        return tr($r('app.string.nsync_cursor_stuck'));
       }
       if (!(await MessageCacheStore.saveMeta(sourceKey, maxId, delCursor, 0, true))) {
-        return '同步进度保存失败；远端未完成清理的通知会重试';
+        return tr($r('app.string.nsync_progress_save_failed'));
       }
       if (!result.hasMore) {
         delHasMore = result.delHasMore;
@@ -485,7 +503,7 @@ export class NotifySyncService {
         return '';
       }
       if (!result.ok || notifySourceKey(result.instanceId, server.id, deviceKey) !== sourceKey) {
-        return result.ok ? '服务器历史实例在同步中变化' : result.errorMsg;
+        return result.ok ? tr($r('app.string.nsync_instance_changed')) : result.errorMsg;
       }
       if (await this.applyDeletionExtraIds(sourceKey, result)) {
         this.publishRevision();
@@ -494,7 +512,7 @@ export class NotifySyncService {
         delCursor = result.delCursor;
       }
       if (!(await MessageCacheStore.saveMeta(sourceKey, maxId, delCursor, 0, true))) {
-        return '删除同步进度保存失败；稍后会重试';
+        return tr($r('app.string.nsync_del_progress_save_failed'));
       }
       delHasMore = result.delHasMore;
     }
@@ -502,9 +520,9 @@ export class NotifySyncService {
       return '';
     }
     if (pendingEncrypted) {
-      return '有加密通知尚未解密或发布；请检查加密 Key 与通知权限，远端密文已保留';
+      return tr($r('app.string.nsync_pending_encrypted'));
     } else if (remoteDeleteFailed) {
-      return '通知已保存到本地，但部分远端副本清理失败；稍后会重试';
+      return tr($r('app.string.nsync_remote_delete_failed'));
     }
     return '';
   }

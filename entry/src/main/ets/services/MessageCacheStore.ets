@@ -758,10 +758,14 @@ export class MessageCacheStore {
     }
     try {
       const placeholders: string = deviceKeys.map(() => '?').join(',');
-      const args: string[] = [...deviceKeys, NotifyMessage.ENCRYPTION_TITLE,
-        NotifyMessage.MISSING_KEY_BODY, NotifyMessage.DECRYPTION_FAILED_BODY];
+      // 占位文案按语言变体匹配：同时命中历史中文行与当前语言写入的行
+      const titleVariants: string[] = NotifyMessage.encryptionTitleVariants();
+      const bodyVariants: string[] = NotifyMessage.decryptionBodyVariants();
+      const titleHolders: string = titleVariants.map(() => '?').join(',');
+      const bodyHolders: string = bodyVariants.map(() => '?').join(',');
+      const args: string[] = [...deviceKeys, ...titleVariants, ...bodyVariants];
       let sql: string = `SELECT * FROM ${TABLE_MSG} WHERE device_key IN (${placeholders}) ` +
-        `AND encrypted=1 AND ciphertext<>'' AND title=? AND body IN (?, ?)`;
+        `AND encrypted=1 AND ciphertext<>'' AND title IN (${titleHolders}) AND body IN (${bodyHolders})`;
       if (groupKey !== null) {
         sql += ' AND group_key=?';
         args.push(groupKey);

@@ -144,9 +144,9 @@ export function parseNotifyTextSegments(text: string): NotifyTextSegment[] {
   return segments;
 }
 
-/** 虚拟 groupKey 对应的展示名称（展开态顶栏标题 + 折叠态卡片标题） */
-export function displayGroupTitle(groupKey: string): string {
-  return groupKey.length === 0 ? '默认' : groupKey;
+/** 虚拟 groupKey 对应的展示名称（展开态顶栏标题 + 折叠态卡片标题）；空 key 返回「默认」资源 */
+export function displayGroupTitle(groupKey: string): ResourceStr {
+  return groupKey.length === 0 ? $r('app.string.ntf_group_default') : groupKey;
 }
 
 /**
@@ -236,21 +236,26 @@ export function isExpiringSoon(expiresAt: number, now: number = Date.now()): boo
   return expiresAt > 0 && remaining > 0 && remaining < 60 * 60 * 1000;
 }
 
+/** 判断归档通知是否存在过期说明文本，供调用处决定是否渲染该行。 */
+export function hasExpiryDescription(expiresAt: number): boolean {
+  return expiresAt > 0;
+}
+
 /** 详情页的静态过期说明；不启动秒级倒计时，避免频繁重绘。 */
-export function formatExpiryDescription(expiresAt: number, now: number = Date.now()): string {
+export function formatExpiryDescription(expiresAt: number, now: number = Date.now()): ResourceStr {
   if (expiresAt <= 0) {
     return '';
   }
   const remaining: number = expiresAt - now;
   if (remaining <= 0) {
-    return '已过期';
+    return $r('app.string.ntf_expired');
   }
   const hourMs: number = 60 * 60 * 1000;
   if (remaining < hourMs) {
-    return `约 ${Math.max(1, Math.ceil(remaining / (60 * 1000)))} 分钟后过期`;
+    return $r('app.string.ntf_expires_in_minutes', Math.max(1, Math.ceil(remaining / (60 * 1000))));
   }
   if (remaining <= 24 * hourMs) {
-    return `约 ${Math.ceil(remaining / hourMs)} 小时后过期`;
+    return $r('app.string.ntf_expires_in_hours', Math.ceil(remaining / hourMs));
   }
-  return `${formatNotifyTime(expiresAt)} 过期`;
+  return $r('app.string.ntf_expires_at', formatNotifyTime(expiresAt));
 }

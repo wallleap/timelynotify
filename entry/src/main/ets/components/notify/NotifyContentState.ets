@@ -1,4 +1,5 @@
 import { ExternalLinkService, USE_DOCS_URL } from '../../services/ExternalLinkService';
+import { AppContextStore } from '../../common/AppContextStore';
 import { PreferencesUtil } from '../../utils/PreferencesUtil';
 import showToast from '../showToast';
 
@@ -85,9 +86,10 @@ export struct NotifyContentState {
         return;
       }
       if (!saved) {
-        showToast(this.getUIContext(), '保存失败，请重试');
+        showToast(this.getUIContext(), $r('app.string.ntf_save_failed_retry'));
       }
-      await ExternalLinkService.openSharePage(this.getUIContext(), USE_DOCS_URL, '使用指南');
+      await ExternalLinkService.openSharePage(this.getUIContext(), USE_DOCS_URL,
+        this.localizedGuideTitle());
     } finally {
       if (this.guideViewMounted && generation === this.guideGeneration) {
         this.openingGuide = false;
@@ -99,19 +101,19 @@ export struct NotifyContentState {
   @Builder
   private firstUseGuide() {
     Column({ space: 12 }) {
-      Text('欢迎使用及时通知')
+      Text($r('app.string.ntf_welcome_title'))
         .fontSize(20)
         .fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.color_text_primary'))
         .textAlign(TextAlign.Center)
         .width('100%');
-      Text('查看使用指南了解如何使用此应用')
+      Text($r('app.string.ntf_welcome_subtitle'))
         .fontSize(14)
         .lineHeight(22)
         .fontColor($r('app.color.color_text_secondary'))
         .textAlign(TextAlign.Center)
         .width('100%');
-      Button('查看使用指南')
+      Button($r('app.string.ntf_view_guide'))
         .width('100%')
         .height(44)
         .fontSize(14)
@@ -121,7 +123,7 @@ export struct NotifyContentState {
         .margin({ top: 8 })
         .onClick(() => this.openUseGuide());
       // 说明查看后不再提示，并指引用户从服务页再次打开指南。
-      Text('点击上方按钮后将不再显示此提示\n后续可点击下方「服务」在文档中查看使用指南')
+      Text($r('app.string.ntf_welcome_hint'))
         .fontSize(12)
         .lineHeight(20)
         .fontColor($r('app.color.color_text_hint'))
@@ -132,30 +134,37 @@ export struct NotifyContentState {
     .alignItems(HorizontalAlign.Center);
   }
 
+  /** openSharePage 的标题参数仅接受 string，按当前语言同步取回资源文案。 */
+  private localizedGuideTitle(): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync($r('app.string.ntf_guide_title').id) : '';
+  }
+
   /** 欢迎提示下保留实际连接和错误状态，确认后沿用原有空状态展示。 */
   @Builder
   private contentStatus() {
     Column({ space: 12 }) {
       if (this.mode === 'guide') {
-        Text('未配置客户端 Token').fontSize(16).fontColor($r('app.color.color_text_tertiary'));
-        Text('同步历史通知需要客户端 Token 认证，请检查当前服务的配置').fontSize(13)
+        Text($r('app.string.ntf_no_client_token')).fontSize(16).fontColor($r('app.color.color_text_tertiary'));
+        Text($r('app.string.ntf_no_client_token_desc')).fontSize(13)
           .fontColor($r('app.color.color_text_hint')).textAlign(TextAlign.Center).width('70%');
       } else if (this.mode === 'loading') {
         LoadingProgress().width(40).height(40).color($r('app.color.color_brand'));
-        Text('加载中…').fontSize(13).fontColor($r('app.color.color_text_hint'));
+        Text($r('app.string.common_loading')).fontSize(13).fontColor($r('app.color.color_text_hint'));
       } else if (this.mode === 'connecting') {
         // 本地加载已结束，远端同步以独立状态呈现，不再用全屏转圈冒充页面加载。
-        Text('正在连接服务器…').fontSize(15).fontColor($r('app.color.color_text_hint'));
-        Text('连接完成后自动显示通知').fontSize(13).fontColor($r('app.color.color_text_hint'));
+        Text($r('app.string.ntf_connecting')).fontSize(15).fontColor($r('app.color.color_text_hint'));
+        Text($r('app.string.ntf_connecting_desc')).fontSize(13).fontColor($r('app.color.color_text_hint'));
       } else if (this.mode === 'error') {
         Text(this.errorMsg)
           .fontSize(14)
           .fontColor($r('app.color.color_error'))
           .textAlign(TextAlign.Center)
           .width('80%');
-        Text('下拉重试').fontSize(13).fontColor($r('app.color.color_brand')).padding(8).onClick(() => this.onRetry());
+        Text($r('app.string.ntf_pull_to_retry')).fontSize(13)
+          .fontColor($r('app.color.color_brand')).padding(8).onClick(() => this.onRetry());
       } else {
-        Text('暂无通知').fontSize(15).fontColor($r('app.color.color_text_hint'));
+        Text($r('app.string.ntf_no_notifications')).fontSize(15).fontColor($r('app.color.color_text_hint'));
       }
     }
     .width('100%').alignItems(HorizontalAlign.Center);

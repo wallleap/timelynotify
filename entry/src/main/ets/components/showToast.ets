@@ -7,7 +7,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
  * 通过 ImmersiveUtil 统一判断材质是否可用；不可用时显示普通 Toast。
  * 注意：不在此处顶层静态导入 uiMaterial，避免 API 23 设备模块加载崩溃。
  */
-export default function showToast(ctx: UIContext, message: string, durationMs: number = 1500,
+export default function showToast(ctx: UIContext, message: ResourceStr, durationMs: number = 1500,
   tag: string = 'Toast'): void {
   try {
     const material = getEnabledSystemMaterial('toast');

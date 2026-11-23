@@ -1,6 +1,9 @@
 // 推送消息条目（GET /:device_key/message 返回列表的单项）
 // 兼容 gotify 标准字段与 timelynotify 可能的字段命名差异
+import { AppContextStore } from '../common/AppContextStore';
+
 export class NotifyMessage extends Object {
+  // 历史中文占位文案：既是旧数据匹配键，也是资源读取失败时的回退值
   static readonly ENCRYPTION_TITLE: string = '加密通知';
   static readonly MISSING_KEY_BODY: string = '此服务器尚未配置加密密钥';
   static readonly DECRYPTION_FAILED_BODY: string = '解密失败，请检查算法、模式、Padding 和 Key';
@@ -241,10 +244,65 @@ export class NotifyMessage extends Object {
     return this.encrypted && this.migrationReady && !this.isExpired(now) && (!this.archive || resendArchived);
   }
 
-  /** 本地缓存不持久化 migrationReady；用同步写入的固定占位内容识别仍留在远端的解密失败项。 */
+  /** 本地缓存不持久化 migrationReady；用同步写入的占位内容识别仍留在远端的解密失败项（兼容历史中文与当前语言变体）。 */
   isDecryptionFailed(): boolean {
-    return this.encrypted && this.ciphertext.length > 0 && this.title === NotifyMessage.ENCRYPTION_TITLE &&
-      (this.body === NotifyMessage.MISSING_KEY_BODY || this.body === NotifyMessage.DECRYPTION_FAILED_BODY);
+    if (!this.encrypted || this.ciphertext.length === 0) {
+      return false;
+    }
+    return NotifyMessage.encryptionTitleVariants().includes(this.title) &&
+      NotifyMessage.decryptionBodyVariants().includes(this.body);
+  }
+
+  /** 当前语言下的加密通知占位标题；Context 未注入或资源读取失败时回退历史中文文案。 */
+  static localizedEncryptionTitle(): string {
+    const context = AppContextStore.getInstance().getContext();
+    if (context === null) {
+      return NotifyMessage.ENCRYPTION_TITLE;
+    }
+    try {
+      return context.resourceManager.getStringSync($r('app.string.nmsg_encryption_title').id);
+    } catch (err) {
+      return NotifyMessage.ENCRYPTION_TITLE;
+    }
+  }
+
+  /** 当前语言下的“未配置密钥”占位正文；Context 未注入或资源读取失败时回退历史中文文案。 */
+  static localizedMissingKeyBody(): string {
+    const context = AppContextStore.getInstance().getContext();
+    if (context === null) {
+      return NotifyMessage.MISSING_KEY_BODY;
+    }
+    try {
+      return context.resourceManager.getStringSync($r('app.string.nmsg_missing_key_body').id);
+    } catch (err) {
+      return NotifyMessage.MISSING_KEY_BODY;
+    }
+  }
+
+  /** 当前语言下的“解密失败”占位正文；Context 未注入或资源读取失败时回退历史中文文案。 */
+  static localizedDecryptionFailedBody(): string {
+    const context = AppContextStore.getInstance().getContext();
+    if (context === null) {
+      return NotifyMessage.DECRYPTION_FAILED_BODY;
+    }
+    try {
+      return context.resourceManager.getStringSync($r('app.string.nmsg_decryption_failed_body').id);
+    } catch (err) {
+      return NotifyMessage.DECRYPTION_FAILED_BODY;
+    }
+  }
+
+  /** 解密失败识别用的占位标题集合：历史中文与当前语言变体去重合并。 */
+  static encryptionTitleVariants(): string[] {
+    const variants: string[] = [NotifyMessage.ENCRYPTION_TITLE, NotifyMessage.localizedEncryptionTitle()];
+    return Array.from(new Set<string>(variants));
+  }
+
+  /** 解密失败识别用的占位正文集合：历史中文与当前语言变体去重合并。 */
+  static decryptionBodyVariants(): string[] {
+    const variants: string[] = [NotifyMessage.MISSING_KEY_BODY, NotifyMessage.DECRYPTION_FAILED_BODY,
+      NotifyMessage.localizedMissingKeyBody(), NotifyMessage.localizedDecryptionFailedBody()];
+    return Array.from(new Set<string>(variants));
   }
 
   // 从 Bark 参数读取归档与 ttl；primary 优先，兼容服务端小写键与加密内容驼峰键。

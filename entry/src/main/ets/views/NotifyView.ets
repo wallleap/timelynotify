@@ -51,6 +51,7 @@ import {
   KEY_NOTIFY_SYNC_PROGRESS,
   KEY_NOTIFY_SYNC_REVISION
 } from '../common/Constant';
+import { AppContextStore } from '../common/AppContextStore';
 import { NotifySyncService } from '../services/NotifySyncService';
 import { NotifyClickSettingsService } from '../services/NotifyClickSettingsService';
 import showToast from '../components/showToast';
@@ -513,7 +514,7 @@ export struct NotifyView {
         .objectFit(ImageFit.Contain)
         .fillColor($r('app.color.color_text_hint'))
         .draggable(false);
-      TextInput({ placeholder: '搜索通知', text: this.searchQuery })
+      TextInput({ placeholder: $r('app.string.notify_search_hint'), text: this.searchQuery })
         .id('notify_search_input')
         .layoutWeight(1)
         .height(SEARCH_BAR_HEIGHT)
@@ -561,7 +562,7 @@ export struct NotifyView {
       .borderRadius(22)
       .attributeModifier(IMMERSIVE_SEARCH_TITLE_MODIFIER);
 
-      Text('取消')
+      Text($r('app.string.common_cancel'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .height(SEARCH_BAR_HEIGHT)
@@ -588,7 +589,7 @@ export struct NotifyView {
             .objectFit(ImageFit.Contain)
             .fillColor($r('app.color.color_text_hint'))
             .draggable(false);
-          Text('搜索通知')
+          Text($r('app.string.notify_search_hint'))
             .fontSize(16)
             .fontColor($r('app.color.color_text_hint'));
         }
@@ -619,7 +620,7 @@ export struct NotifyView {
         .objectFit(ImageFit.Contain)
         .fillColor($r('app.color.color_text_hint'))
         .draggable(false);
-      Text('搜索通知')
+      Text($r('app.string.notify_search_hint'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_hint'))
         .maxLines(1)
@@ -666,7 +667,7 @@ export struct NotifyView {
           $r('app.color.color_text_primary'))
         .opacity(1 - 0.4 * this.searchCompactTransitionProgress)
         .draggable(false);
-      Text('搜索通知')
+      Text($r('app.string.notify_search_hint'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_hint'))
         .maxLines(1)
@@ -692,7 +693,7 @@ export struct NotifyView {
         this.searchCompactStartY) * this.searchCompactTransitionProgress
     });
 
-    Text('取消')
+    Text($r('app.string.common_cancel'))
       .fontSize(16)
       .fontColor($r('app.color.color_text_primary'))
       .width(SEARCH_TITLE_RIGHT_EXTRA - 8)
@@ -715,7 +716,7 @@ export struct NotifyView {
           .objectFit(ImageFit.Contain)
           .fillColor($r('app.color.color_text_hint'))
           .draggable(false);
-        Text('搜索通知')
+        Text($r('app.string.notify_search_hint'))
           .fontSize(16)
           .fontColor($r('app.color.color_text_hint'));
       }
@@ -728,7 +729,7 @@ export struct NotifyView {
       .backgroundBlurStyle(resolveBlurStyle('card')!)
       .border({ width: 1, color: $r('app.color.color_border_glass') });
 
-      Text('取消')
+      Text($r('app.string.common_cancel'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .width((SEARCH_TITLE_RIGHT_EXTRA - 8) * this.searchTransitionProgress)
@@ -761,7 +762,7 @@ export struct NotifyView {
       .onClick(() => this.enterSearch());
 
       if (this.searchActive) {
-        Text('取消')
+        Text($r('app.string.common_cancel'))
           .fontSize(16)
           .fontColor($r('app.color.color_text_primary'))
           .height(SEARCH_BAR_HEIGHT)
@@ -808,9 +809,9 @@ export struct NotifyView {
               ListStatusFooter({
                 loading: this.searchLoading,
                 failed: this.searchError,
-                loadingText: '正在搜索…',
-                failureText: '搜索失败，请重试',
-                emptyText: '没有找到相关通知'
+                loadingText: $r('app.string.notify_searching'),
+                failureText: $r('app.string.notify_search_failed'),
+                emptyText: $r('app.string.notify_search_empty')
               });
             }.width('100%').padding({ top: 40 });
           }.onClick(() => { if (this.searchError) this.scheduleSearch(); });
@@ -1308,7 +1309,7 @@ export struct NotifyView {
   @Builder
   private serverErrorBannerContent() {
     Row() {
-      Text(this.isServerErrorBannerCompact() ? '服务异常 · 点击修复' : this.serverErrorBanner)
+      Text(this.isServerErrorBannerCompact() ? $r('app.string.notify_server_error_compact') : this.serverErrorBanner)
         .fontSize(12)
         .fontColor($r('app.color.color_warning'))
         .maxLines(this.isServerErrorBannerCompact() ? 1 : 3)
@@ -1411,7 +1412,7 @@ export struct NotifyView {
     const items: HdsNavigationMenuItemOptions[] = [
       {
         content: {
-          label: this.isEditing ? '取消' : '多选',
+          label: this.isEditing ? $r('app.string.common_cancel') : $r('app.string.notify_multi_select'),
           isEnabled: !this.handSwitching,
           type: TextStyleMode.NORMAL,
           action: (): void => this.handleMultiSelectClicked()
@@ -1795,7 +1796,7 @@ export struct NotifyView {
       onCopyUrl: (url: string) => {
         this.copyUrl(url);
       },
-      onCopyText: (text: string, label: string) => {
+      onCopyText: (text: string, label: ResourceStr) => {
         this.copyText(text, label);
       },
       onCopyContent: (text: string) => {
@@ -1828,7 +1829,7 @@ export struct NotifyView {
     Column() {
       // 面板标题栏：避让状态栏，标题 + 关闭按钮
       Row() {
-        Text('通知详情')
+        Text($r('app.string.notify_detail_title'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.color_text_primary'))
@@ -1874,7 +1875,7 @@ export struct NotifyView {
       .titleBar({
         enableComponentSafeArea: true,
         content: {
-          title: { mainTitle: '通知详情' },
+          title: { mainTitle: $r('app.string.notify_detail_title') },
           menu: {
             value: [
               {
@@ -1914,7 +1915,7 @@ export struct NotifyView {
       .titleBar({
         enableComponentSafeArea: true,
         content: {
-          title: { mainTitle: '通知详情' },
+          title: { mainTitle: $r('app.string.notify_detail_title') },
           menu: {
             value: [
               {
@@ -1960,7 +1961,23 @@ export struct NotifyView {
    */
   private buildServerErrorBannerMessage(server: ServerEntry, error: string): string {
     const name: string = server.name || server.baseURL;
-    return name + '：' + error + '；点击修改服务器配置';
+    const context = AppContextStore.getInstance().getContext();
+    // Banner 需以原始 string 存入状态，动态部分用 %s 资源格式化还原
+    return context ?
+      context.resourceManager.getStringSync($r('app.string.notify_server_error_banner').id, name, error) :
+      name + '：' + error;
+  }
+
+  /** 将资源还原为当前语言字符串，供拼接、存储等需要原始 string 的场合使用。 */
+  private resourceText(res: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id) : '';
+  }
+
+  /** 带一个字符串格式化参数的资源文本还原，用于 %s 占位资源。 */
+  private formatResourceText(res: Resource, arg: string): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id, arg) : '';
   }
 
   /**
@@ -2132,10 +2149,11 @@ export struct NotifyView {
     const key: string | null = await DeviceRegisterService.getInstance()
       .syncKeyForServer(null, server.id, server.baseURL, inputKey.length > 0 ? inputKey : '');
     if (key && key.length > 0) {
-      showToast(this.getUIContext(), inputKey.length > 0 ? '已还原 Key' : '已重置 Key');
+      showToast(this.getUIContext(), inputKey.length > 0 ? $r('app.string.notify_key_restored') :
+        $r('app.string.notify_key_reset'));
       this.loadMessages();
     } else {
-      showToast(this.getUIContext(), '操作失败');
+      showToast(this.getUIContext(), $r('app.string.notify_operation_failed'));
     }
   }
 
@@ -2190,7 +2208,7 @@ export struct NotifyView {
   private async openEncryptionDialogFor(server: ServerEntry): Promise<void> {
     const target: ServerEntry | null = this.findConfiguredServer(server.id);
     if (!target) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.notify_server_info_missing'));
       return;
     }
     try {
@@ -2214,14 +2232,14 @@ export struct NotifyView {
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'encryption dialog open 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
-      showToast(this.getUIContext(), '弹窗无法打开');
+      showToast(this.getUIContext(), $r('app.string.notify_dialog_open_failed'));
     }
   }
 
   private async saveEncryptionFor(serverId: string, config: EncryptionConfig): Promise<boolean> {
     const server: ServerEntry | null = this.findConfiguredServer(serverId);
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.notify_server_info_missing'));
       return false;
     }
     config.deviceKey = server.deviceKey;
@@ -2242,12 +2260,13 @@ export struct NotifyView {
             err instanceof Error ? err.message : String(err));
         }
       }
-      showToast(this.getUIContext(), ok ? '解密设置已保存' : '保存失败');
+      showToast(this.getUIContext(), ok ? $r('app.string.notify_decryption_saved') :
+        $r('app.string.notify_save_failed'));
       return ok;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'save encryption 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
-      showToast(this.getUIContext(), '保存失败');
+      showToast(this.getUIContext(), $r('app.string.notify_save_failed'));
       return false;
     }
   }
@@ -2255,7 +2274,7 @@ export struct NotifyView {
   private async clearEncryptionFor(serverId: string): Promise<boolean> {
     const server: ServerEntry | null = this.findConfiguredServer(serverId);
     if (!server) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.notify_server_info_missing'));
       return false;
     }
     try {
@@ -2275,12 +2294,13 @@ export struct NotifyView {
             err instanceof Error ? err.message : String(err));
         }
       }
-      showToast(this.getUIContext(), ok ? '解密设置已清除' : '清除失败');
+      showToast(this.getUIContext(), ok ? $r('app.string.notify_decryption_cleared') :
+        $r('app.string.notify_clear_failed'));
       return ok;
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'clear encryption 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
-      showToast(this.getUIContext(), '清除失败');
+      showToast(this.getUIContext(), $r('app.string.notify_clear_failed'));
       return false;
     }
   }
@@ -2288,7 +2308,7 @@ export struct NotifyView {
   private openRenameDialogFor(server: ServerEntry): void {
     const target: ServerEntry | null = this.findConfiguredServer(server.id);
     if (!target) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.notify_server_info_missing'));
       return;
     }
     try {
@@ -2315,37 +2335,39 @@ export struct NotifyView {
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'rename dialog open 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
-      showToast(this.getUIContext(), '弹窗无法打开');
+      showToast(this.getUIContext(), $r('app.string.notify_dialog_open_failed'));
     }
   }
 
   private async renameServerFor(serverId: string, name: string): Promise<void> {
     if (!this.findConfiguredServer(serverId)) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.notify_server_info_missing'));
       return;
     }
     try {
       const ok: boolean = await ServerManager.getInstance().renameServer(null, serverId, name);
-      showToast(this.getUIContext(), ok ? '已重命名' : '重命名失败');
+      showToast(this.getUIContext(), ok ? $r('app.string.notify_renamed') : $r('app.string.notify_rename_failed'));
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'rename server 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
-      showToast(this.getUIContext(), '重命名失败');
+      showToast(this.getUIContext(), $r('app.string.notify_rename_failed'));
     }
   }
 
   private async confirmDeleteServer(server: ServerEntry): Promise<void> {
     const manager: ServerManager = ServerManager.getInstance();
     if (!this.findConfiguredServer(server.id)) {
-      showToast(this.getUIContext(), '服务器信息缺失');
+      showToast(this.getUIContext(), $r('app.string.notify_server_info_missing'));
       return;
     }
     if (manager.getList().length <= 1) {
-      showToast(this.getUIContext(), '至少保留一个服务器');
+      showToast(this.getUIContext(), $r('app.string.notify_keep_one_server'));
       return;
     }
     try {
-      if (!await this.confirmDanger('删除服务器', `确定删除「${server.name || server.baseURL}」吗？`, '确定')) {
+      if (!await this.confirmDanger($r('app.string.notify_delete_server_title'),
+        $r('app.string.notify_delete_server_message', server.name || server.baseURL),
+        $r('app.string.common_confirm'))) {
         return;
       }
     } catch (err) {
@@ -2363,11 +2385,12 @@ export struct NotifyView {
             err instanceof Error ? err.message : String(err));
         }
       }
-      showToast(this.getUIContext(), ok ? '已删除' : '删除失败', ok ? 1200 : undefined);
+      showToast(this.getUIContext(), ok ? $r('app.string.notify_deleted') :
+        $r('app.string.notify_delete_failed'), ok ? 1200 : undefined);
     } catch (err) {
       hilog.warn(DOMAIN, TAG, 'delete server 失败：%{public}s',
         err instanceof Error ? err.message : String(err));
-      showToast(this.getUIContext(), '删除失败');
+      showToast(this.getUIContext(), $r('app.string.notify_delete_failed'));
     }
   }
 
@@ -2379,7 +2402,7 @@ export struct NotifyView {
       key = fresh && fresh.length > 0 ? fresh : '';
     }
     if (!key || key.length === 0) {
-      showToast(this.getUIContext(), '未获取到 Key');
+      showToast(this.getUIContext(), $r('app.string.notify_key_missing'));
       return;
     }
     const text: string = `${server.baseURL}/${key}`;
@@ -2387,9 +2410,9 @@ export struct NotifyView {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
       const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
       await sys.setData(data);
-      showToast(this.getUIContext(), '已复制地址和 Key', 1200);
+      showToast(this.getUIContext(), $r('app.string.notify_copied_addr_key'), 1200);
     } catch (err) {
-      showToast(this.getUIContext(), '复制失败');
+      showToast(this.getUIContext(), $r('app.string.notify_copy_failed'));
     }
   }
 
@@ -2885,7 +2908,7 @@ export struct NotifyView {
     if (generation !== this.contextActionGeneration || !this.canRunContextAction() ||
       this.isEditing || scope !== this.getVisibleHistoryKeys().join('|')) return;
     if (!message || message.isExpired()) {
-      showToast(this.getUIContext(), '通知已过期或已删除');
+      showToast(this.getUIContext(), $r('app.string.notify_expired_or_deleted'));
       return;
     }
     if (target.grouped) {
@@ -2912,7 +2935,7 @@ export struct NotifyView {
     } else if (action === NotifyContextAction.Select) {
       this.selectFromContext(message, generation, scope);
     } else if (action === NotifyContextAction.CopyAll) {
-      this.copyText(buildNotifyCopyText(message), '全文');
+      this.copyText(buildNotifyCopyText(message), $r('app.string.notify_copy_label_all'));
     } else if (action === NotifyContextAction.CopyContent && message.copy.length > 0) {
       this.copyContent(message.copy);
     } else if (action === NotifyContextAction.CopyUrl && message.url.length > 0) {
@@ -2983,7 +3006,7 @@ export struct NotifyView {
       return;
     }
     if (this.selectedIds.length === 0) {
-      showToast(this.getUIContext(), '请先选择要导出的通知');
+      showToast(this.getUIContext(), $r('app.string.notify_select_export_first'));
       return;
     }
     this.exportSelectedMessages();
@@ -2992,7 +3015,7 @@ export struct NotifyView {
   /** 处理删除入口，保留空选择提示。 */
   private handleDeleteSelected(): void {
     if (this.selectedIds.length === 0) {
-      showToast(this.getUIContext(), '请先选择要删除的通知');
+      showToast(this.getUIContext(), $r('app.string.notify_select_delete_first'));
       return;
     }
     this.confirmDeleteSelected();
@@ -3018,7 +3041,7 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '初始化失败：%{public}s', msg);
-      this.errorMsg = '通知初始化失败，请重试';
+      this.errorMsg = this.resourceText($r('app.string.notify_init_failed'));
     } finally {
       this.loading = false;
       this.syncing = false;
@@ -3046,12 +3069,12 @@ export struct NotifyView {
       };
       ctx.startAbility(want).catch((err: BusinessError) => {
         hilog.warn(DOMAIN, TAG, '打开链接失败：code=%{public}d msg=%{public}s', err.code, err.message);
-        showToast(this.getUIContext(), '无法打开链接');
+        showToast(this.getUIContext(), $r('app.string.notify_cannot_open_link'));
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'openUrl 异常：%{public}s', msg);
-      showToast(this.getUIContext(), '无法打开链接');
+      showToast(this.getUIContext(), $r('app.string.notify_cannot_open_link'));
     }
   }
 
@@ -3061,16 +3084,16 @@ export struct NotifyView {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, code);
       const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
       await sys.setData(data);
-      showToast(this.getUIContext(), `已复制 ${code}`, 1500);
+      showToast(this.getUIContext(), $r('app.string.notify_label_copied', code), 1500);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制验证码失败：%{public}s', msg);
-      showToast(this.getUIContext(), '复制失败');
+      showToast(this.getUIContext(), $r('app.string.notify_copy_failed'));
     }
   }
 
   /** 复制详情文字，并按点击区域提示所复制的内容类型。 */
-  private async copyText(text: string, label: string): Promise<void> {
+  private async copyText(text: string, label: ResourceStr): Promise<void> {
     if (text.length === 0) {
       return;
     }
@@ -3078,11 +3101,13 @@ export struct NotifyView {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
       const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
       await sys.setData(data);
-      showToast(this.getUIContext(), `${label}已复制`, 1500);
+      // 标签可能是资源引用，先还原为当前语言文本再用 %s 资源拼接提示
+      const labelText: string = typeof label === 'string' ? label : this.resourceText(label);
+      showToast(this.getUIContext(), $r('app.string.notify_label_copied', labelText), 1500);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制普通文本失败：%{public}s', msg);
-      showToast(this.getUIContext(), '复制失败');
+      showToast(this.getUIContext(), $r('app.string.notify_copy_failed'));
     }
   }
 
@@ -3097,11 +3122,11 @@ export struct NotifyView {
       await sys.setData(data);
       // copy 文本可能是长内容，截断后展示，避免 Toast 撑满屏幕
       const display: string = text.length > 20 ? `${text.substring(0, 20)}…` : text;
-      showToast(this.getUIContext(), `已复制 ${display}`, 1500);
+      showToast(this.getUIContext(), $r('app.string.notify_label_copied', display), 1500);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制待复制文本失败：%{public}s', msg);
-      showToast(this.getUIContext(), '复制失败');
+      showToast(this.getUIContext(), $r('app.string.notify_copy_failed'));
     }
   }
 
@@ -3111,11 +3136,11 @@ export struct NotifyView {
       const data: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, url);
       const sys: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
       await sys.setData(data);
-      showToast(this.getUIContext(), '链接已复制', 1500);
+      showToast(this.getUIContext(), $r('app.string.notify_link_copied'), 1500);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '复制链接失败：%{public}s', msg);
-      showToast(this.getUIContext(), '复制失败');
+      showToast(this.getUIContext(), $r('app.string.notify_copy_failed'));
     }
   }
 
@@ -3326,7 +3351,7 @@ export struct NotifyView {
 
   private handleMultiSelectClicked(): void {
     if (this.messages.length === 0) {
-      showToast(this.getUIContext(), '暂无可多选的通知');
+      showToast(this.getUIContext(), $r('app.string.notify_no_selectable'));
       return;
     }
     if (this.isEditing) {
@@ -3345,7 +3370,7 @@ export struct NotifyView {
       if (this.selectedIds.length > 0) {
         this.confirmDeleteSelected();
       } else {
-        showToast(this.getUIContext(), '请先选择要删除的通知');
+        showToast(this.getUIContext(), $r('app.string.notify_select_delete_first'));
       }
     } else {
       this.confirmDeleteAll();
@@ -3532,7 +3557,7 @@ export struct NotifyView {
     }
   }
 
-  private async confirmDanger(title: string, message: string, confirmText: string): Promise<boolean> {
+  private async confirmDanger(title: ResourceStr, message: ResourceStr, confirmText: ResourceStr): Promise<boolean> {
     try {
       const background = getDialogBackgroundOptions();
       return await new Promise<boolean>((resolve: (confirmed: boolean) => void) => {
@@ -3684,21 +3709,24 @@ export struct NotifyView {
       this.exitEditMode();
     }
     if (result.localFailed) {
-      showToast(uiCtx, '删除失败，请稍后重试');
+      showToast(uiCtx, $r('app.string.notify_delete_failed_retry'));
     } else if (result.remoteFailed > 0) {
-      showToast(uiCtx, `已删除 ${result.deletedIds.length} 条，${result.remoteFailed} 条删除失败，已保留待重试`);
+      showToast(uiCtx, $r('app.string.notify_deleted_partial', result.deletedIds.length, result.remoteFailed));
     } else {
-      showToast(uiCtx, `已删除 ${result.deletedIds.length} 条`);
+      showToast(uiCtx, $r('app.string.notify_deleted_count', result.deletedIds.length));
     }
   }
 
   private confirmDeleteOne(m: NotifyMessage, closeDetailOnSuccess: boolean = false): void {
     const uiCtx: UIContext = this.getUIContext();
-    this.confirmDanger(m.isDecryptionFailed() ? '删除解密失败的通知' : '删除通知',
-      `${m.isDecryptionFailed() ?
-        '删除后无法恢复；如果删除失败，此通知会保留以便重试。' :
-        '删除后无法恢复。'}${m.title && m.title.length > 0 ?
-        '\n\n「' + m.title + '」' : ''}`, '删除').then(async (confirmed: boolean) => {
+    // 正文按是否解密失败二选一；存在标题时以 %s 资源追加引用行后整体作为确认框消息
+    const bodyText: string = this.resourceText(m.isDecryptionFailed() ?
+      $r('app.string.notify_delete_failed_body') : $r('app.string.notify_delete_body'));
+    const messageText: string = m.title && m.title.length > 0 ?
+      bodyText + this.formatResourceText($r('app.string.notify_delete_title_quote'), m.title) : bodyText;
+    this.confirmDanger(m.isDecryptionFailed() ? $r('app.string.notify_delete_decryption_failed_title') :
+      $r('app.string.notify_delete_one_title'),
+      messageText, $r('app.string.common_delete')).then(async (confirmed: boolean) => {
       if (!confirmed) {
         return;
       }
@@ -3713,13 +3741,13 @@ export struct NotifyView {
   private confirmDeleteGroup(section: NotifySection): void {
     const uiCtx: UIContext = this.getUIContext();
     const count: number = section.total;
-    this.confirmDanger('删除整个分组',
-      `将删除该分组的全部 ${count} 条通知，包括尚未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。`,
-      '全部删除').then(async (confirmed: boolean) => {
+    this.confirmDanger($r('app.string.notify_delete_group_title'),
+      $r('app.string.notify_delete_group_message', count),
+      $r('app.string.notify_delete_all_button')).then(async (confirmed: boolean) => {
       if (!confirmed) {
         return;
       }
-      showToast(uiCtx, `正在删除 ${count} 条通知…`);
+      showToast(uiCtx, $r('app.string.notify_deleting_count', count));
       const outcome: ManualDeleteResult = await this.deleteManualIds(null, section.groupKey);
       await this.finishManualDeletion(outcome, uiCtx);
     });
@@ -3738,9 +3766,9 @@ export struct NotifyView {
   private confirmDeleteSelected(): void {
     const uiCtx: UIContext = this.getUIContext();
     const count: number = this.selectedIds.length;
-    this.confirmDanger('删除选中通知',
-      `将删除选中的 ${count} 条通知。删除后无法恢复；删除失败的通知会保留以便重试。`,
-      '全部删除').then(async (confirmed: boolean) => {
+    this.confirmDanger($r('app.string.notify_delete_selected_title'),
+      $r('app.string.notify_delete_selected_message', count),
+      $r('app.string.notify_delete_all_button')).then(async (confirmed: boolean) => {
       if (!confirmed) {
         return;
       }
@@ -3754,17 +3782,17 @@ export struct NotifyView {
     const uiCtx: UIContext = this.getUIContext();
     // 本地无消息时无需调用清空接口
     if (this.totalCachedCount === 0) {
-      showToast(uiCtx, '暂无可删除的通知');
+      showToast(uiCtx, $r('app.string.notify_nothing_to_delete'));
       return;
     }
-    this.confirmDanger('清空全部通知', this.viewAll
-      ? '将删除所有服务器的通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。'
-      : '将删除当前服务器的全部通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。',
-      '全部删除').then(async (confirmed: boolean) => {
+    this.confirmDanger($r('app.string.notify_clear_all_title'), this.viewAll
+      ? $r('app.string.notify_clear_all_message')
+      : $r('app.string.notify_clear_current_message'),
+      $r('app.string.notify_delete_all_button')).then(async (confirmed: boolean) => {
       if (!confirmed) {
         return;
       }
-      showToast(uiCtx, `正在删除 ${this.totalCachedCount} 条通知…`);
+      showToast(uiCtx, $r('app.string.notify_deleting_count', this.totalCachedCount));
       const outcome: ManualDeleteResult = await this.deleteManualIds(null);
       await this.finishManualDeletion(outcome, uiCtx);
     });
@@ -3772,7 +3800,7 @@ export struct NotifyView {
 
   private refresh(): void {
     if (this.viewAll) {
-      this.title = '全部通知';
+      this.title = this.resourceText($r('app.string.notify_title_all'));
       return;
     }
     const cur: ServerEntry | null = ServerManager.getInstance().getCurrentServer();
@@ -3969,7 +3997,7 @@ export struct NotifyView {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'loadMessages 异常：%{public}s', msg);
       if (seq === this.loadSeq) {
-        this.errorMsg = '加载失败';
+        this.errorMsg = this.resourceText($r('app.string.notify_load_failed'));
       }
     } finally {
       this.loading = false;
@@ -4002,14 +4030,14 @@ export struct NotifyView {
       }
       if (!(values instanceof Array) || values.length < 2 ||
         typeof values[0] !== 'string' || typeof values[1] !== 'string') {
-        showToast(this.getUIContext(), '无法定位这条通知');
+        showToast(this.getUIContext(), $r('app.string.notify_cannot_locate'));
         return;
       }
       const instanceId: string = values[0] as string;
       const idText: string = values[1] as string;
       const id: number = Number(idText);
       if (!instanceId || !/^\d+$/.test(idText) || !Number.isSafeInteger(id) || id <= 0) {
-        showToast(this.getUIContext(), '通知未归档或已过期，无法打开详情');
+        showToast(this.getUIContext(), $r('app.string.notify_not_archived'));
         return;
       }
       const manager: ServerManager = ServerManager.getInstance();
@@ -4028,7 +4056,7 @@ export struct NotifyView {
         }
       }
       if (!found || found.isExpired()) {
-        showToast(this.getUIContext(), '通知已过期、未归档或来源服务不可用');
+        showToast(this.getUIContext(), $r('app.string.notify_expired_or_unavailable'));
         return;
       }
       if (AppStorage.get<string>(KEY_NOTIFY_OPEN_REQUEST) !== request) {
@@ -4045,7 +4073,7 @@ export struct NotifyView {
       if (!manager.getViewAllMode()) {
         const source: ServerEntry | null = this.findPushNoticeServer(servers, found.deviceKey, instanceId);
         if (!source || !(await manager.switchTo(null, source.id))) {
-          showToast(this.getUIContext(), '无法切换到通知来源服务');
+           showToast(this.getUIContext(), $r('app.string.notify_cannot_switch_source'));
           return;
         }
       }
@@ -4053,7 +4081,7 @@ export struct NotifyView {
     } catch (err) {
       const msg: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '打开推送详情失败：%{public}s', msg);
-      showToast(this.getUIContext(), '无法打开这条通知');
+      showToast(this.getUIContext(), $r('app.string.notify_cannot_open_notice'));
     } finally {
       if (AppStorage.get<string>(KEY_NOTIFY_OPEN_REQUEST) === request) {
         AppStorage.setOrCreate(KEY_NOTIFY_OPEN_REQUEST, '');
@@ -4172,7 +4200,7 @@ export struct NotifyView {
         return;
       }
       if (older === null) {
-        showToast(this.getUIContext(), '加载失败，请重试');
+        showToast(this.getUIContext(), $r('app.string.notify_load_failed_retry'));
         return;
       }
       if (older.length > 0) {
@@ -4218,7 +4246,7 @@ export struct NotifyView {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, 'dialog open 失败：%{public}s', msg);
-      showToast(this.getUIContext(), '弹窗无法打开');
+      showToast(this.getUIContext(), $r('app.string.notify_dialog_open_failed'));
     }
   }
 
@@ -4244,20 +4272,20 @@ export struct NotifyView {
     try {
       const abilityContext = this.getAbilityContext();
       if (!abilityContext) {
-        showToast(uiContext, '上下文获取失败');
+        showToast(uiContext, $r('app.string.notify_context_failed'));
         return;
       }
       const count: number =
         await NotifyExportService.exportSelected(abilityContext, this.getVisibleHistoryKeys(), this.selectedIds);
       if (count < 0) {
-        showToast(uiContext, '设备未注册，无法导出');
+        showToast(uiContext, $r('app.string.notify_device_unregistered'));
       } else if (count > 0) {
-        showToast(uiContext, `已导出 ${count} 条通知`, 1500);
+        showToast(uiContext, $r('app.string.notify_exported_count', count), 1500);
       }
     } catch (err) {
       const message: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '导出选中消息失败：%{public}s', message);
-      showToast(uiContext, '导出失败');
+      showToast(uiContext, $r('app.string.notify_export_failed'));
     } finally {
       this.exportingSelected = false;
     }

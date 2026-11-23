@@ -1,0 +1,2056 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "TimelyNotify receives HTTP push notifications with custom alerts, so you never miss an important notice"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "TimelyNotify main entry for receiving and displaying third-party push notifications"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "TimelyNotify"
+    },
+    {
+      "name": "permission_internet_reason",
+      "value": "Used to connect to servers over the network; after the push token is obtained, requests must be sent to the server"
+    },
+    {
+      "name": "permission_network_reason",
+      "value": "Used to check the current network state to ensure requests are sent in a valid network environment"
+    },
+    {
+      "name": "index_tab_notify",
+      "value": "Alerts"
+    },
+    {
+      "name": "index_tab_server",
+      "value": "Servers"
+    },
+    {
+      "name": "index_tab_mine",
+      "value": "Me"
+    },
+    {
+      "name": "antipeep_accessibility_selected",
+      "value": "%s, selected"
+    },
+    {
+      "name": "antipeep_mode_blur",
+      "value": "Blur Notifications"
+    },
+    {
+      "name": "antipeep_mode_blur_desc",
+      "value": "Blurs notification text when someone is peeking."
+    },
+    {
+      "name": "antipeep_mode_fullscreen",
+      "value": "Full-Screen Block"
+    },
+    {
+      "name": "antipeep_mode_fullscreen_desc",
+      "value": "Covers the whole app when someone is peeking."
+    },
+    {
+      "name": "antipeep_preview_body_code",
+      "value": "Verification code 123456"
+    },
+    {
+      "name": "antipeep_preview_body_todo",
+      "value": "You have one to-do today"
+    },
+    {
+      "name": "antipeep_preview_body_work",
+      "value": "Meeting starts in ten minutes"
+    },
+    {
+      "name": "antipeep_preview_tab",
+      "value": "Notifications"
+    },
+    {
+      "name": "antipeep_preview_title_code",
+      "value": "Verification Code"
+    },
+    {
+      "name": "antipeep_preview_title_schedule",
+      "value": "Schedule Notice"
+    },
+    {
+      "name": "antipeep_preview_title_work",
+      "value": "Work Reminder"
+    },
+    {
+      "name": "antipeep_title",
+      "value": "Privacy Anti-Peek"
+    },
+    {
+      "name": "antipeep_toast_not_applied",
+      "value": "Setting didn't take effect"
+    },
+    {
+      "name": "antipeep_toast_save_failed",
+      "value": "Save failed"
+    },
+    {
+      "name": "antipeepsvc_permission_unavailable",
+      "value": "Anti-peep permission temporarily unavailable"
+    },
+    {
+      "name": "antipeepsvc_save_failed",
+      "value": "Save failed, settings not applied"
+    },
+    {
+      "name": "antipeepsvc_system_switch_off",
+      "value": "System anti-peep is not enabled"
+    },
+    {
+      "name": "antipeepsvc_unavailable",
+      "value": "Anti-peep temporarily unavailable"
+    },
+    {
+      "name": "appinfosvc_clip_cloud_build",
+      "value": "Build: GitHub Actions Run #%s (%s)"
+    },
+    {
+      "name": "appinfosvc_clip_commit",
+      "value": "commit: %s"
+    },
+    {
+      "name": "appinfosvc_clip_fingerprint",
+      "value": "Signature fingerprint (last 8 chars): %s"
+    },
+    {
+      "name": "appinfosvc_clip_local_build",
+      "value": "Build: local build"
+    },
+    {
+      "name": "appinfosvc_fingerprint_abbrev",
+      "value": "Fingerprint...%s"
+    },
+    {
+      "name": "appinfosvc_local_build",
+      "value": "Local build"
+    },
+    {
+      "name": "autocopy_copied",
+      "value": "Copied %s"
+    },
+    {
+      "name": "clitoken_docs_link",
+      "value": "Deployment Docs"
+    },
+    {
+      "name": "clitoken_hint_docs",
+      "value": "Required for self-hosted servers. See:"
+    },
+    {
+      "name": "clitoken_hint_usage",
+      "value": "Used to sync notification history (X-Gotify-Key authentication)"
+    },
+    {
+      "name": "clitoken_input_placeholder",
+      "value": "Paste client token"
+    },
+    {
+      "name": "clitoken_title",
+      "value": "Client Token"
+    },
+    {
+      "name": "clitoken_toast_save_failed",
+      "value": "Save failed"
+    },
+    {
+      "name": "clitoken_toast_saved",
+      "value": "Saved"
+    },
+    {
+      "name": "common_cancel",
+      "value": "Cancel"
+    },
+    {
+      "name": "common_close",
+      "value": "Close"
+    },
+    {
+      "name": "common_confirm",
+      "value": "OK"
+    },
+    {
+      "name": "common_copy",
+      "value": "Copy"
+    },
+    {
+      "name": "common_delete",
+      "value": "Delete"
+    },
+    {
+      "name": "common_loading",
+      "value": "Loading..."
+    },
+    {
+      "name": "common_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "common_save",
+      "value": "Save"
+    },
+    {
+      "name": "decrypt_clear_action",
+      "value": "Clear Decryption Settings"
+    },
+    {
+      "name": "decrypt_confirm_change",
+      "value": "Confirm Change"
+    },
+    {
+      "name": "decrypt_confirm_change_message",
+      "value": "Back up the current key and update the sender first. After saving, past notifications encrypted with the old key or algorithm may no longer be decryptable."
+    },
+    {
+      "name": "decrypt_confirm_change_title",
+      "value": "Confirm Decryption Change"
+    },
+    {
+      "name": "decrypt_confirm_clear",
+      "value": "Confirm Clear"
+    },
+    {
+      "name": "decrypt_confirm_clear_message",
+      "value": "Once cleared, the key cannot be recovered and notifications encrypted with it may no longer be decryptable. Back up the key first."
+    },
+    {
+      "name": "decrypt_confirm_clear_title",
+      "value": "Clear Decryption Settings"
+    },
+    {
+      "name": "decrypt_e2e_hint",
+      "value": "The key stays on this device only; the server cannot decrypt"
+    },
+    {
+      "name": "decrypt_e2e_title",
+      "value": "End-to-End Decryption"
+    },
+    {
+      "name": "decrypt_iv_note",
+      "value": "IV is not stored here: CBC carries a 16-byte IV from the sender and GCM carries a 12-byte IV; ECB has no IV."
+    },
+    {
+      "name": "decrypt_key_placeholder",
+      "value": "Enter a %d-byte key"
+    },
+    {
+      "name": "decrypt_label_algorithm",
+      "value": "Algorithm"
+    },
+    {
+      "name": "decrypt_label_key",
+      "value": "Key"
+    },
+    {
+      "name": "decrypt_label_mode",
+      "value": "Mode"
+    },
+    {
+      "name": "decrypt_label_padding",
+      "value": "Padding (determined by mode)"
+    },
+    {
+      "name": "decrypt_title",
+      "value": "Decryption Settings"
+    },
+    {
+      "name": "decrypt_toast_clear_failed",
+      "value": "Clear failed"
+    },
+    {
+      "name": "decrypt_toast_generate_failed",
+      "value": "Failed to generate key"
+    },
+    {
+      "name": "decrypt_toast_not_loaded",
+      "value": "Decryption settings not fully loaded yet"
+    },
+    {
+      "name": "decrypt_toast_save_failed",
+      "value": "Save failed"
+    },
+    {
+      "name": "decrysrv_default_body",
+      "value": "Received an encrypted notification"
+    },
+    {
+      "name": "decrysrv_default_title",
+      "value": "[Subscription] Notification"
+    },
+    {
+      "name": "devreg_missing_device_id",
+      "value": "Device registration response is missing the device ID, please retry"
+    },
+    {
+      "name": "devreg_push_token_failed",
+      "value": "Failed to get push identifier, please retry"
+    },
+    {
+      "name": "devreg_push_token_timeout",
+      "value": "Timed out getting push identifier, please retry"
+    },
+    {
+      "name": "devreg_register_failed",
+      "value": "Device registration failed, please retry"
+    },
+    {
+      "name": "devreg_register_http_failed",
+      "value": "Device registration failed (HTTP %d), please retry"
+    },
+    {
+      "name": "devreg_register_incomplete",
+      "value": "Device registration not completed, please retry"
+    },
+    {
+      "name": "devreg_save_info_failed",
+      "value": "Failed to save device registration info, please retry"
+    },
+    {
+      "name": "devreg_verify_failed",
+      "value": "Device registration check failed, please retry"
+    },
+    {
+      "name": "devreg_verify_http_failed",
+      "value": "Device registration check failed (HTTP %d), please retry"
+    },
+    {
+      "name": "docpage_copied",
+      "value": "Copied"
+    },
+    {
+      "name": "docpage_copy_failed",
+      "value": "Copy failed"
+    },
+    {
+      "name": "docpage_default_title",
+      "value": "Docs"
+    },
+    {
+      "name": "docpage_link_unsupported",
+      "value": "This link is not bundled or not yet supported"
+    },
+    {
+      "name": "docpage_load_failed",
+      "value": "Cannot read bundled documents"
+    },
+    {
+      "name": "docpage_opening",
+      "value": "Opening document..."
+    },
+    {
+      "name": "docpage_read_failed_retry",
+      "value": "Cannot read the document. Please try again"
+    },
+    {
+      "name": "docpage_section_missing",
+      "value": "Section not found"
+    },
+    {
+      "name": "docpage_section_missing_opened",
+      "value": "Section not found. Opened the document"
+    },
+    {
+      "name": "docpage_webpage",
+      "value": "Web Page"
+    },
+    {
+      "name": "encconf_key_bytes",
+      "value": "Key must be %d UTF-8 bytes"
+    },
+    {
+      "name": "encconf_padding",
+      "value": "%s requires %s"
+    },
+    {
+      "name": "encconf_unsupported_algorithm",
+      "value": "Unsupported AES algorithm"
+    },
+    {
+      "name": "encconf_unsupported_mode",
+      "value": "Unsupported encryption mode"
+    },
+    {
+      "name": "ext_decrypt_failed_text",
+      "value": "Unable to decrypt. Open the app to check encryption settings"
+    },
+    {
+      "name": "ext_encryption_title",
+      "value": "Encrypted notification"
+    },
+    {
+      "name": "extlink_open_failed",
+      "value": "Unable to open the page"
+    },
+    {
+      "name": "feedback_email_copied",
+      "value": "Email copied: %s"
+    },
+    {
+      "name": "feedback_email_send_to",
+      "value": "Please send an email to: %s"
+    },
+    {
+      "name": "feedback_mail_app_version",
+      "value": "App version: %s\n"
+    },
+    {
+      "name": "feedback_mail_device_info_header",
+      "value": "---------------- Device Info ----------------\n"
+    },
+    {
+      "name": "feedback_mail_device_model",
+      "value": "Device model: %s\n"
+    },
+    {
+      "name": "feedback_mail_intro",
+      "value": "Describe the issue or suggestion here:\n\n"
+    },
+    {
+      "name": "feedback_mail_os_version",
+      "value": "OS version: %s\n"
+    },
+    {
+      "name": "feedback_mail_subject",
+      "value": "TimelyNotify Feedback - %s"
+    },
+    {
+      "name": "feedback_mail_time",
+      "value": "Feedback time: %s\n"
+    },
+    {
+      "name": "footer_load_failed_retry",
+      "value": "Failed to load. Tap to retry"
+    },
+    {
+      "name": "footer_load_more",
+      "value": "Load More"
+    },
+    {
+      "name": "footer_loading",
+      "value": "Loading..."
+    },
+    {
+      "name": "footer_no_more",
+      "value": "No more items"
+    },
+    {
+      "name": "holdcard_accessibility_off",
+      "value": "Smart grip is off; buttons stay on the right"
+    },
+    {
+      "name": "holdcard_accessibility_on",
+      "value": "Smart grip preview: buttons switch sides with your grip"
+    },
+    {
+      "name": "holdcard_desc_off",
+      "value": "Buttons stay on the right regardless of grip."
+    },
+    {
+      "name": "holdcard_desc_on",
+      "value": "Buttons switch sides with your grip for easier one-handed use."
+    },
+    {
+      "name": "holdcard_fixed_right",
+      "value": "Fixed on right"
+    },
+    {
+      "name": "holdcard_left_hand",
+      "value": "Left-hand grip"
+    },
+    {
+      "name": "holdcard_preview_title",
+      "value": "All Notifications"
+    },
+    {
+      "name": "holdcard_right_hand",
+      "value": "Right-hand grip"
+    },
+    {
+      "name": "holdcard_title",
+      "value": "Smart Grip"
+    },
+    {
+      "name": "holdcard_toast_save_failed",
+      "value": "Save failed; setting didn't take effect"
+    },
+    {
+      "name": "http_connect_establish_failed",
+      "value": "Unable to establish a server connection, please try again later"
+    },
+    {
+      "name": "http_connect_failed",
+      "value": "Unable to connect to the server, please try again later"
+    },
+    {
+      "name": "http_dns_failed",
+      "value": "Server DNS lookup failed, please try again later"
+    },
+    {
+      "name": "http_error_code_suffix",
+      "value": " (Error code: %d)"
+    },
+    {
+      "name": "http_http2_error",
+      "value": "Server HTTP/2 connection error, please retry"
+    },
+    {
+      "name": "http_secure_check_failed",
+      "value": "Server secure connection check failed, please verify the certificate and device time"
+    },
+    {
+      "name": "http_timeout",
+      "value": "Server request timed out, please retry"
+    },
+    {
+      "name": "lang_en_us",
+      "value": "English"
+    },
+    {
+      "name": "lang_follow_system",
+      "value": "Follow system"
+    },
+    {
+      "name": "lang_setting_title",
+      "value": "Language"
+    },
+    {
+      "name": "lang_switch_hint",
+      "value": "Takes effect after the app restarts"
+    },
+    {
+      "name": "lang_zh_hans",
+      "value": "简体中文"
+    },
+    {
+      "name": "mine_about_already_latest",
+      "value": "Already up to date"
+    },
+    {
+      "name": "mine_about_check_update",
+      "value": "Check for updates"
+    },
+    {
+      "name": "mine_about_check_update_failed",
+      "value": "Failed to check for updates. Try again later"
+    },
+    {
+      "name": "mine_about_ctx_failed",
+      "value": "Failed to get context"
+    },
+    {
+      "name": "mine_about_feedback",
+      "value": "Send feedback"
+    },
+    {
+      "name": "mine_about_go_update",
+      "value": "Update in AppGallery"
+    },
+    {
+      "name": "mine_about_new_version_msg",
+      "value": "A new version is available. Update via AppGallery?"
+    },
+    {
+      "name": "mine_about_new_version_title",
+      "value": "New version available"
+    },
+    {
+      "name": "mine_about_open_market_failed",
+      "value": "Failed to open AppGallery"
+    },
+    {
+      "name": "mine_about_open_source_failed",
+      "value": "Failed to open the source code page"
+    },
+    {
+      "name": "mine_about_privacy",
+      "value": "Privacy policy"
+    },
+    {
+      "name": "mine_about_section_title",
+      "value": "About"
+    },
+    {
+      "name": "mine_about_show_dialog_failed",
+      "value": "Failed to show the update prompt"
+    },
+    {
+      "name": "mine_about_source_code",
+      "value": "Source code"
+    },
+    {
+      "name": "mine_about_update_later",
+      "value": "Not now"
+    },
+    {
+      "name": "mine_appear_disable_msg",
+      "value": "The UI will fall back to frosted-glass effects. This takes effect after a restart. Restart now?"
+    },
+    {
+      "name": "mine_appear_disable_title",
+      "value": "Disable immersive light effects"
+    },
+    {
+      "name": "mine_appear_disabled",
+      "value": "Off"
+    },
+    {
+      "name": "mine_appear_enable_msg",
+      "value": "The UI will use immersive light materials. This takes effect after a restart. Restart now?"
+    },
+    {
+      "name": "mine_appear_enable_title",
+      "value": "Enable immersive light effects"
+    },
+    {
+      "name": "mine_appear_enabled",
+      "value": "On"
+    },
+    {
+      "name": "mine_appear_immersive",
+      "value": "Immersive light effects"
+    },
+    {
+      "name": "mine_appear_restart_now",
+      "value": "Restart now"
+    },
+    {
+      "name": "mine_appear_save_failed",
+      "value": "Failed to save. The setting was not applied"
+    },
+    {
+      "name": "mine_appinfo_auto_generated",
+      "value": " (auto-generated)"
+    },
+    {
+      "name": "mine_appinfo_build_info",
+      "value": "Build info"
+    },
+    {
+      "name": "mine_appinfo_copy_failed",
+      "value": "Copy failed"
+    },
+    {
+      "name": "mine_appinfo_local_build",
+      "value": "Local build with no cloud build record"
+    },
+    {
+      "name": "mine_appinfo_not_fetched",
+      "value": "Not fetched"
+    },
+    {
+      "name": "mine_appinfo_open_build_failed",
+      "value": "Failed to open the build record page"
+    },
+    {
+      "name": "mine_appinfo_push_token",
+      "value": "Push token"
+    },
+    {
+      "name": "mine_appinfo_section_title",
+      "value": "Info"
+    },
+    {
+      "name": "mine_appinfo_tap_to_copy",
+      "value": "Tap to copy"
+    },
+    {
+      "name": "mine_appinfo_token_copied",
+      "value": "Push token copied"
+    },
+    {
+      "name": "mine_appinfo_token_masked",
+      "value": "%s (%d chars)"
+    },
+    {
+      "name": "mine_appinfo_token_masked_tail",
+      "value": "••••••••%s (%d chars)"
+    },
+    {
+      "name": "mine_appinfo_token_not_ready",
+      "value": "Push token not available yet"
+    },
+    {
+      "name": "mine_donate_agree_prefix",
+      "value": "I have read and agree to the"
+    },
+    {
+      "name": "mine_donate_agreement_1",
+      "value": "1. Service description: This agreement applies to the \"Ongoing Support\" auto-renewable subscription offered in the TimelyNotify app. Subscribing is entirely voluntary and does not affect your use of the app's basic features."
+    },
+    {
+      "name": "mine_donate_agreement_2",
+      "value": "2. Term and price: The subscription term is 1 year. Prices are as shown on the in-app subscription page and in Huawei checkout. Once subscribed, Huawei will charge your selected payment method."
+    },
+    {
+      "name": "mine_donate_agreement_3",
+      "value": "3. Auto-renewal: Within 24 hours before expiry, Huawei will automatically charge the next term via your bound payment method and extend the service period. The exact charge time is subject to Huawei In-App Purchases."
+    },
+    {
+      "name": "mine_donate_agreement_4",
+      "value": "4. Cancellation: You can cancel auto-renewal at any time via Settings → Huawei ID → Payment & bills → Subscriptions → TimelyNotify → Cancel subscription. After cancellation, the subscription will no longer renew. The fee paid for the current term is non-refundable, and benefits remain valid until the end of the current term."
+    },
+    {
+      "name": "mine_donate_agreement_5",
+      "value": "5. Price changes: If the subscription price changes, Huawei will notify you in-app or by message before renewal. If you do not accept the new price, you can cancel the subscription before renewal."
+    },
+    {
+      "name": "mine_donate_agreement_6",
+      "value": "6. Refunds: Subscription benefits are virtual goods delivered instantly and are generally non-refundable. If you are charged repeatedly due to a system error or do not receive the benefits, contact us via in-app Feedback or request after-sales support through Huawei In-App Purchases."
+    },
+    {
+      "name": "mine_donate_agreement_7",
+      "value": "7. Scope of benefits: Ongoing Support is a voluntary donation to the developer. It does not include additional paid features or content, and existing features remain free to use during the subscription term."
+    },
+    {
+      "name": "mine_donate_agreement_8",
+      "value": "8. Changes and contact: This agreement may be updated as the service evolves; updates will be published in the app. If you have any questions, contact us via in-app Feedback."
+    },
+    {
+      "name": "mine_donate_agreement_link",
+      "value": "Auto-Renewal Service Agreement"
+    },
+    {
+      "name": "mine_donate_agreement_title",
+      "value": "Auto-Renewal Service Agreement"
+    },
+    {
+      "name": "mine_donate_cancel_note",
+      "value": "After cancellation, auto-renewal stops and benefits remain valid until the end of the current period."
+    },
+    {
+      "name": "mine_donate_cancel_path",
+      "value": "Settings → Huawei ID → Payment & bills → Subscriptions → TimelyNotify → Cancel subscription"
+    },
+    {
+      "name": "mine_donate_cancel_title",
+      "value": "How to cancel auto-renewal"
+    },
+    {
+      "name": "mine_donate_confirm_one_time",
+      "value": "Donate ¥6.00"
+    },
+    {
+      "name": "mine_donate_confirm_subscription",
+      "value": "Subscribe for ¥6.00 / year"
+    },
+    {
+      "name": "mine_donate_ctx_failed",
+      "value": "Failed to get context"
+    },
+    {
+      "name": "mine_donate_cycle",
+      "value": "Billing period"
+    },
+    {
+      "name": "mine_donate_cycle_value",
+      "value": "1 year, auto-renews 24 hours before expiry"
+    },
+    {
+      "name": "mine_donate_failed",
+      "value": "Donation failed, please try again later"
+    },
+    {
+      "name": "mine_donate_hint",
+      "value": "Donating is entirely optional"
+    },
+    {
+      "name": "mine_donate_login_required",
+      "value": "Please sign in to your Huawei ID first"
+    },
+    {
+      "name": "mine_donate_one_time",
+      "value": "One-Time Donation"
+    },
+    {
+      "name": "mine_donate_one_time_confirm_note",
+      "value": "I understand this donation is a one-time consumable virtual item and is non-refundable"
+    },
+    {
+      "name": "mine_donate_one_time_desc",
+      "value": "Optional donation. Free features are unaffected."
+    },
+    {
+      "name": "mine_donate_one_time_footnote",
+      "value": "Provided by Huawei In-App Purchases"
+    },
+    {
+      "name": "mine_donate_paying",
+      "value": "Opening payment..."
+    },
+    {
+      "name": "mine_donate_payment_amount",
+      "value": "Payment amount"
+    },
+    {
+      "name": "mine_donate_payment_amount_value",
+      "value": "¥6.00 / year"
+    },
+    {
+      "name": "mine_donate_price_year",
+      "value": "¥6/yr"
+    },
+    {
+      "name": "mine_donate_region_unsupported",
+      "value": "Donations are not available in your region"
+    },
+    {
+      "name": "mine_donate_service_content",
+      "value": "What you get"
+    },
+    {
+      "name": "mine_donate_service_content_value",
+      "value": "Supports ongoing app maintenance"
+    },
+    {
+      "name": "mine_donate_subscription_desc",
+      "value": "Optional subscription. Free features are unaffected."
+    },
+    {
+      "name": "mine_donate_subscription_footnote",
+      "value": "Provided by Huawei In-App Purchases. Manage it anytime in your Huawei ID."
+    },
+    {
+      "name": "mine_donate_subscription_title",
+      "value": "Ongoing Support"
+    },
+    {
+      "name": "mine_donate_thanks",
+      "value": "Thank you for your support!"
+    },
+    {
+      "name": "mine_donate_title",
+      "value": "Donate"
+    },
+    {
+      "name": "mine_footer_open_icp_failed",
+      "value": "Failed to open the ICP record site"
+    },
+    {
+      "name": "mine_footer_version",
+      "value": "Version %s (%d)"
+    },
+    {
+      "name": "mine_footer_version_copied",
+      "value": "Version copied: %s"
+    },
+    {
+      "name": "mine_notifyset_accept",
+      "value": "Accept alerts"
+    },
+    {
+      "name": "mine_notifyset_ctx_failed",
+      "value": "Failed to get context"
+    },
+    {
+      "name": "mine_notifyset_disabled",
+      "value": "Off"
+    },
+    {
+      "name": "mine_notifyset_enable_title",
+      "value": "In-app subscription alerts"
+    },
+    {
+      "name": "mine_notifyset_enabled",
+      "value": "On"
+    },
+    {
+      "name": "mine_notifyset_export_desc",
+      "value": "Export all unexpired notifications stored locally"
+    },
+    {
+      "name": "mine_notifyset_export_failed",
+      "value": "Export failed"
+    },
+    {
+      "name": "mine_notifyset_export_title",
+      "value": "Export notifications"
+    },
+    {
+      "name": "mine_notifyset_exported",
+      "value": "Exported %d notifications"
+    },
+    {
+      "name": "mine_notifyset_exporting",
+      "value": "Exporting..."
+    },
+    {
+      "name": "mine_notifyset_keep",
+      "value": "Keep alerts"
+    },
+    {
+      "name": "mine_notifyset_open_personal_failed",
+      "value": "Failed to open personalization settings"
+    },
+    {
+      "name": "mine_notifyset_personalization",
+      "value": "Personalization"
+    },
+    {
+      "name": "mine_notifyset_personalization_desc",
+      "value": "Adjust appearance and notification preferences"
+    },
+    {
+      "name": "mine_notifyset_reject",
+      "value": "Decline"
+    },
+    {
+      "name": "mine_notifyset_stop",
+      "value": "Stop alerts"
+    },
+    {
+      "name": "mine_notifyset_sub_off",
+      "value": "Unsubscribe"
+    },
+    {
+      "name": "mine_notifyset_sub_off_msg",
+      "value": "Stop notification-bar pushes for this subscription?"
+    },
+    {
+      "name": "mine_notifyset_sub_on",
+      "value": "Subscribe"
+    },
+    {
+      "name": "mine_notifyset_sub_on_msg",
+      "value": "Receive notification-bar pushes for this subscription?"
+    },
+    {
+      "name": "mineview_context_failed",
+      "value": "Failed to get context"
+    },
+    {
+      "name": "mineview_open_settings_failed",
+      "value": "Unable to open notification settings"
+    },
+    {
+      "name": "mineview_permission_disabled",
+      "value": "System notification permission disabled"
+    },
+    {
+      "name": "mineview_permission_disabled_desc",
+      "value": "Notifications arrive without alerts. Tap to enable \"Allow Notifications\""
+    },
+    {
+      "name": "mineview_permission_enabled",
+      "value": "System notification permission enabled"
+    },
+    {
+      "name": "mineview_permission_enabled_desc",
+      "value": "Push notifications are working. Tap to adjust alert style"
+    },
+    {
+      "name": "mineview_permission_error",
+      "value": "Failed to get notification permission status"
+    },
+    {
+      "name": "mineview_permission_error_desc",
+      "value": "Tap the card to view notification settings"
+    },
+    {
+      "name": "mineview_permission_loading",
+      "value": "Checking notification permission..."
+    },
+    {
+      "name": "mineview_permission_loading_desc",
+      "value": "One moment..."
+    },
+    {
+      "name": "mineview_title",
+      "value": "Me"
+    },
+    {
+      "name": "nexport_failed",
+      "value": "Export failed"
+    },
+    {
+      "name": "nexport_none",
+      "value": "No notifications to export"
+    },
+    {
+      "name": "nexport_read_failed",
+      "value": "Failed to read local notifications"
+    },
+    {
+      "name": "nexport_txt_file_type",
+      "value": "Document|.txt"
+    },
+    {
+      "name": "nfetch_clear_failed",
+      "value": "Clear failed: %s"
+    },
+    {
+      "name": "nfetch_clear_http_error",
+      "value": "Clear failed (HTTP %d)"
+    },
+    {
+      "name": "nfetch_connect_failed",
+      "value": "Connection failed"
+    },
+    {
+      "name": "nfetch_delete_failed",
+      "value": "Delete failed: %s"
+    },
+    {
+      "name": "nfetch_delete_http_error",
+      "value": "Delete failed (HTTP %d)"
+    },
+    {
+      "name": "nfetch_device_missing",
+      "value": "Device not found"
+    },
+    {
+      "name": "nfetch_device_not_registered",
+      "value": "Device not registered"
+    },
+    {
+      "name": "nfetch_dns_failed",
+      "value": "DNS resolution failed"
+    },
+    {
+      "name": "nfetch_empty_response",
+      "value": "Empty response"
+    },
+    {
+      "name": "nfetch_http_error",
+      "value": "Request failed (HTTP %d)"
+    },
+    {
+      "name": "nfetch_invalid_message_id",
+      "value": "Invalid notification ID"
+    },
+    {
+      "name": "nfetch_key_not_found",
+      "value": "Device key not found"
+    },
+    {
+      "name": "nfetch_key_unregistered",
+      "value": "Device key not registered"
+    },
+    {
+      "name": "nfetch_push_failed",
+      "value": "Push failed: %s"
+    },
+    {
+      "name": "nfetch_push_http_error",
+      "value": "Push failed (HTTP %d)"
+    },
+    {
+      "name": "nfetch_push_not_ready",
+      "value": "Push identifier not ready"
+    },
+    {
+      "name": "nfetch_register_failed",
+      "value": "Device registration failed"
+    },
+    {
+      "name": "nfetch_secure_failed",
+      "value": "Secure connection failed"
+    },
+    {
+      "name": "nfetch_timeout",
+      "value": "Connection timed out"
+    },
+    {
+      "name": "nfetch_token_error",
+      "value": "Client Token error"
+    },
+    {
+      "name": "nfetch_token_invalid",
+      "value": "Invalid client Token"
+    },
+    {
+      "name": "nfetch_token_invalid_hint",
+      "value": "Client Token is invalid or expired. Reconfigure it in server settings"
+    },
+    {
+      "name": "nfetch_token_pending",
+      "value": "Client Token not configured"
+    },
+    {
+      "name": "nfetch_token_unset",
+      "value": "Client Token not configured"
+    },
+    {
+      "name": "nfetch_token_unset_hint",
+      "value": "Client Token not configured. Set it in server settings"
+    },
+    {
+      "name": "nmsg_decryption_failed_body",
+      "value": "Decryption failed. Check the algorithm, mode, padding, and key"
+    },
+    {
+      "name": "nmsg_encryption_title",
+      "value": "Encrypted notification"
+    },
+    {
+      "name": "nmsg_missing_key_body",
+      "value": "Encryption key is not configured for this server"
+    },
+    {
+      "name": "notify_cannot_locate",
+      "value": "Cannot locate this notification"
+    },
+    {
+      "name": "notify_cannot_open_link",
+      "value": "Cannot open the link"
+    },
+    {
+      "name": "notify_cannot_open_notice",
+      "value": "Cannot open this notification"
+    },
+    {
+      "name": "notify_cannot_switch_source",
+      "value": "Cannot switch to the source server"
+    },
+    {
+      "name": "notify_clear_all_message",
+      "value": "Notifications from all servers will be deleted, including unloaded history. This cannot be undone; failed deletions will be kept for retry."
+    },
+    {
+      "name": "notify_clear_all_title",
+      "value": "Clear All Notifications"
+    },
+    {
+      "name": "notify_clear_current_message",
+      "value": "All notifications from the current server will be deleted, including unloaded history. This cannot be undone; failed deletions will be kept for retry."
+    },
+    {
+      "name": "notify_clear_failed",
+      "value": "Clear failed"
+    },
+    {
+      "name": "notify_context_failed",
+      "value": "Failed to get context"
+    },
+    {
+      "name": "notify_copied_addr_key",
+      "value": "Address and key copied"
+    },
+    {
+      "name": "notify_copy_failed",
+      "value": "Copy failed"
+    },
+    {
+      "name": "notify_copy_label_all",
+      "value": "Full text"
+    },
+    {
+      "name": "notify_decryption_cleared",
+      "value": "Decryption settings cleared"
+    },
+    {
+      "name": "notify_decryption_saved",
+      "value": "Decryption settings saved"
+    },
+    {
+      "name": "notify_delete_all_button",
+      "value": "Delete All"
+    },
+    {
+      "name": "notify_delete_body",
+      "value": "This cannot be undone."
+    },
+    {
+      "name": "notify_delete_decryption_failed_title",
+      "value": "Delete Undecrypted Notification"
+    },
+    {
+      "name": "notify_delete_failed",
+      "value": "Delete failed"
+    },
+    {
+      "name": "notify_delete_failed_body",
+      "value": "This cannot be undone. If deletion fails, this notification will be kept for retry."
+    },
+    {
+      "name": "notify_delete_failed_retry",
+      "value": "Delete failed. Try again later"
+    },
+    {
+      "name": "notify_delete_group_message",
+      "value": "All %d notifications in this group will be deleted, including unloaded history. This cannot be undone; failed deletions will be kept for retry."
+    },
+    {
+      "name": "notify_delete_group_title",
+      "value": "Delete Entire Group"
+    },
+    {
+      "name": "notify_delete_one_title",
+      "value": "Delete Notification"
+    },
+    {
+      "name": "notify_delete_selected_message",
+      "value": "%d selected notifications will be deleted. This cannot be undone; failed deletions will be kept for retry."
+    },
+    {
+      "name": "notify_delete_selected_title",
+      "value": "Delete Selected Notifications"
+    },
+    {
+      "name": "notify_delete_server_message",
+      "value": "Delete \"%s\"?"
+    },
+    {
+      "name": "notify_delete_server_title",
+      "value": "Delete Server"
+    },
+    {
+      "name": "notify_delete_title_quote",
+      "value": "\n\n\"%s\""
+    },
+    {
+      "name": "notify_deleted",
+      "value": "Deleted"
+    },
+    {
+      "name": "notify_deleted_count",
+      "value": "Deleted %d"
+    },
+    {
+      "name": "notify_deleted_partial",
+      "value": "Deleted %d. %d failed and were kept for retry"
+    },
+    {
+      "name": "notify_deleting_count",
+      "value": "Deleting %d notifications..."
+    },
+    {
+      "name": "notify_detail_title",
+      "value": "Notification Details"
+    },
+    {
+      "name": "notify_device_unregistered",
+      "value": "Device not registered, cannot export"
+    },
+    {
+      "name": "notify_dialog_open_failed",
+      "value": "Cannot open the dialog"
+    },
+    {
+      "name": "notify_expired_or_deleted",
+      "value": "Notification expired or deleted"
+    },
+    {
+      "name": "notify_expired_or_unavailable",
+      "value": "Notification expired, not archived, or source server unavailable"
+    },
+    {
+      "name": "notify_export_failed",
+      "value": "Export failed"
+    },
+    {
+      "name": "notify_exported_count",
+      "value": "Exported %d notifications"
+    },
+    {
+      "name": "notify_init_failed",
+      "value": "Failed to initialize notifications. Try again"
+    },
+    {
+      "name": "notify_keep_one_server",
+      "value": "Keep at least one server"
+    },
+    {
+      "name": "notify_key_missing",
+      "value": "Key not found"
+    },
+    {
+      "name": "notify_key_reset",
+      "value": "Key reset"
+    },
+    {
+      "name": "notify_key_restored",
+      "value": "Key restored"
+    },
+    {
+      "name": "notify_label_copied",
+      "value": "%s copied"
+    },
+    {
+      "name": "notify_link_copied",
+      "value": "Link copied"
+    },
+    {
+      "name": "notify_load_failed",
+      "value": "Failed to load"
+    },
+    {
+      "name": "notify_load_failed_retry",
+      "value": "Failed to load. Try again"
+    },
+    {
+      "name": "notify_multi_select",
+      "value": "Select"
+    },
+    {
+      "name": "notify_no_selectable",
+      "value": "No notifications to select"
+    },
+    {
+      "name": "notify_not_archived",
+      "value": "Notification not archived or expired"
+    },
+    {
+      "name": "notify_nothing_to_delete",
+      "value": "Nothing to delete"
+    },
+    {
+      "name": "notify_operation_failed",
+      "value": "Operation failed"
+    },
+    {
+      "name": "notify_rename_failed",
+      "value": "Rename failed"
+    },
+    {
+      "name": "notify_renamed",
+      "value": "Renamed"
+    },
+    {
+      "name": "notify_save_failed",
+      "value": "Save failed"
+    },
+    {
+      "name": "notify_search_empty",
+      "value": "No notifications found"
+    },
+    {
+      "name": "notify_search_failed",
+      "value": "Search failed. Try again"
+    },
+    {
+      "name": "notify_search_hint",
+      "value": "Search notifications"
+    },
+    {
+      "name": "notify_searching",
+      "value": "Searching..."
+    },
+    {
+      "name": "notify_select_delete_first",
+      "value": "Select notifications to delete first"
+    },
+    {
+      "name": "notify_select_export_first",
+      "value": "Select notifications to export first"
+    },
+    {
+      "name": "notify_server_error_banner",
+      "value": "%s: %s. Tap to edit server settings"
+    },
+    {
+      "name": "notify_server_error_compact",
+      "value": "Service error · Tap to fix"
+    },
+    {
+      "name": "notify_server_info_missing",
+      "value": "Server information missing"
+    },
+    {
+      "name": "notify_title_all",
+      "value": "All Notifications"
+    },
+    {
+      "name": "nsync_cursor_stuck",
+      "value": "Server pagination cursor did not advance, retry later"
+    },
+    {
+      "name": "nsync_del_progress_save_failed",
+      "value": "Failed to save deletion sync progress; will retry later"
+    },
+    {
+      "name": "nsync_feedback_done",
+      "value": "%d processed this round"
+    },
+    {
+      "name": "nsync_feedback_partial",
+      "value": "%d processed, some pending retry"
+    },
+    {
+      "name": "nsync_history_save_failed",
+      "value": "Unable to save server history identity"
+    },
+    {
+      "name": "nsync_instance_changed",
+      "value": "Server history instance changed during sync"
+    },
+    {
+      "name": "nsync_local_save_failed",
+      "value": "Local save failed; remote notifications kept, retry later"
+    },
+    {
+      "name": "nsync_pending_encrypted",
+      "value": "Encrypted notifications pending decryption or publishing; check the encryption key and notification permission. Remote ciphertext is kept"
+    },
+    {
+      "name": "nsync_progress",
+      "value": "Syncing · %d processed"
+    },
+    {
+      "name": "nsync_progress_save_failed",
+      "value": "Failed to save sync progress; notifications not cleaned up remotely will retry"
+    },
+    {
+      "name": "nsync_remote_delete_failed",
+      "value": "Notifications saved locally, but some remote copies failed to clean up; will retry later"
+    },
+    {
+      "name": "nsync_sync_exception",
+      "value": "Sync error; unfinished notifications will retry when the app returns to foreground"
+    },
+    {
+      "name": "ntf_action_visit",
+      "value": "Open"
+    },
+    {
+      "name": "ntf_all_notifications",
+      "value": "All Notifications"
+    },
+    {
+      "name": "ntf_all_notifications_desc",
+      "value": "Aggregated notifications from all servers"
+    },
+    {
+      "name": "ntf_connecting",
+      "value": "Connecting to server..."
+    },
+    {
+      "name": "ntf_connecting_desc",
+      "value": "Notifications will appear once connected"
+    },
+    {
+      "name": "ntf_copy_all",
+      "value": "Copy All"
+    },
+    {
+      "name": "ntf_copy_copy_param",
+      "value": "Copy Copy Parameter"
+    },
+    {
+      "name": "ntf_copy_link",
+      "value": "Copy Link"
+    },
+    {
+      "name": "ntf_count_notifications",
+      "value": "%d Notifications"
+    },
+    {
+      "name": "ntf_delete_count",
+      "value": "Delete (%d)"
+    },
+    {
+      "name": "ntf_delete_group",
+      "value": "Delete Group"
+    },
+    {
+      "name": "ntf_deselect_all",
+      "value": "Deselect All"
+    },
+    {
+      "name": "ntf_encrypted",
+      "value": "Encrypted"
+    },
+    {
+      "name": "ntf_expand_group",
+      "value": "Expand Group"
+    },
+    {
+      "name": "ntf_expired",
+      "value": "Expired"
+    },
+    {
+      "name": "ntf_expires_at",
+      "value": "Expires at %s"
+    },
+    {
+      "name": "ntf_expires_in_hours",
+      "value": "Expires in about %d hours"
+    },
+    {
+      "name": "ntf_expires_in_minutes",
+      "value": "Expires in about %d min"
+    },
+    {
+      "name": "ntf_expiring_soon",
+      "value": "Expiring Soon"
+    },
+    {
+      "name": "ntf_export_count",
+      "value": "Export (%d)"
+    },
+    {
+      "name": "ntf_exporting",
+      "value": "Exporting..."
+    },
+    {
+      "name": "ntf_group_default",
+      "value": "Default"
+    },
+    {
+      "name": "ntf_group_preview_title",
+      "value": "%s · %d Notifications"
+    },
+    {
+      "name": "ntf_guide_title",
+      "value": "User Guide"
+    },
+    {
+      "name": "ntf_label_content",
+      "value": "Content"
+    },
+    {
+      "name": "ntf_label_full_text",
+      "value": "Full Text"
+    },
+    {
+      "name": "ntf_label_subtitle",
+      "value": "Subtitle"
+    },
+    {
+      "name": "ntf_label_title",
+      "value": "Title"
+    },
+    {
+      "name": "ntf_longpress_to_copy",
+      "value": "Long press text to select and copy"
+    },
+    {
+      "name": "ntf_multi_select",
+      "value": "Select"
+    },
+    {
+      "name": "ntf_no_client_token",
+      "value": "No Client Token Configured"
+    },
+    {
+      "name": "ntf_no_client_token_desc",
+      "value": "A client token is required to sync history notifications. Check the current server configuration"
+    },
+    {
+      "name": "ntf_no_notifications",
+      "value": "No Notifications"
+    },
+    {
+      "name": "ntf_open_link",
+      "value": "Open Link"
+    },
+    {
+      "name": "ntf_pull_to_retry",
+      "value": "Pull Down to Retry"
+    },
+    {
+      "name": "ntf_recognized_code",
+      "value": "Verification Code Detected"
+    },
+    {
+      "name": "ntf_recognized_link",
+      "value": "Link Detected"
+    },
+    {
+      "name": "ntf_restore_protection",
+      "value": "Restore Protection · %ds"
+    },
+    {
+      "name": "ntf_save_failed_retry",
+      "value": "Failed to save. Please try again"
+    },
+    {
+      "name": "ntf_select_all",
+      "value": "Select All"
+    },
+    {
+      "name": "ntf_select_group",
+      "value": "Select Group"
+    },
+    {
+      "name": "ntf_selected_progress",
+      "value": "Selected %d / %d"
+    },
+    {
+      "name": "ntf_switch_service_title",
+      "value": "Switch Notification Service"
+    },
+    {
+      "name": "ntf_tap_to_copy",
+      "value": "Tap title or content to copy each"
+    },
+    {
+      "name": "ntf_temp_show_view_only",
+      "value": "Temporary reveal is view only"
+    },
+    {
+      "name": "ntf_temporary_reveal",
+      "value": "Show Temporarily"
+    },
+    {
+      "name": "ntf_temporary_reveal_hint",
+      "value": "Show the current notification for 30 seconds."
+    },
+    {
+      "name": "ntf_view_detail",
+      "value": "View Details"
+    },
+    {
+      "name": "ntf_view_guide",
+      "value": "View User Guide"
+    },
+    {
+      "name": "ntf_welcome_hint",
+      "value": "This hint won't show again after you tap the button above\nYou can reopen the guide anytime from the \"Service\" tab below"
+    },
+    {
+      "name": "ntf_welcome_subtitle",
+      "value": "Read the user guide to learn how to use this app"
+    },
+    {
+      "name": "ntf_welcome_title",
+      "value": "Welcome to TimelyNotify"
+    },
+    {
+      "name": "personal_click_url",
+      "value": "Open Link on Notification Tap"
+    },
+    {
+      "name": "personal_click_url_desc",
+      "value": "When off, tapping a notification opens its details only"
+    },
+    {
+      "name": "personal_color_mode_dark",
+      "value": "Dark Mode"
+    },
+    {
+      "name": "personal_color_mode_light",
+      "value": "Light Mode"
+    },
+    {
+      "name": "personal_color_mode_system",
+      "value": "Follow System"
+    },
+    {
+      "name": "personal_encrypted_resend",
+      "value": "Encrypted Notification Resend"
+    },
+    {
+      "name": "personal_group_appearance",
+      "value": "Appearance"
+    },
+    {
+      "name": "personal_group_hmos",
+      "value": "HarmonyOS Features"
+    },
+    {
+      "name": "personal_group_notification",
+      "value": "Notification Behavior"
+    },
+    {
+      "name": "personal_resend_disable_message",
+      "value": "When disabled, encrypted notifications are only decrypted and saved without resending (those with isArchive=0 are still renotified to avoid data loss)"
+    },
+    {
+      "name": "personal_resend_disable_title",
+      "value": "Disable Encrypted Notification Resend"
+    },
+    {
+      "name": "personal_resend_enable_message",
+      "value": "When enabled, opening the app will decrypt an incoming encrypted notification and resend it as a decrypted one"
+    },
+    {
+      "name": "personal_resend_enable_title",
+      "value": "Enable Encrypted Notification Resend"
+    },
+    {
+      "name": "personal_save_failed",
+      "value": "Save failed. Setting not applied"
+    },
+    {
+      "name": "personal_theme_mode",
+      "value": "Theme Mode"
+    },
+    {
+      "name": "personal_title",
+      "value": "Personalization"
+    },
+    {
+      "name": "samplecode_copy_key",
+      "value": "Copy Key"
+    },
+    {
+      "name": "samplecode_menu_copy_address",
+      "value": "Copy Address"
+    },
+    {
+      "name": "samplecode_menu_copy_address_key",
+      "value": "Copy Address and Key"
+    },
+    {
+      "name": "samplecode_menu_no_server",
+      "value": "No servers yet"
+    },
+    {
+      "name": "samplecode_send",
+      "value": "Send Notification"
+    },
+    {
+      "name": "samplecode_sending",
+      "value": "Sending..."
+    },
+    {
+      "name": "samplecode_switch_service",
+      "value": "Switch Server"
+    },
+    {
+      "name": "samplecode_title",
+      "value": "Push Test"
+    },
+    {
+      "name": "samplecode_toast_address_copied",
+      "value": "Address copied"
+    },
+    {
+      "name": "samplecode_toast_address_key_copied",
+      "value": "Address and key copied"
+    },
+    {
+      "name": "samplecode_toast_code_copied",
+      "value": "Code copied"
+    },
+    {
+      "name": "samplecode_toast_copy_failed",
+      "value": "Copy failed"
+    },
+    {
+      "name": "samplecode_toast_key_copied",
+      "value": "Key copied"
+    },
+    {
+      "name": "samplecode_toast_no_key",
+      "value": "Device key not available"
+    },
+    {
+      "name": "samplecode_toast_no_server",
+      "value": "No server available"
+    },
+    {
+      "name": "samplecode_toast_send_failed",
+      "value": "Failed to send. Try again later"
+    },
+    {
+      "name": "samplecode_toast_test_sent",
+      "value": "Test notification sent. Check the notification panel"
+    },
+    {
+      "name": "server_docs",
+      "value": "Docs"
+    },
+    {
+      "name": "server_faq",
+      "value": "FAQ"
+    },
+    {
+      "name": "server_push_fields",
+      "value": "Push Parameters"
+    },
+    {
+      "name": "server_title",
+      "value": "Services"
+    },
+    {
+      "name": "server_usage_guide",
+      "value": "User Guide"
+    },
+    {
+      "name": "sharepage_default_title",
+      "value": "Source Code"
+    },
+    {
+      "name": "srvact_action_client_token",
+      "value": "Set Client Token"
+    },
+    {
+      "name": "srvact_action_copy",
+      "value": "Copy Address and Key"
+    },
+    {
+      "name": "srvact_action_decryption",
+      "value": "Decryption Settings"
+    },
+    {
+      "name": "srvact_action_delete",
+      "value": "Delete Server"
+    },
+    {
+      "name": "srvact_action_rename",
+      "value": "Set Server Name"
+    },
+    {
+      "name": "srvact_action_reset_key",
+      "value": "Reset or Restore Key"
+    },
+    {
+      "name": "srvact_key_confirm_reset",
+      "value": "Confirm Reset"
+    },
+    {
+      "name": "srvact_key_confirm_reset_message",
+      "value": "Leaving blank will generate a new key for this server. Make sure you've backed up the current key."
+    },
+    {
+      "name": "srvact_key_confirm_reset_title",
+      "value": "Confirm Key Reset"
+    },
+    {
+      "name": "srvact_key_current",
+      "value": "Current key: %s"
+    },
+    {
+      "name": "srvact_key_help",
+      "value": "Leave blank = reset (generate a new key); enter a key = restore"
+    },
+    {
+      "name": "srvact_key_placeholder",
+      "value": "Optional: enter the device_key to restore"
+    },
+    {
+      "name": "srvact_key_reset",
+      "value": "Reset"
+    },
+    {
+      "name": "srvact_key_restore",
+      "value": "Restore"
+    },
+    {
+      "name": "srvact_key_unregistered",
+      "value": "(not registered)"
+    },
+    {
+      "name": "srvact_menu_title",
+      "value": "Server Actions"
+    },
+    {
+      "name": "srvact_rename_hint",
+      "value": "The server name is for display only. If left blank, the server's domain (%s) will be shown."
+    },
+    {
+      "name": "srvact_rename_placeholder",
+      "value": "Enter a new name (leave blank to clear)"
+    },
+    {
+      "name": "srvact_rename_title",
+      "value": "Set Server Name"
+    },
+    {
+      "name": "srvadd_add",
+      "value": "Add"
+    },
+    {
+      "name": "srvadd_adding",
+      "value": "Adding..."
+    },
+    {
+      "name": "srvadd_hint_name",
+      "value": "Enter server name"
+    },
+    {
+      "name": "srvadd_hint_token",
+      "value": "Leave blank to use the built-in default token"
+    },
+    {
+      "name": "srvadd_hint_url",
+      "value": "http://host:port or domain"
+    },
+    {
+      "name": "srvadd_label_name",
+      "value": "Name (Optional)"
+    },
+    {
+      "name": "srvadd_label_token",
+      "value": "Client Token (Optional)"
+    },
+    {
+      "name": "srvadd_label_url",
+      "value": "Server Address"
+    },
+    {
+      "name": "srvadd_title",
+      "value": "Add Server"
+    },
+    {
+      "name": "srvadd_toast_add_failed",
+      "value": "Failed to add"
+    },
+    {
+      "name": "srvadd_toast_added",
+      "value": "Added and switched"
+    },
+    {
+      "name": "srvadd_toast_input_url",
+      "value": "Please enter a server address"
+    },
+    {
+      "name": "srvlist_action_client_token",
+      "value": "Client Token"
+    },
+    {
+      "name": "srvlist_action_copy_addr_key",
+      "value": "Copy Address and Key"
+    },
+    {
+      "name": "srvlist_action_decryption",
+      "value": "Decryption Settings"
+    },
+    {
+      "name": "srvlist_action_delete",
+      "value": "Delete Server"
+    },
+    {
+      "name": "srvlist_action_rename",
+      "value": "Rename"
+    },
+    {
+      "name": "srvlist_action_reset_key",
+      "value": "Reset / Restore Key"
+    },
+    {
+      "name": "srvlist_badge_key_unregistered",
+      "value": "Device key not registered"
+    },
+    {
+      "name": "srvlist_delete_message",
+      "value": "Are you sure you want to delete this server?"
+    },
+    {
+      "name": "srvlist_deploy_docs",
+      "value": "Deployment Docs"
+    },
+    {
+      "name": "srvlist_detail_title",
+      "value": "Server Details"
+    },
+    {
+      "name": "srvlist_title",
+      "value": "Server List"
+    },
+    {
+      "name": "srvlist_toast_action_failed",
+      "value": "Action failed"
+    },
+    {
+      "name": "srvlist_toast_clear_failed",
+      "value": "Clear failed"
+    },
+    {
+      "name": "srvlist_toast_copied",
+      "value": "Address and key copied"
+    },
+    {
+      "name": "srvlist_toast_copy_failed",
+      "value": "Copy failed"
+    },
+    {
+      "name": "srvlist_toast_decrypt_cleared",
+      "value": "Decryption settings cleared"
+    },
+    {
+      "name": "srvlist_toast_decrypt_saved",
+      "value": "Decryption settings saved"
+    },
+    {
+      "name": "srvlist_toast_delete_failed",
+      "value": "Delete failed"
+    },
+    {
+      "name": "srvlist_toast_deleted",
+      "value": "Deleted"
+    },
+    {
+      "name": "srvlist_toast_dialog_failed",
+      "value": "Couldn't open the dialog"
+    },
+    {
+      "name": "srvlist_toast_keep_one",
+      "value": "Keep at least one server"
+    },
+    {
+      "name": "srvlist_toast_key_reset",
+      "value": "Key reset"
+    },
+    {
+      "name": "srvlist_toast_key_restored",
+      "value": "Key restored"
+    },
+    {
+      "name": "srvlist_toast_no_key",
+      "value": "Key not available"
+    },
+    {
+      "name": "srvlist_toast_rename_failed",
+      "value": "Rename failed"
+    },
+    {
+      "name": "srvlist_toast_renamed",
+      "value": "Renamed"
+    },
+    {
+      "name": "srvlist_toast_save_failed",
+      "value": "Save failed"
+    },
+    {
+      "name": "srvlist_toast_server_missing",
+      "value": "Server info missing"
+    },
+    {
+      "name": "srvstore_default_server_name",
+      "value": "Default Service"
+    },
+    {
+      "name": "srvstore_host_invalid",
+      "value": "Enter a valid domain name or IP address"
+    },
+    {
+      "name": "srvstore_ping_bad_format",
+      "value": "Invalid response format from the server"
+    },
+    {
+      "name": "srvstore_ping_bad_message",
+      "value": "Unexpected server response (message=%s)"
+    },
+    {
+      "name": "srvstore_ping_biz_error",
+      "value": "Server returned an error (code=%d)"
+    },
+    {
+      "name": "srvstore_ping_http_error",
+      "value": "No response from the server (HTTP %d)"
+    },
+    {
+      "name": "srvstore_ping_unreachable",
+      "value": "Unable to connect to the server. Check the network or server address"
+    },
+    {
+      "name": "srvstore_port_invalid",
+      "value": "Invalid port number"
+    },
+    {
+      "name": "srvstore_scheme_unsupported",
+      "value": "Only http or https protocols are supported"
+    },
+    {
+      "name": "srvstore_url_required",
+      "value": "Enter a server address"
+    },
+    {
+      "name": "theme_restart_failed",
+      "value": "Restart failed, please restart the app manually"
+    },
+    {
+      "name": "theme_switch_failed",
+      "value": "Failed to switch theme"
+    }
+  ]
+}

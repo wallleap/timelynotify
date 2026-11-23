@@ -34,7 +34,8 @@ export struct NotifySettingsSection {
       SettingGroup() {
         // 开启应用订阅通知（开关）
         SettingCell({
-          title: '开启应用订阅通知', description: this.notifyEnabled ? '已开启' : '已关闭',
+          title: $r('app.string.mine_notifyset_enable_title'),
+          description: this.notifyEnabled ? $r('app.string.mine_notifyset_enabled') : $r('app.string.mine_notifyset_disabled'),
           icon: $r('app.media.bell_dot'),
           descriptionColor: this.notifyEnabled ? $r('app.color.color_brand') : $r('app.color.color_text_hint')
         }) {
@@ -49,9 +50,9 @@ export struct NotifySettingsSection {
       // 独立的导出通知卡片（导出所有来源的本地未过期通知为 txt 文件，内容为 JSON 数组）
       SettingGroup() {
         SettingCell({
-          title: '导出通知',
+          title: $r('app.string.mine_notifyset_export_title'),
           icon: $r('app.media.book_up'),
-          description: this.exporting ? '正在导出…' : '导出本地保存的全部未过期通知',
+          description: this.exporting ? $r('app.string.mine_notifyset_exporting') : $r('app.string.mine_notifyset_export_desc'),
           clickable: true,
           onActivate: () => this.exportMessages()
         }) {
@@ -67,9 +68,9 @@ export struct NotifySettingsSection {
       // 个性化设置入口紧随导出卡片；可用设置项随系统能力变化。
       SettingGroup() {
         SettingCell({
-          title: '个性化设置',
+          title: $r('app.string.mine_notifyset_personalization'),
           icon: $r('app.media.paintbrush_vertical'),
-          description: '调整外观与通知偏好',
+          description: $r('app.string.mine_notifyset_personalization_desc'),
           clickable: true,
           onActivate: () => this.openPersonalizationSettings()
         }) {
@@ -88,7 +89,7 @@ export struct NotifySettingsSection {
     } catch (err) {
       const message: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '跳转个性化设置失败：%{public}s', message);
-      showToast(uiCtx, '无法打开个性化设置');
+      showToast(uiCtx, $r('app.string.mine_notifyset_open_personal_failed'));
     }
   }
 
@@ -110,13 +111,13 @@ export struct NotifySettingsSection {
       return;
     }
     const uiCtx: UIContext = this.getUIContext();
-    const onButtons: promptAction.Button[] = [{ text: '残忍拒绝', color: $r('app.color.color_text_tertiary') },
-      { text: '接受推送', color: $r('app.color.color_brand') },];
-    const offButtons: promptAction.Button[] = [{ text: '保持推送', color: $r('app.color.color_text_tertiary') },
-      { text: '取消推送', color: $r('app.color.color_brand') },];
+    const onButtons: promptAction.Button[] = [{ text: $r('app.string.mine_notifyset_reject'), color: $r('app.color.color_text_tertiary') },
+      { text: $r('app.string.mine_notifyset_accept'), color: $r('app.color.color_brand') },];
+    const offButtons: promptAction.Button[] = [{ text: $r('app.string.mine_notifyset_keep'), color: $r('app.color.color_text_tertiary') },
+      { text: $r('app.string.mine_notifyset_stop'), color: $r('app.color.color_brand') },];
     uiCtx.getPromptAction().showDialog({
-      title: isOn ? '开启订阅' : '关闭订阅',
-      message: isOn ? '是否要接收此订阅的通知栏推送？' : '是否要取消此订阅的通知栏推送？',
+      title: isOn ? $r('app.string.mine_notifyset_sub_on') : $r('app.string.mine_notifyset_sub_off'),
+      message: isOn ? $r('app.string.mine_notifyset_sub_on_msg') : $r('app.string.mine_notifyset_sub_off_msg'),
       buttons: isOn ? onButtons : offButtons,
       // API 26+ 且开关开启时系统确认框走统一的 THICK 沉浸材质，旧系统缺省纯色
       systemMaterial: getDialogMaterial(),
@@ -147,7 +148,7 @@ export struct NotifySettingsSection {
     const uiCtx: UIContext = this.getUIContext();
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
-      showToast(uiCtx, '上下文获取失败');
+      showToast(uiCtx, $r('app.string.mine_notifyset_ctx_failed'));
       return;
     }
     this.exporting = true;
@@ -157,10 +158,10 @@ export struct NotifySettingsSection {
         return; // 用户取消保存，静默结束
       }
       if (!result.ok) {
-        showToast(uiCtx, result.errorMsg.length > 0 ? result.errorMsg : '导出失败');
+        showToast(uiCtx, result.errorMsg.length > 0 ? result.errorMsg : $r('app.string.mine_notifyset_export_failed'));
         return;
       }
-      showToast(uiCtx, `已导出 ${result.count} 条通知`, 1500);
+      showToast(uiCtx, $r('app.string.mine_notifyset_exported', result.count), 1500);
     } finally {
       this.exporting = false;
     }

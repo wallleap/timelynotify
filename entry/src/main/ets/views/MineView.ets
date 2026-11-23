@@ -188,21 +188,23 @@ export struct MineView {
           ? $r('app.color.color_notification_permission_error_bg') : Color.Transparent);
       Column({ space: 4 }) {
         Text(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
-          ? '系统通知权限已开启' : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
-            ? '系统通知权限未开启' : this.notificationPermissionStatus === NotificationPermissionStatus.ERROR
-              ? '通知权限状态获取失败' : '正在获取通知权限状态')
+          ? $r('app.string.mineview_permission_enabled') :
+          this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
+            ? $r('app.string.mineview_permission_disabled') :
+            this.notificationPermissionStatus === NotificationPermissionStatus.ERROR
+              ? $r('app.string.mineview_permission_error') : $r('app.string.mineview_permission_loading'))
           .fontSize(16)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
             ? $r('app.color.color_success') : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
               ? $r('app.color.color_error') : $r('app.color.color_warning'));
         Text(this.notificationPermissionStatus === NotificationPermissionStatus.ENABLED
-          ? '现在可以正常接收推送通知，点击可调整提醒方式'
+          ? $r('app.string.mineview_permission_enabled_desc')
           : this.notificationPermissionStatus === NotificationPermissionStatus.DISABLED
-            ? '现在收到通知不会提醒，点击去开启“允许通知”'
+            ? $r('app.string.mineview_permission_disabled_desc')
             : this.notificationPermissionStatus === NotificationPermissionStatus.ERROR
-              ? '点击卡片查看通知设置'
-              : '请稍候…')
+              ? $r('app.string.mineview_permission_error_desc')
+              : $r('app.string.mineview_permission_loading_desc'))
           .fontSize(13)
           .fontColor($r('app.color.color_text_secondary'));
       }
@@ -224,7 +226,7 @@ export struct MineView {
   fallbackTitleBar() {
     Row() {
       // 标题居左
-      Text('我的').fontSize(24).fontWeight(FontWeight.Bold)
+      Text($r('app.string.mineview_title')).fontSize(24).fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.color_text_primary'));
       Blank();
       // 右侧主题切换器（跟随系统/浅色/深色）
@@ -288,7 +290,7 @@ export struct MineView {
   customTitleContent() {
     Row() {
       // 标题居左
-      Text('我的')
+      Text($r('app.string.mineview_title'))
         .fontSize(24)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.color_text_primary'));
@@ -464,7 +466,7 @@ export struct MineView {
     }
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(this.getUIContext());
     if (!ctx) {
-      showToast(this.getUIContext(), '上下文获取失败');
+      showToast(this.getUIContext(), $r('app.string.mineview_context_failed'));
       return;
     }
     this.notificationSettingsOpening = true;
@@ -480,7 +482,7 @@ export struct MineView {
       const e: BusinessError = err as BusinessError;
       hilog.warn(DOMAIN, 'MineView', 'openNotificationSettings 失败：code=%{public}d msg=%{public}s',
         e.code, e.message);
-      showToast(this.getUIContext(), '无法打开通知设置');
+      showToast(this.getUIContext(), $r('app.string.mineview_open_settings_failed'));
     } finally {
       this.notificationSettingsOpening = false;
       this.refreshNotificationPermission();

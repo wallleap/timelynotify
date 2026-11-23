@@ -15,12 +15,14 @@ import {
   KEY_HOLDING_HAND_PREVIEW_VISIBLE
 } from '../components/settings/HoldingHandSettingsCard';
 import { ThemeService } from '../services/ThemeService';
+import { LanguageService } from '../services/LanguageService';
 import { EncryptedNotificationResendService } from '../services/EncryptedNotificationResendService';
 import { NotifyClickSettingsService } from '../services/NotifyClickSettingsService';
 import { HoldingHandService } from '../services/HoldingHandService';
 import { AntiPeepSettingsCard } from '../components/settings/AntiPeepSettingsCard';
 import { AntiPeepService, KEY_ANTI_PEEP_PREVIEW_VISIBLE } from '../services/AntiPeepService';
 import showToast from '../components/showToast';
+import { AppContextStore } from '../common/AppContextStore';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
 /**
@@ -46,12 +48,26 @@ struct PersonalizationSettings {
   // 未确认支持前不渲染卡片和空分组，避免不支持设备出现入口闪现。
   @State holdingHandSupported: boolean = false;
   @State antiPeepSupported: boolean = false;
+  // 应用内语言选择：跟随系统 / 简体中文 / English；读完偏好前禁用选择器。
+  @State languageIndex: number = 0;
+  @State languageLoaded: boolean = false;
   // 页面销毁或重新挂载后，旧读写回调不能覆盖新页面状态。
   private notifyClickSettingsGeneration: number = 0;
   // 异步能力查询不能在页面离开后补渲染卡片。
   private supportCheckSequence: number = 0;
   private readonly colorModeKeys: string[] = ['system', 'light', 'dark'];
-  private readonly colorModeLabels: string[] = ['跟随系统', '浅色模式', '深色模式'];
+  // 语言选项的存储键（顺序与下拉展示一致）
+  private readonly languageKeys: string[] = [
+    LanguageService.LANG_FOLLOW_SYSTEM,
+    LanguageService.LANG_ZH_HANS,
+    LanguageService.LANG_EN_US
+  ];
+  // 主题三选项的展示文案（顺序与 colorModeKeys 一致）
+  private readonly colorModeLabels: ResourceStr[] = [
+    $r('app.string.personal_color_mode_system'),
+    $r('app.string.personal_color_mode_light'),
+    $r('app.string.personal_color_mode_dark')
+  ];
   private scroller: Scroller = new Scroller();
 
   @Builder
@@ -68,7 +84,7 @@ struct PersonalizationSettings {
           this.goBack();
         });
 
-      Text('个性化设置')
+      Text($r('app.string.personal_title'))
         .fontSize(20)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.color_text_primary'))
@@ -104,14 +120,14 @@ struct PersonalizationSettings {
       }
 
       Column({ space: 12 }) {
-        SettingGroupTitle({ title: '外观' });
+        SettingGroupTitle({ title: this.resString($r('app.string.personal_group_appearance')) });
 
         SettingGroup() {
-          SettingCell({ title: '主题模式' }) {
+          SettingCell({ title: this.resString($r('app.string.personal_theme_mode')) }) {
             Select([
-              { value: '跟随系统' },
-              { value: '浅色模式' },
-              { value: '深色模式' }
+              { value: $r('app.string.personal_color_mode_system') },
+              { value: $r('app.string.personal_color_mode_light') },
+              { value: $r('app.string.personal_color_mode_dark') }
             ])
               .selected(this.selectedColorModeIndex())
               .value(this.colorModeLabels[this.selectedColorModeIndex()])
@@ -130,6 +146,26 @@ struct PersonalizationSettings {
                 ThemeService.applyColorMode(key, this.getUIContext());
               });
           }
+
+          // 应用内语言：跟随系统需重启生效，指定语言立即切换
+          SettingCell({ title: this.resString($r('app.string.lang_setting_title')) }) {
+            Select([
+              { value: $r('app.string.lang_follow_system') },
+              { value: $r('app.string.lang_zh_hans') },
+              { value: $r('app.string.lang_en_us') }
+            ])
+              .selected(this.languageIndex)
+              .value(this.languageOptionLabel(this.languageIndex))
+              .font({ size: 12 })
+              .fontColor($r('app.color.color_text_primary'))
+              .selectedOptionBgColor($r('app.color.color_bg_selected_glass'))
+              .selectedOptionFontColor($r('app.color.color_brand'))
+              .attributeModifier(IMMERSIVE_SELECT_MENU_MODIFIER)
+              .enabled(this.languageLoaded)
+              .onSelect((index: number) => {
+                this.changeLanguage(index);
+              });
+          }
         }
 
         if (supportsImmersiveMaterial()) {
@@ -139,10 +175,13 @@ struct PersonalizationSettings {
       .width('100%');
 
       Column({ space: 12 }) {
-        SettingGroupTitle({ title: '通知行为' });
+        SettingGroupTitle({ title: this.resString($r('app.string.personal_group_notification')) });
 
         SettingGroup() {
-          SettingCell({ title: '通知点击跳转链接', description: '关闭后点击通知卡片仅打开通知详情' }) {
+          SettingCell({
+            title: this.resString($r('app.string.personal_click_url')),
+            description: this.resString($r('app.string.personal_click_url_desc'))
+          }) {
             Toggle({ type: ToggleType.Switch, isOn: this.notifyClickUrlEnabled })
               .selectedColor($r('app.color.color_brand'))
               .enabled(this.notifyClickUrlLoaded && !this.notifyClickUrlSaving)
@@ -154,7 +193,7 @@ struct PersonalizationSettings {
 
         // 只影响后续新同步的加密通知是否补发，不修改消息的 isArchive 留存策略。
         SettingGroup() {
-          SettingCell({ title: '加密通知重发' }) {
+          SettingCell({ title: this.resString($r('app.string.personal_encrypted_resend')) }) {
             Toggle({ type: ToggleType.Switch, isOn: this.encryptedResendEnabled })
               .selectedColor($r('app.color.color_brand'))
               .enabled(this.encryptedResendLoaded && !this.encryptedResendSaving)
@@ -170,7 +209,7 @@ struct PersonalizationSettings {
       // 两项能力独立检测，任一可用时保留分组，避免防窥依赖握姿设备能力。
       if (this.holdingHandSupported || this.antiPeepSupported) {
         Column({ space: 12 }) {
-          SettingGroupTitle({ title: '鸿蒙特性' });
+          SettingGroupTitle({ title: this.resString($r('app.string.personal_group_hmos')) });
           if (this.holdingHandSupported) {
             HoldingHandSettingsCard();
           }
@@ -214,6 +253,7 @@ struct PersonalizationSettings {
   aboutToAppear(): void {
     this.loadEncryptedResend();
     this.loadNotifyClickUrl(++this.notifyClickSettingsGeneration);
+    this.loadLanguage();
   }
 
   aboutToDisappear(): void {
@@ -244,7 +284,7 @@ struct PersonalizationSettings {
         enableComponentSafeArea: true,
         avoidLayoutSafeArea: true,
         content: {
-          title: { mainTitle: '个性化设置' },
+          title: { mainTitle: $r('app.string.personal_title') },
           backIcon: {
             icon: $r('app.media.arrow_left'),
             action: (): void => {
@@ -297,6 +337,40 @@ struct PersonalizationSettings {
     return index >= 0 ? index : 0;
   }
 
+  /** 语言选择器当前选中项的展示文案。 */
+  private languageOptionLabel(index: number): ResourceStr {
+    const labels: ResourceStr[] = [
+      $r('app.string.lang_follow_system'),
+      $r('app.string.lang_zh_hans'),
+      $r('app.string.lang_en_us')
+    ];
+    return index >= 0 && index < labels.length ? labels[index] : labels[0];
+  }
+
+  /** 进入页面时恢复持久化的语言偏好，避免默认值覆盖已保存的选择。 */
+  private async loadLanguage(): Promise<void> {
+    const saved: string = await LanguageService.getSavedLanguage();
+    const index: number = this.languageKeys.indexOf(saved);
+    this.languageIndex = index >= 0 ? index : 0;
+    this.languageLoaded = true;
+  }
+
+  /** 切换应用语言：指定语言立即生效；选回“跟随系统”需重启应用后生效。 */
+  private async changeLanguage(index: number): Promise<void> {
+    if (!this.languageLoaded || index < 0 || index >= this.languageKeys.length || index === this.languageIndex) {
+      return;
+    }
+    const ok: boolean = await LanguageService.setLanguage(this.languageKeys[index]);
+    if (ok) {
+      this.languageIndex = index;
+      if (this.languageKeys[index] === LanguageService.LANG_FOLLOW_SYSTEM) {
+        showToast(this.getUIContext(), $r('app.string.lang_switch_hint'), 2500);
+      }
+    } else {
+      showToast(this.getUIContext(), $r('app.string.personal_save_failed'));
+    }
+  }
+
   /** 恢复已保存的点击行为，避免默认开启回显覆盖用户的关闭设置。 */
   private async loadNotifyClickUrl(generation: number): Promise<void> {
     const enabled: boolean = await NotifyClickSettingsService.isUrlEnabled();
@@ -323,14 +397,14 @@ struct PersonalizationSettings {
       }
       if (!saved) {
         this.notifyClickUrlEnabled = previous;
-        showToast(this.getUIContext(), '保存失败，设置未生效');
+        showToast(this.getUIContext(), $r('app.string.personal_save_failed'));
       }
     } catch (_err) {
       if (generation !== this.notifyClickSettingsGeneration) {
         return;
       }
       this.notifyClickUrlEnabled = previous;
-      showToast(this.getUIContext(), '保存失败，设置未生效');
+      showToast(this.getUIContext(), $r('app.string.personal_save_failed'));
     } finally {
       if (generation === this.notifyClickSettingsGeneration) {
         this.notifyClickUrlSaving = false;
@@ -364,13 +438,13 @@ struct PersonalizationSettings {
     this.encryptedResendEnabled = enabled;
     try {
       const result = await this.getUIContext().getPromptAction().showDialog({
-        title: enabled ? '开启加密通知重发' : '关闭加密通知重发',
+        title: enabled ? $r('app.string.personal_resend_enable_title') : $r('app.string.personal_resend_disable_title'),
         message: enabled
-          ? '开启后收到加密通知 打开 APP 将解密并重新发送一条解密后的通知'
-          : '关闭后收到加密通知仅解密保存 不再重新发送解密通知（isArchive为0 的加密通知为避免信息丢失仍会重新通知）',
+          ? $r('app.string.personal_resend_enable_message')
+          : $r('app.string.personal_resend_disable_message'),
         buttons: [
-          { text: '取消', color: $r('app.color.color_text_tertiary') },
-          { text: '确定', color: $r('app.color.color_brand') }
+          { text: $r('app.string.common_cancel'), color: $r('app.color.color_text_tertiary') },
+          { text: $r('app.string.common_confirm'), color: $r('app.color.color_brand') }
         ],
         systemMaterial: getDialogMaterial(),
       });
@@ -380,11 +454,11 @@ struct PersonalizationSettings {
       }
       if (!(await EncryptedNotificationResendService.setEnabled(enabled))) {
         this.encryptedResendEnabled = previous;
-        showToast(this.getUIContext(), '保存失败，设置未生效');
+        showToast(this.getUIContext(), $r('app.string.personal_save_failed'));
       }
     } catch (_err) {
       this.encryptedResendEnabled = previous;
-      showToast(this.getUIContext(), '保存失败，设置未生效');
+      showToast(this.getUIContext(), $r('app.string.personal_save_failed'));
     } finally {
       this.encryptedResendSaving = false;
     }
@@ -393,5 +467,11 @@ struct PersonalizationSettings {
   // 从独立设置页返回“我的”页，系统返回手势也复用同一行为。
   private goBack(): void {
     this.getUIContext().getRouter().back();
+  }
+
+  // 设置组件的字符串参数需要原始 string：资源经 resourceManager 还原为当前语言文案
+  private resString(res: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id) : '';
   }
 }

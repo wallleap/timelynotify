@@ -1,4 +1,4 @@
-import { Want, WantAgent, wantAgent } from '@kit.AbilityKit';
+import { Want, WantAgent, wantAgent, common } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { AppContextStore } from '../common/AppContextStore';
@@ -10,6 +10,21 @@ import { notifyIdentity } from '../utils/NotifyIdentity';
 const TAG: string = 'DecryptNotify';
 const MAX_NOTIFICATION_ID: number = 2147483647;
 
+/** 读取当前语言的字符串资源（系统通知字段必须为 string）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
+
 /**
  * 为端到端加密消息发布解密后的本地通知；归档消息由用户偏好决定是否补发。
  * 使用稳定的 id + label，远程删除失败而重试同步时只更新原通知，不重复堆叠。
@@ -20,7 +35,8 @@ export class DecryptedNotificationService {
       return true;
     }
 
-    const title: string = message.title.trim().length > 0 ? message.title.trim() : '[订阅] 通知';
+    const title: string = message.title.trim().length > 0 ? message.title.trim()
+      : tr($r('app.string.decrysrv_default_title'));
     const body: string = DecryptedNotificationService.resolveBody(message);
     const identity: string = `decrypted-${notifyIdentity(message)}`;
     const normalizedId: number = DecryptedNotificationService.normalizeId(message.id);
@@ -91,7 +107,7 @@ export class DecryptedNotificationService {
     if (message.subtitle.trim().length > 0) {
       return message.subtitle.trim();
     }
-    return '收到一条加密通知';
+    return tr($r('app.string.decrysrv_default_body'));
   }
 
   private static normalizeId(id: number): number {

@@ -12,6 +12,7 @@ import {
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
+import { AppContextStore } from '../common/AppContextStore';
 
 const TAG: string = 'SharePage';
 
@@ -25,7 +26,7 @@ struct SharePage {
   // 沉浸光感用户开关（API 26+ 生效；MineView Toggle 切换后经 AppStorage 同步，此处自动重渲染切换分支）
   @StorageProp(KEY_IMMERSIVE_LIGHT_ENABLED) immersiveLightEnabled: boolean = true;
   @State loadingProgress: number = 0;
-  @State pageTitle: string = '开源代码';
+  @State pageTitle: string = '';
   // 标题显隐：网页下滑超过阈值后隐藏顶栏标题，滚回顶部附近恢复（由 Web.onScroll 驱动）
   @State titleVisible: boolean = true;
   @State targetUrl: string = SOURCE_CODE_URL;
@@ -41,6 +42,8 @@ struct SharePage {
   private controller: webview.WebviewController = new webview.WebviewController();
 
   aboutToAppear() {
+    // 默认标题从资源读取；路由参数传入的标题优先覆盖
+    this.pageTitle = this.resString($r('app.string.sharepage_default_title'));
     try {
       const params = this.getUIContext().getRouter().getParams() as Record<string, string> | undefined;
       if (params && params['url']) {
@@ -352,6 +355,12 @@ struct SharePage {
       const msg = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, TAG, '返回失败：%{public}s', msg);
     }
+  }
+
+  // 默认标题需要原始 string：资源经 resourceManager 还原为当前语言文案
+  private resString(res: Resource): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(res.id) : '';
   }
 
   private handleShare(): void {

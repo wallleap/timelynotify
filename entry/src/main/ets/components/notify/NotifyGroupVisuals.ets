@@ -4,7 +4,7 @@ export struct NotifyGroupCountBadge {
   @Prop count: number = 0;
 
   build() {
-    Text(`${this.count} 条通知`)
+    Text($r('app.string.ntf_count_notifications', this.count))
       .fontSize(10)
       .fontWeight(FontWeight.Medium)
       .fontColor($r('app.color.color_text_badge'))
@@ -18,7 +18,7 @@ export struct NotifyGroupCountBadge {
 @Component
 export struct NotifyEncryptionBadge {
   build() {
-    Text('加密')
+    Text($r('app.string.ntf_encrypted'))
       .fontSize(10)
       .fontWeight(FontWeight.Medium)
       .fontColor($r('app.color.color_brand'))
@@ -32,7 +32,7 @@ export struct NotifyEncryptionBadge {
 @Component
 export struct NotifyExpiryBadge {
   build() {
-    Text('即将过期')
+    Text($r('app.string.ntf_expiring_soon'))
       .fontSize(10)
       .fontWeight(FontWeight.Medium)
       .fontColor($r('app.color.color_warning'))

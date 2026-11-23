@@ -2,6 +2,7 @@ import {
   AntiPeepService, ANTI_PEEP_MODE_BLUR, ANTI_PEEP_MODE_FULLSCREEN,
   KEY_ANTI_PEEP_ERROR, KEY_ANTI_PEEP_PREVIEW_VISIBLE
 } from '../../services/AntiPeepService';
+import { AppContextStore } from '../../common/AppContextStore';
 import showToast from '../showToast';
 import { SettingCell } from './SettingCell';
 import { SettingGroup } from './SettingGroup';
@@ -27,7 +28,7 @@ export struct AntiPeepSettingsCard {
     Stack({ alignContent: Alignment.Center }) {
       Column({ space: 9 }) {
         Row() {
-          Text('通知').fontSize(10).fontWeight(FontWeight.Bold)
+          Text($r('app.string.antipeep_preview_tab')).fontSize(10).fontWeight(FontWeight.Bold)
             .fontColor($r('app.color.color_text_primary'));
           Blank();
           Image($r('app.media.search')).width(12).height(12)
@@ -37,11 +38,15 @@ export struct AntiPeepSettingsCard {
           ForEach([0, 1, 2], (index: number) => {
             Column({ space: 3 }) {
               // 与真实通知一致：仅标题、正文各自模糊，卡片轮廓保持清晰。
-              Text(index === 0 ? '工作提醒' : index === 1 ? '验证码' : '日程通知')
+              Text(index === 0 ? $r('app.string.antipeep_preview_title_work') :
+                index === 1 ? $r('app.string.antipeep_preview_title_code') :
+                  $r('app.string.antipeep_preview_title_schedule'))
                 .fontSize(9).fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.color_text_primary')).maxLines(1)
                 .blur(this.antiPeepEnabled && this.previewHidden && mode === ANTI_PEEP_MODE_BLUR ? 5 : 0);
-              Text(index === 0 ? '会议将在十分钟后开始' : index === 1 ? '验证码 123456' : '今天有一项待办事项')
+              Text(index === 0 ? $r('app.string.antipeep_preview_body_work') :
+                index === 1 ? $r('app.string.antipeep_preview_body_code') :
+                  $r('app.string.antipeep_preview_body_todo'))
                 .fontSize(8).fontColor($r('app.color.color_text_tertiary'))
                 .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                 .blur(this.antiPeepEnabled && this.previewHidden && mode === ANTI_PEEP_MODE_BLUR ? 5 : 0);
@@ -59,7 +64,7 @@ export struct AntiPeepSettingsCard {
         Column({ space: 8 }) {
           Image($r('app.media.shield_keyhole')).width(26).height(26)
             .fillColor($r('app.color.color_brand')).draggable(false);
-          Text('隐私防窥').fontSize(11).fontWeight(FontWeight.Medium)
+          Text($r('app.string.antipeep_title')).fontSize(11).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.color_text_primary'));
         }
         .width('100%').height('100%').justifyContent(FlexAlign.Center)
@@ -72,9 +77,30 @@ export struct AntiPeepSettingsCard {
     .accessibilityLevel('no-hide-descendants');
   }
 
+  /** 将 ResourceStr 还原为当前语言字符串，供 %s 格式化资源使用。 */
+  private plainText(text: ResourceStr): string {
+    if (typeof text === 'string') {
+      return text;
+    }
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync(text.id) : '';
+  }
+
+  /** 模式卡片的无障碍文案：选中时附加“已选中”说明。 */
+  private modeAccessibilityText(mode: string, title: ResourceStr): string {
+    const plain: string = this.plainText(title);
+    if (this.selectedMode !== mode) {
+      return plain;
+    }
+    const context = AppContextStore.getInstance().getContext();
+    return context
+      ? context.resourceManager.getStringSync($r('app.string.antipeep_accessibility_selected').id, plain)
+      : plain;
+  }
+
   /** 选中态和可操作状态均由开关控制，关闭时不启动动画也不能更改模式。 */
   @Builder
-  private modeCard(mode: string, title: string, description: string) {
+  private modeCard(mode: string, title: ResourceStr, description: ResourceStr) {
     Column({ space: 10 }) {
       this.miniature(mode);
       Row({ space: 5 }) {
@@ -103,14 +129,14 @@ export struct AntiPeepSettingsCard {
     .opacity(this.antiPeepEnabled ? 1 : 0.45)
     .saturate(this.antiPeepEnabled ? 1 : 0)
     .enabled(this.loaded && this.antiPeepEnabled && !this.saving)
-    .accessibilityText(title + (this.selectedMode === mode ? '，已选中' : ''))
+    .accessibilityText(this.modeAccessibilityText(mode, title))
     .onClick(() => this.changeMode(mode));
   }
 
   build() {
     Column() {
       SettingGroup() {
-        SettingCell({ title: '隐私防窥' }) {
+        SettingCell({ title: $r('app.string.antipeep_title') }) {
           Toggle({ type: ToggleType.Switch, isOn: this.antiPeepEnabled })
             .id('anti_peep_enabled_toggle')
             .selectedColor($r('app.color.color_brand'))
@@ -118,8 +144,10 @@ export struct AntiPeepSettingsCard {
             .onChange((enabled: boolean) => this.changeEnabled(enabled));
         }
         Row({ space: 12 }) {
-          this.modeCard(ANTI_PEEP_MODE_BLUR, '模糊通知', '有人窥视时，模糊通知文字。');
-          this.modeCard(ANTI_PEEP_MODE_FULLSCREEN, '全屏防窥', '有人窥视时，遮住整个应用。');
+          this.modeCard(ANTI_PEEP_MODE_BLUR, $r('app.string.antipeep_mode_blur'),
+            $r('app.string.antipeep_mode_blur_desc'));
+          this.modeCard(ANTI_PEEP_MODE_FULLSCREEN, $r('app.string.antipeep_mode_fullscreen'),
+            $r('app.string.antipeep_mode_fullscreen_desc'));
         }
         .width('100%').alignItems(VerticalAlign.Top)
         .padding({ left: 16, right: 16, bottom: 16 });
@@ -166,12 +194,12 @@ export struct AntiPeepSettingsCard {
     try {
       if (!(await AntiPeepService.setEnabled(enabled)) && this.mounted) {
         this.antiPeepEnabled = previous;
-        showToast(this.getUIContext(), AntiPeepService.getError() || '设置未生效');
+        showToast(this.getUIContext(), AntiPeepService.getError() || $r('app.string.antipeep_toast_not_applied'));
       }
     } catch (_err) {
       if (this.mounted) {
         this.antiPeepEnabled = previous;
-        showToast(this.getUIContext(), '设置未生效');
+        showToast(this.getUIContext(), $r('app.string.antipeep_toast_not_applied'));
       }
     } finally {
       if (this.mounted) {
@@ -190,12 +218,12 @@ export struct AntiPeepSettingsCard {
     try {
       if (!(await AntiPeepService.setMode(mode)) && this.mounted) {
         this.selectedMode = previous;
-        showToast(this.getUIContext(), AntiPeepService.getError() || '保存失败');
+        showToast(this.getUIContext(), AntiPeepService.getError() || $r('app.string.antipeep_toast_save_failed'));
       }
     } catch (_err) {
       if (this.mounted) {
         this.selectedMode = previous;
-        showToast(this.getUIContext(), '保存失败');
+        showToast(this.getUIContext(), $r('app.string.antipeep_toast_save_failed'));
       }
     } finally {
       if (this.mounted) this.saving = false;

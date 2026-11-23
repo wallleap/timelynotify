@@ -18,7 +18,8 @@ export struct NotifyGroupExpandedHeader {
   @Builder
   private groupCount() {
     if (this.isEditing) {
-      Text(`已选 ${this.selectedCount} / ${this.section.total}`).fontSize(10).fontWeight(FontWeight.Medium)
+      Text($r('app.string.ntf_selected_progress', this.selectedCount, this.section.total))
+        .fontSize(10).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.color_text_badge')).padding({ left: 8, right: 8, top: 2, bottom: 2 })
         .borderRadius(10).backgroundColor($r('app.color.color_bg_badge'));
     } else {

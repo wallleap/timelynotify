@@ -31,7 +31,7 @@ export struct AddServerDialog {
 
   // 带标题标签的输入项
   @Builder
-  labeledInput(label: string, placeholder: string, value: string, onChanged: (v: string) => void,
+  labeledInput(label: ResourceStr, placeholder: ResourceStr, value: string, onChanged: (v: string) => void,
     sensitiveAddress: boolean = false) {
     Column({ space: 6 }) {
       Text(label)
@@ -65,7 +65,7 @@ export struct AddServerDialog {
 
   build() {
     Column({ space: 12 }) {
-      Text('添加服务器')
+      Text($r('app.string.srvadd_title'))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .width('100%')
@@ -74,13 +74,13 @@ export struct AddServerDialog {
       // 表单内容区：可滚动，底部按钮固定在 Scroll 外
       Scroll() {
         Column({ space: 12 }) {
-          this.labeledInput('服务器地址', 'http://host:port 或域名', this.inputURL,
+          this.labeledInput($r('app.string.srvadd_label_url'), $r('app.string.srvadd_hint_url'), this.inputURL,
             (v: string) => { this.inputURL = v; }, true);
 
-          this.labeledInput('名称（可选）', '输入服务器名称', this.inputName,
+          this.labeledInput($r('app.string.srvadd_label_name'), $r('app.string.srvadd_hint_name'), this.inputName,
             (v: string) => { this.inputName = v; });
 
-          this.labeledInput('客户端 Token（可选）', '留空使用内置默认 Token', this.inputToken,
+          this.labeledInput($r('app.string.srvadd_label_token'), $r('app.string.srvadd_hint_token'), this.inputToken,
             (v: string) => { this.inputToken = v; });
         }
         .width('100%');
@@ -91,7 +91,7 @@ export struct AddServerDialog {
       .edgeEffect(EdgeEffect.Spring);
 
       Row({ space: 8 }) {
-        Button('取消')
+        Button($r('app.string.common_cancel'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -103,7 +103,7 @@ export struct AddServerDialog {
             this.close();
           });
 
-        Button(this.adding ? '添加中...' : '添加')
+        Button(this.adding ? $r('app.string.srvadd_adding') : $r('app.string.srvadd_add'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -132,7 +132,7 @@ export struct AddServerDialog {
   private async confirm(): Promise<void> {
     const url: string = this.inputURL.trim();
     if (!url) {
-      showToast(this.getUIContext(), '请输入服务器地址');
+      showToast(this.getUIContext(), $r('app.string.srvadd_toast_input_url'));
       return;
     }
     this.adding = true;
@@ -147,11 +147,11 @@ export struct AddServerDialog {
     const entry: ServerEntry | null = await mgr.addServer(null, url, this.inputName.trim(), this.inputToken.trim());
     this.adding = false;
     if (entry) {
-      showToast(this.getUIContext(), '已添加并切换', 1200);
+      showToast(this.getUIContext(), $r('app.string.srvadd_toast_added'), 1200);
       this.close();
       this.onAdded(entry);
     } else {
-      showToast(this.getUIContext(), '添加失败');
+      showToast(this.getUIContext(), $r('app.string.srvadd_toast_add_failed'));
     }
   }
 }

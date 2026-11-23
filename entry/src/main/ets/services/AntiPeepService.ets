@@ -7,6 +7,21 @@ import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 
+/** 读取当前语言的字符串资源（防窥错误文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
+
 /** 通知与服务组件只读取保护状态，不接触系统感知接口或持久化偏好。 */
 export const KEY_ANTI_PEEP_BLUR: string = 'antiPeepBlur';
 export const KEY_ANTI_PEEP_ERROR: string = 'antiPeepError';
@@ -95,7 +110,7 @@ export class AntiPeepService {
           const result = await dlpAntiPeep.requestAntiPeepOptions(context);
           if (result === dlpAntiPeep.AntiPeepOptionsResult.FAIL ||
             !(await dlpAntiPeep.isDlpAntiPeepSwitchOn())) {
-            AntiPeepService.setError('系统防窥未开启');
+            AntiPeepService.setError(tr($r('app.string.antipeepsvc_system_switch_off')));
             return false;
           }
         }
@@ -194,7 +209,7 @@ export class AntiPeepService {
   /** 写盘成功再发布，模式和开关不会出现部分保存；刷新失败保留偏好并明确反馈运行错误。 */
   private static async save(next: AntiPeepSettings): Promise<boolean> {
     if (!(await PreferencesUtil.putString(null, PreferencesUtil.KEY_ANTI_PEEP_SETTINGS, JSON.stringify(next)))) {
-      AntiPeepService.setError('保存失败，设置未生效');
+      AntiPeepService.setError(tr($r('app.string.antipeepsvc_save_failed')));
       return false;
     }
     AntiPeepService.settings = next;
@@ -230,7 +245,7 @@ export class AntiPeepService {
         if (generation !== AntiPeepService.generation) return;
         AntiPeepService.unsubscribe();
         AntiPeepService.publishBlur(false);
-        AntiPeepService.setError('系统防窥未开启');
+        AntiPeepService.setError(tr($r('app.string.antipeepsvc_system_switch_off')));
         return;
       }
       if (generation !== AntiPeepService.generation) return;
@@ -266,7 +281,7 @@ export class AntiPeepService {
   private static async showSystemMask(generation: number, requestSequence: number): Promise<void> {
     const context = AppContextStore.getInstance().getContext();
     if (context === null) {
-      AntiPeepService.setError('防窥暂不可用');
+      AntiPeepService.setError(tr($r('app.string.antipeepsvc_unavailable')));
       return;
     }
     try {
@@ -313,7 +328,8 @@ export class AntiPeepService {
   /** 日志只记录系统码；权限、临时错误不缓存为设备不支持。 */
   private static recordFailure(error: BusinessError): void {
     if (error.code === 801) AntiPeepService.supported = false;
-    AntiPeepService.setError(error.code === 201 ? '防窥权限暂不可用' : '防窥暂不可用');
+    AntiPeepService.setError(error.code === 201 ?
+      tr($r('app.string.antipeepsvc_permission_unavailable')) : tr($r('app.string.antipeepsvc_unavailable')));
     hilog.warn(DOMAIN, TAG, '防窥接口失败 code=%{public}d', error.code);
   }
 }

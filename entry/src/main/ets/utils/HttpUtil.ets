@@ -1,8 +1,25 @@
 import { http } from '@kit.NetworkKit';
+import { common } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { AppContextStore } from '../common/AppContextStore';
 import { DOMAIN } from '../common/Constant';
 
 const TAG: string = 'HttpUtil';
+
+/** 读取当前语言的字符串资源（连接失败文案）；Context 未就绪时回退空串 */
+function tr(res: Resource, arg1?: string | number, arg2?: string | number): string {
+  const ctx: common.Context | null = AppContextStore.getInstance().getContext();
+  if (ctx === null) {
+    return '';
+  }
+  if (arg1 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id);
+  }
+  if (arg2 === undefined) {
+    return ctx.resourceManager.getStringSync(res.id, arg1);
+  }
+  return ctx.resourceManager.getStringSync(res.id, arg1, arg2);
+}
 
 export class HttpResponse<T extends Object> {
   code: number = 0;
@@ -15,19 +32,19 @@ export class HttpResponse<T extends Object> {
 
 /** 将系统连接错误转换为可展示的安全文案，未知错误仍保留数字码供设备间比对。 */
 export function formatNetworkFailure(code: number): string {
-  let message: string = '无法连接到服务器，请稍后重试';
+  let message: string = tr($r('app.string.http_connect_failed'));
   if (code === 2300005 || code === 2300006) {
-    message = '服务器域名解析失败，请稍后重试';
+    message = tr($r('app.string.http_dns_failed'));
   } else if (code === 2300007) {
-    message = '无法建立服务器连接，请稍后重试';
+    message = tr($r('app.string.http_connect_establish_failed'));
   } else if (code === 2300028) {
-    message = '服务器请求超时，请重试';
+    message = tr($r('app.string.http_timeout'));
   } else if (code === 2300058 || code === 2300059 || code === 2300060) {
-    message = '服务器安全连接校验失败，请检查证书与设备时间';
+    message = tr($r('app.string.http_secure_check_failed'));
   } else if (code === 2300016) {
-    message = '服务器 HTTP/2 连接异常，请重试';
+    message = tr($r('app.string.http_http2_error'));
   }
-  return code > 0 ? `${message}（错误码 ${code}）` : message;
+  return code > 0 ? message + tr($r('app.string.http_error_code_suffix'), code) : message;
 }
 
 /** 总时限使用与系统超时一致的错误码，不能依赖原生请求一定会自行结束。 */

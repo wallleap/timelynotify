@@ -8,6 +8,7 @@ import { AppUpdateCheckStatus, AppUpdateService } from '../../services/AppUpdate
 import { ExternalLinkService, PRIVACY_URL } from '../../services/ExternalLinkService';
 import { FeedbackService } from '../../services/FeedbackService';
 import { ThemeService } from '../../services/ThemeService';
+import { AppContextStore } from '../../common/AppContextStore';
 import { getDialogMaterial } from '../../utils/ImmersiveUtil';
 import showToast from '../showToast';
 import { SettingGroup } from '../settings/SettingGroup';
@@ -32,12 +33,12 @@ export struct AboutSection {
 
   build() {
     Column({ space: 12 }) {
-      SettingGroupTitle({ title: '关于' });
+      SettingGroupTitle({ title: $r('app.string.mine_about_section_title') });
 
       SettingGroup() {
         // 点击后检测应用市场更新；版本信息由 AboutFooter 展示。
         SettingCell({
-          title: '检测更新', icon: $r('app.media.update'),
+          title: $r('app.string.mine_about_check_update'), icon: $r('app.media.update'),
           clickable: true, onActivate: () => this.checkUpdate()
         }) {
           Row({ space: 8 }) {
@@ -56,7 +57,7 @@ export struct AboutSection {
 
         // 开源代码行（点击跳转 GitHub）
         SettingCell({
-          title: '开源代码', icon: $r('app.media.message_circle_code'),
+          title: $r('app.string.mine_about_source_code'), icon: $r('app.media.message_circle_code'),
           clickable: true, onActivate: () => this.openSourceLink()
         }) {
           SettingArrow();
@@ -66,7 +67,7 @@ export struct AboutSection {
 
         // 隐私协议行
         SettingCell({
-          title: '隐私协议', icon: $r('app.media.file_text'),
+          title: $r('app.string.mine_about_privacy'), icon: $r('app.media.file_text'),
           clickable: true, onActivate: () => this.openPrivacy()
         }) {
           SettingArrow();
@@ -76,7 +77,7 @@ export struct AboutSection {
 
         // 反馈问题行（发送邮件）
         SettingCell({
-          title: '反馈问题', icon: $r('app.media.mail_question_mark'),
+          title: $r('app.string.mine_about_feedback'), icon: $r('app.media.mail_question_mark'),
           clickable: true, onActivate: () => this.sendFeedback()
         }) {
           SettingArrow();
@@ -93,7 +94,7 @@ export struct AboutSection {
     const uiCtx: UIContext = this.getUIContext();
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
-      showToast(uiCtx, '检测更新失败，请稍后重试');
+      showToast(uiCtx, $r('app.string.mine_about_check_update_failed'));
       return;
     }
     this.checkingUpdate = true;
@@ -102,14 +103,14 @@ export struct AboutSection {
       if (status === AppUpdateCheckStatus.AVAILABLE) {
         this.showUpdateDialog(uiCtx, ctx);
       } else if (status === AppUpdateCheckStatus.CURRENT) {
-        showToast(uiCtx, '已是最新版本');
+        showToast(uiCtx, $r('app.string.mine_about_already_latest'));
       } else {
-        showToast(uiCtx, '检测更新失败，请稍后重试');
+        showToast(uiCtx, $r('app.string.mine_about_check_update_failed'));
       }
     } catch (err) {
       const msg: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, 'AboutSection', '检测更新失败：%{public}s', msg);
-      showToast(uiCtx, '检测更新失败，请稍后重试');
+      showToast(uiCtx, $r('app.string.mine_about_check_update_failed'));
     } finally {
       this.checkingUpdate = false;
     }
@@ -118,18 +119,18 @@ export struct AboutSection {
   // 有新版本时显示确认弹窗；取消或关闭弹窗均不打开应用市场。
   private showUpdateDialog(uiCtx: UIContext, ctx: common.UIAbilityContext): void {
     const buttons: promptAction.Button[] = [
-      { text: '暂不更新', color: $r('app.color.color_text_tertiary') },
-      { text: '前往应用市场更新', color: $r('app.color.color_brand') }
+      { text: $r('app.string.mine_about_update_later'), color: $r('app.color.color_text_tertiary') },
+      { text: $r('app.string.mine_about_go_update'), color: $r('app.color.color_brand') }
     ];
     uiCtx.getPromptAction().showDialog({
-      title: '发现新版本',
-      message: '检测到新版本，是否前往应用市场更新？',
+      title: $r('app.string.mine_about_new_version_title'),
+      message: $r('app.string.mine_about_new_version_msg'),
       buttons: buttons,
       systemMaterial: getDialogMaterial(),
     }, (err: BusinessError, result: promptAction.ShowDialogSuccessResponse) => {
       if (err) {
         hilog.warn(DOMAIN, 'AboutSection', '显示更新弹窗失败：%{public}s', err.message);
-        showToast(uiCtx, '无法显示更新提示');
+        showToast(uiCtx, $r('app.string.mine_about_show_dialog_failed'));
         return;
       }
       if (result.index === 1) {
@@ -147,7 +148,7 @@ export struct AboutSection {
       AppUpdateService.cancelMarketRecheck();
       const msg: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, 'AboutSection', '打开应用市场失败：%{public}s', msg);
-      showToast(uiCtx, '无法打开应用市场');
+      showToast(uiCtx, $r('app.string.mine_about_open_market_failed'));
     }
   }
 
@@ -156,7 +157,7 @@ export struct AboutSection {
     const uiCtx: UIContext = this.getUIContext();
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
-      showToast(uiCtx, '无法打开开源代码页面');
+      showToast(uiCtx, $r('app.string.mine_about_open_source_failed'));
       return;
     }
     try {
@@ -164,13 +165,16 @@ export struct AboutSection {
     } catch (err) {
       const msg: string = err instanceof Error ? err.message : String(err);
       hilog.warn(DOMAIN, 'AboutSection', '打开开源代码页面失败：%{public}s', msg);
-      showToast(uiCtx, '无法打开开源代码页面');
+      showToast(uiCtx, $r('app.string.mine_about_open_source_failed'));
     }
   }
 
   // 点击隐私协议行：进入内嵌 WebView 页面
   private async openPrivacy(): Promise<void> {
-    await ExternalLinkService.openSharePage(this.getUIContext(), PRIVACY_URL, '隐私协议');
+    // 标题经路由参数传递，需先转为原始字符串
+    const title: string = AppContextStore.getInstance().getContext() !== null ?
+      AppContextStore.getInstance().getContext()!.resourceManager.getStringSync($r('app.string.mine_about_privacy').id) : '';
+    await ExternalLinkService.openSharePage(this.getUIContext(), PRIVACY_URL, title);
   }
 
   // 点击反馈问题行：通过 startAbilityByType 拉起系统邮件应用，自动附带设备信息
@@ -178,7 +182,7 @@ export struct AboutSection {
     const uiCtx: UIContext = this.getUIContext();
     const ctx: common.UIAbilityContext | null = ThemeService.getAbilityContext(uiCtx);
     if (!ctx) {
-      showToast(uiCtx, '上下文获取失败');
+      showToast(uiCtx, $r('app.string.mine_about_ctx_failed'));
       return;
     }
     const info = await AppInfoService.fetchVersionInfo();

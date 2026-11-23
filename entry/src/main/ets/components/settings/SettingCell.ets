@@ -1,11 +1,11 @@
 /** 普通设置行：统一文本和留白，右侧控件由调用方提供。 */
 @Component
 export struct SettingCell {
-  title: string = '';
+  title: ResourceStr = '';
   // 仅需要图标的入口传入，普通设置行保持原有布局。
   icon?: Resource;
   // 单向同步父组件状态，保证开关切换或异步加载后说明文字及时刷新。
-  @Prop description?: string;
+  @Prop description?: ResourceStr;
   // 强调色与说明文字一同同步；业务状态仍由调用方决定。
   @Prop descriptionColor?: ResourceColor;
   // 构建信息的单行省略规则由调用方指定，其它描述保持原有自然换行。

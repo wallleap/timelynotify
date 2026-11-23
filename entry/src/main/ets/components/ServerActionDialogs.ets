@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { DOMAIN } from '../common/Constant';
+import { AppContextStore } from '../common/AppContextStore';
 import { KEY_ANTI_PEEP_BLUR } from '../services/AntiPeepService';
 import { getDialogBackgroundOptions, shouldUseSystemMaterialPath } from '../utils/ImmersiveUtil';
 import { DangerConfirmDialog } from './DangerConfirmDialog';
@@ -61,7 +62,7 @@ export struct ServerActionMenuDialog {
   private fallbackTitle() {
     Row() {
       Column({ space: 2 }) {
-        Text('服务器操作')
+        Text($r('app.string.srvact_menu_title'))
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.color_text_primary'));
@@ -86,7 +87,7 @@ export struct ServerActionMenuDialog {
       Column() {
       Divider().color($r('app.color.color_border_subtle'));
 
-      Text('复制地址和 Key')
+      Text($r('app.string.srvact_action_copy'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .width('100%')
@@ -99,7 +100,7 @@ export struct ServerActionMenuDialog {
 
       Divider().color($r('app.color.color_border_subtle'));
 
-      Text('重置或还原 Key')
+      Text($r('app.string.srvact_action_reset_key'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .width('100%')
@@ -113,7 +114,7 @@ export struct ServerActionMenuDialog {
       Divider().color($r('app.color.color_border_subtle'));
 
       // per-server 客户端 Token（X-Gotify-Key 认证）；留空走内置默认
-      Text('设置客户端 Token')
+      Text($r('app.string.srvact_action_client_token'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .width('100%')
@@ -126,7 +127,7 @@ export struct ServerActionMenuDialog {
 
       Divider().color($r('app.color.color_border_subtle'));
 
-      Text('解密设置')
+      Text($r('app.string.srvact_action_decryption'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .width('100%')
@@ -139,7 +140,7 @@ export struct ServerActionMenuDialog {
 
       Divider().color($r('app.color.color_border_subtle'));
 
-      Text('设置服务器名称')
+      Text($r('app.string.srvact_action_rename'))
         .fontSize(16)
         .fontColor($r('app.color.color_text_primary'))
         .width('100%')
@@ -152,7 +153,7 @@ export struct ServerActionMenuDialog {
 
       Divider().color($r('app.color.color_border_subtle'));
 
-      Text('删除服务器')
+      Text($r('app.string.srvact_action_delete'))
         .fontSize(16)
         .fontColor($r('app.color.color_error'))
         .width('100%')
@@ -181,7 +182,7 @@ export struct ServerActionMenuDialog {
         }
         .titleBar({
           enableComponentSafeArea: true,
-          content: { title: { mainTitle: '服务器操作', subTitle: this.serverLabel } },
+          content: { title: { mainTitle: $r('app.string.srvact_menu_title'), subTitle: this.serverLabel } },
           style: {
             scrollEffectOpts: {
               enableScrollEffect: true,
@@ -261,13 +262,13 @@ export struct ServerRenameDialog {
 
   build() {
     Column({ space: 12 }) {
-      Text('设置服务器名称')
+      Text($r('app.string.srvact_rename_title'))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .width('100%')
         .textAlign(TextAlign.Center);
 
-      Text(`服务器名称仅用于界面展示，不设置/留空将显示服务器的域名（${this.serverDomain}）`)
+      Text($r('app.string.srvact_rename_hint', this.serverDomain))
         .blur(this.antiPeepBlur ? 22 : 0)
         .accessibilityLevel(this.antiPeepBlur ? 'no-hide-descendants' : 'auto')
         .fontSize(12)
@@ -275,7 +276,7 @@ export struct ServerRenameDialog {
         .width('100%')
         .textAlign(TextAlign.Center);
 
-      TextInput({ placeholder: '输入新名称（留空则清除名称）', text: this.inputName })
+      TextInput({ placeholder: $r('app.string.srvact_rename_placeholder'), text: this.inputName })
         .width('100%')
         .height(42)
         .backgroundColor($r('app.color.color_bg_input_glass'))
@@ -286,7 +287,7 @@ export struct ServerRenameDialog {
         });
 
       Row({ space: 8 }) {
-        Button('取消')
+        Button($r('app.string.common_cancel'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -297,7 +298,7 @@ export struct ServerRenameDialog {
             this.close();
           });
 
-        Button('保存')
+        Button($r('app.string.common_save'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -361,27 +362,28 @@ export struct ServerKeyDialog {
           .draggable(false)
           .alignSelf(ItemAlign.Center);
       }
-      Text('重置或还原 Key')
+      Text($r('app.string.srvact_action_reset_key'))
         .fontSize(17)
         .fontWeight(FontWeight.Bold)
         .width('100%')
         .textAlign(TextAlign.Center);
 
       Column({ space: 4 }) {
-        Text(`当前 Key：${this.currentKey && this.currentKey.length > 0 ? this.currentKey : '（未注册）'}`)
+        Text($r('app.string.srvact_key_current',
+          this.currentKey && this.currentKey.length > 0 ? this.currentKey : this.unregisteredText()))
           .fontSize(12)
           .fontColor($r('app.color.color_text_hint'))
           .width('100%')
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
-        Text('输入框留空 = 重置（生成新 Key）；填入 Key = 还原')
+        Text($r('app.string.srvact_key_help'))
           .fontSize(12)
           .fontColor($r('app.color.color_text_hint'))
           .width('100%');
       }
       .width('100%');
 
-      TextInput({ placeholder: '可选：输入要还原的 device_key', text: this.inputKey })
+      TextInput({ placeholder: $r('app.string.srvact_key_placeholder'), text: this.inputKey })
         .width('100%')
         .height(42)
         .backgroundColor($r('app.color.color_bg_input_glass'))
@@ -392,7 +394,7 @@ export struct ServerKeyDialog {
         });
 
       Row({ space: 8 }) {
-        Button('取消')
+        Button($r('app.string.common_cancel'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -403,7 +405,8 @@ export struct ServerKeyDialog {
             this.close();
           });
 
-        Button(this.inputKey.trim().length > 0 ? '还原' : '重置')
+        Button(this.inputKey.trim().length > 0 ?
+          $r('app.string.srvact_key_restore') : $r('app.string.srvact_key_reset'))
           .layoutWeight(1)
           .height(40)
           .fontSize(14)
@@ -435,9 +438,9 @@ export struct ServerKeyDialog {
       let controller: CustomDialogController | undefined;
       controller = new CustomDialogController({
         builder: DangerConfirmDialog({
-          title: '确认重置 Key',
-          message: '留空将为此服务器生成新的 Key。请确认已备份当前 Key。',
-          confirmText: '确认重置',
+          title: $r('app.string.srvact_key_confirm_reset_title'),
+          message: $r('app.string.srvact_key_confirm_reset_message'),
+          confirmText: $r('app.string.srvact_key_confirm_reset'),
           onResult: (confirmed: boolean): void => {
             controller?.close();
             if (confirmed) {
@@ -458,5 +461,11 @@ export struct ServerKeyDialog {
     }
     this.close();
     this.onConfirm(k);
+  }
+
+  // 未注册占位需要原始 string，参与 %s 格式化
+  private unregisteredText(): string {
+    const context = AppContextStore.getInstance().getContext();
+    return context ? context.resourceManager.getStringSync($r('app.string.srvact_key_unregistered').id) : '';
   }
 }

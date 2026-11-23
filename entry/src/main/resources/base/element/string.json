@@ -31,6 +31,2026 @@
     {
       "name": "index_tab_mine",
       "value": "我的"
+    },
+    {
+      "name": "antipeep_accessibility_selected",
+      "value": "%s，已选中"
+    },
+    {
+      "name": "antipeep_mode_blur",
+      "value": "模糊通知"
+    },
+    {
+      "name": "antipeep_mode_blur_desc",
+      "value": "有人窥视时，模糊通知文字。"
+    },
+    {
+      "name": "antipeep_mode_fullscreen",
+      "value": "全屏防窥"
+    },
+    {
+      "name": "antipeep_mode_fullscreen_desc",
+      "value": "有人窥视时，遮住整个应用。"
+    },
+    {
+      "name": "antipeep_preview_body_code",
+      "value": "验证码 123456"
+    },
+    {
+      "name": "antipeep_preview_body_todo",
+      "value": "今天有一项待办事项"
+    },
+    {
+      "name": "antipeep_preview_body_work",
+      "value": "会议将在十分钟后开始"
+    },
+    {
+      "name": "antipeep_preview_tab",
+      "value": "通知"
+    },
+    {
+      "name": "antipeep_preview_title_code",
+      "value": "验证码"
+    },
+    {
+      "name": "antipeep_preview_title_schedule",
+      "value": "日程通知"
+    },
+    {
+      "name": "antipeep_preview_title_work",
+      "value": "工作提醒"
+    },
+    {
+      "name": "antipeep_title",
+      "value": "隐私防窥"
+    },
+    {
+      "name": "antipeep_toast_not_applied",
+      "value": "设置未生效"
+    },
+    {
+      "name": "antipeep_toast_save_failed",
+      "value": "保存失败"
+    },
+    {
+      "name": "antipeepsvc_permission_unavailable",
+      "value": "防窥权限暂不可用"
+    },
+    {
+      "name": "antipeepsvc_save_failed",
+      "value": "保存失败，设置未生效"
+    },
+    {
+      "name": "antipeepsvc_system_switch_off",
+      "value": "系统防窥未开启"
+    },
+    {
+      "name": "antipeepsvc_unavailable",
+      "value": "防窥暂不可用"
+    },
+    {
+      "name": "appinfosvc_clip_cloud_build",
+      "value": "构建：GitHub Actions Run #%s (%s)"
+    },
+    {
+      "name": "appinfosvc_clip_commit",
+      "value": "commit：%s"
+    },
+    {
+      "name": "appinfosvc_clip_fingerprint",
+      "value": "签名指纹尾 8 位：%s"
+    },
+    {
+      "name": "appinfosvc_clip_local_build",
+      "value": "构建：本地构建"
+    },
+    {
+      "name": "appinfosvc_fingerprint_abbrev",
+      "value": "指纹…%s"
+    },
+    {
+      "name": "appinfosvc_local_build",
+      "value": "本地构建"
+    },
+    {
+      "name": "autocopy_copied",
+      "value": "已复制 %s"
+    },
+    {
+      "name": "clitoken_docs_link",
+      "value": "部署文档"
+    },
+    {
+      "name": "clitoken_hint_docs",
+      "value": "自建服务需要填写，可查看："
+    },
+    {
+      "name": "clitoken_hint_usage",
+      "value": "用于同步历史通知（X-Gotify-Key 认证）"
+    },
+    {
+      "name": "clitoken_input_placeholder",
+      "value": "粘贴 client token"
+    },
+    {
+      "name": "clitoken_title",
+      "value": "客户端 Token"
+    },
+    {
+      "name": "clitoken_toast_save_failed",
+      "value": "保存失败"
+    },
+    {
+      "name": "clitoken_toast_saved",
+      "value": "已保存"
+    },
+    {
+      "name": "common_cancel",
+      "value": "取消"
+    },
+    {
+      "name": "common_close",
+      "value": "关闭"
+    },
+    {
+      "name": "common_confirm",
+      "value": "确定"
+    },
+    {
+      "name": "common_copy",
+      "value": "复制"
+    },
+    {
+      "name": "common_delete",
+      "value": "删除"
+    },
+    {
+      "name": "common_loading",
+      "value": "加载中…"
+    },
+    {
+      "name": "common_retry",
+      "value": "重试"
+    },
+    {
+      "name": "common_save",
+      "value": "保存"
+    },
+    {
+      "name": "decrypt_clear_action",
+      "value": "清除解密配置"
+    },
+    {
+      "name": "decrypt_confirm_change",
+      "value": "确认更换"
+    },
+    {
+      "name": "decrypt_confirm_change_message",
+      "value": "请先备份当前 Key，并同步更新发送端。保存后，使用旧 Key 或旧算法加密的历史通知可能无法继续解密。"
+    },
+    {
+      "name": "decrypt_confirm_change_title",
+      "value": "确认更换解密配置"
+    },
+    {
+      "name": "decrypt_confirm_clear",
+      "value": "确认清除"
+    },
+    {
+      "name": "decrypt_confirm_clear_message",
+      "value": "清除后 Key 将无法恢复，使用该 Key 加密的历史通知可能无法继续解密。请先备份 Key。"
+    },
+    {
+      "name": "decrypt_confirm_clear_title",
+      "value": "清除解密配置"
+    },
+    {
+      "name": "decrypt_e2e_hint",
+      "value": "Key 仅保存在本机，服务器不会解密"
+    },
+    {
+      "name": "decrypt_e2e_title",
+      "value": "端到端解密"
+    },
+    {
+      "name": "decrypt_iv_note",
+      "value": "IV 不在此保存：CBC 由发送端携带 16 字节 IV，GCM 携带 12 字节 IV；ECB 无 IV。"
+    },
+    {
+      "name": "decrypt_key_placeholder",
+      "value": "请输入 %d 字节 Key"
+    },
+    {
+      "name": "decrypt_label_algorithm",
+      "value": "算法"
+    },
+    {
+      "name": "decrypt_label_key",
+      "value": "Key"
+    },
+    {
+      "name": "decrypt_label_mode",
+      "value": "模式"
+    },
+    {
+      "name": "decrypt_label_padding",
+      "value": "Padding（由模式自动决定）"
+    },
+    {
+      "name": "decrypt_title",
+      "value": "解密设置"
+    },
+    {
+      "name": "decrypt_toast_clear_failed",
+      "value": "清除失败"
+    },
+    {
+      "name": "decrypt_toast_generate_failed",
+      "value": "生成 Key 失败"
+    },
+    {
+      "name": "decrypt_toast_not_loaded",
+      "value": "解密配置尚未读取完成"
+    },
+    {
+      "name": "decrypt_toast_save_failed",
+      "value": "保存失败"
+    },
+    {
+      "name": "decrysrv_default_body",
+      "value": "收到一条加密通知"
+    },
+    {
+      "name": "decrysrv_default_title",
+      "value": "[订阅] 通知"
+    },
+    {
+      "name": "devreg_missing_device_id",
+      "value": "设备注册响应缺少设备标识，请重试"
+    },
+    {
+      "name": "devreg_push_token_failed",
+      "value": "获取推送标识失败，请重试"
+    },
+    {
+      "name": "devreg_push_token_timeout",
+      "value": "获取推送标识超时，请重试"
+    },
+    {
+      "name": "devreg_register_failed",
+      "value": "设备注册失败，请重试"
+    },
+    {
+      "name": "devreg_register_http_failed",
+      "value": "设备注册失败（HTTP %d），请重试"
+    },
+    {
+      "name": "devreg_register_incomplete",
+      "value": "设备注册未完成，请重试"
+    },
+    {
+      "name": "devreg_save_info_failed",
+      "value": "设备注册信息保存失败，请重试"
+    },
+    {
+      "name": "devreg_verify_failed",
+      "value": "设备注册校验失败，请重试"
+    },
+    {
+      "name": "devreg_verify_http_failed",
+      "value": "设备注册校验失败（HTTP %d），请重试"
+    },
+    {
+      "name": "docpage_copied",
+      "value": "已复制"
+    },
+    {
+      "name": "docpage_copy_failed",
+      "value": "复制失败"
+    },
+    {
+      "name": "docpage_default_title",
+      "value": "文档"
+    },
+    {
+      "name": "docpage_link_unsupported",
+      "value": "此链接未内置或暂不支持"
+    },
+    {
+      "name": "docpage_load_failed",
+      "value": "无法读取内置文档"
+    },
+    {
+      "name": "docpage_opening",
+      "value": "正在打开文档"
+    },
+    {
+      "name": "docpage_read_failed_retry",
+      "value": "无法读取文档，请重试"
+    },
+    {
+      "name": "docpage_section_missing",
+      "value": "未找到对应章节"
+    },
+    {
+      "name": "docpage_section_missing_opened",
+      "value": "未找到对应章节，已打开文档"
+    },
+    {
+      "name": "docpage_webpage",
+      "value": "网页"
+    },
+    {
+      "name": "encconf_key_bytes",
+      "value": "Key 必须为 %d 个 UTF-8 字节"
+    },
+    {
+      "name": "encconf_padding",
+      "value": "%s 必须使用 %s"
+    },
+    {
+      "name": "encconf_unsupported_algorithm",
+      "value": "不支持的 AES 算法"
+    },
+    {
+      "name": "encconf_unsupported_mode",
+      "value": "不支持的加密模式"
+    },
+    {
+      "name": "ext_decrypt_failed_text",
+      "value": "无法解密，请打开应用检查加密设置"
+    },
+    {
+      "name": "ext_encryption_title",
+      "value": "加密通知"
+    },
+    {
+      "name": "extlink_open_failed",
+      "value": "无法打开页面"
+    },
+    {
+      "name": "feedback_email_copied",
+      "value": "已复制邮箱：%s"
+    },
+    {
+      "name": "feedback_email_send_to",
+      "value": "请发送邮件至：%s"
+    },
+    {
+      "name": "feedback_mail_app_version",
+      "value": "应用版本：%s\n"
+    },
+    {
+      "name": "feedback_mail_device_info_header",
+      "value": "---------------- 设备信息 ----------------\n"
+    },
+    {
+      "name": "feedback_mail_device_model",
+      "value": "设备型号：%s\n"
+    },
+    {
+      "name": "feedback_mail_intro",
+      "value": "请在此描述你遇到的问题或建议：\n\n"
+    },
+    {
+      "name": "feedback_mail_os_version",
+      "value": "系统版本：%s\n"
+    },
+    {
+      "name": "feedback_mail_subject",
+      "value": "TimelyNotify 反馈 - %s"
+    },
+    {
+      "name": "feedback_mail_time",
+      "value": "反馈时间：%s\n"
+    },
+    {
+      "name": "footer_load_failed_retry",
+      "value": "加载失败，点击重试"
+    },
+    {
+      "name": "footer_load_more",
+      "value": "加载更多"
+    },
+    {
+      "name": "footer_loading",
+      "value": "加载中..."
+    },
+    {
+      "name": "footer_no_more",
+      "value": "没有更多了"
+    },
+    {
+      "name": "holdcard_accessibility_off",
+      "value": "智感握姿已关闭，按钮固定右侧"
+    },
+    {
+      "name": "holdcard_accessibility_on",
+      "value": "智感握姿效果预览，按钮随握姿左右切换"
+    },
+    {
+      "name": "holdcard_desc_off",
+      "value": "按钮固定在右侧，不随握姿切换。"
+    },
+    {
+      "name": "holdcard_desc_on",
+      "value": "按钮随握姿左右切换，单手操作更顺手。"
+    },
+    {
+      "name": "holdcard_fixed_right",
+      "value": "固定右侧"
+    },
+    {
+      "name": "holdcard_left_hand",
+      "value": "左手握持"
+    },
+    {
+      "name": "holdcard_preview_title",
+      "value": "全部通知"
+    },
+    {
+      "name": "holdcard_right_hand",
+      "value": "右手握持"
+    },
+    {
+      "name": "holdcard_title",
+      "value": "智感握姿"
+    },
+    {
+      "name": "holdcard_toast_save_failed",
+      "value": "保存失败，设置未生效"
+    },
+    {
+      "name": "http_connect_establish_failed",
+      "value": "无法建立服务器连接，请稍后重试"
+    },
+    {
+      "name": "http_connect_failed",
+      "value": "无法连接到服务器，请稍后重试"
+    },
+    {
+      "name": "http_dns_failed",
+      "value": "服务器域名解析失败，请稍后重试"
+    },
+    {
+      "name": "http_error_code_suffix",
+      "value": "（错误码 %d）"
+    },
+    {
+      "name": "http_http2_error",
+      "value": "服务器 HTTP/2 连接异常，请重试"
+    },
+    {
+      "name": "http_secure_check_failed",
+      "value": "服务器安全连接校验失败，请检查证书与设备时间"
+    },
+    {
+      "name": "http_timeout",
+      "value": "服务器请求超时，请重试"
+    },
+    {
+      "name": "lang_en_us",
+      "value": "English"
+    },
+    {
+      "name": "lang_follow_system",
+      "value": "跟随系统"
+    },
+    {
+      "name": "lang_setting_title",
+      "value": "语言"
+    },
+    {
+      "name": "lang_switch_hint",
+      "value": "切换语言后需重启应用生效"
+    },
+    {
+      "name": "lang_zh_hans",
+      "value": "简体中文"
+    },
+    {
+      "name": "mine_about_already_latest",
+      "value": "已是最新版本"
+    },
+    {
+      "name": "mine_about_check_update",
+      "value": "检测更新"
+    },
+    {
+      "name": "mine_about_check_update_failed",
+      "value": "检测更新失败，请稍后重试"
+    },
+    {
+      "name": "mine_about_ctx_failed",
+      "value": "上下文获取失败"
+    },
+    {
+      "name": "mine_about_feedback",
+      "value": "反馈问题"
+    },
+    {
+      "name": "mine_about_go_update",
+      "value": "前往应用市场更新"
+    },
+    {
+      "name": "mine_about_new_version_msg",
+      "value": "检测到新版本，是否前往应用市场更新？"
+    },
+    {
+      "name": "mine_about_new_version_title",
+      "value": "发现新版本"
+    },
+    {
+      "name": "mine_about_open_market_failed",
+      "value": "无法打开应用市场"
+    },
+    {
+      "name": "mine_about_open_source_failed",
+      "value": "无法打开开源代码页面"
+    },
+    {
+      "name": "mine_about_privacy",
+      "value": "隐私协议"
+    },
+    {
+      "name": "mine_about_section_title",
+      "value": "关于"
+    },
+    {
+      "name": "mine_about_show_dialog_failed",
+      "value": "无法显示更新提示"
+    },
+    {
+      "name": "mine_about_source_code",
+      "value": "开源代码"
+    },
+    {
+      "name": "mine_about_update_later",
+      "value": "暂不更新"
+    },
+    {
+      "name": "mine_appear_disable_msg",
+      "value": "关闭后界面将回退为毛玻璃效果。设置需重启应用后生效，是否立即重启？"
+    },
+    {
+      "name": "mine_appear_disable_title",
+      "value": "关闭沉浸光感"
+    },
+    {
+      "name": "mine_appear_disabled",
+      "value": "已关闭"
+    },
+    {
+      "name": "mine_appear_enable_msg",
+      "value": "开启后界面将呈现沉浸光感材质。设置需重启应用后生效，是否立即重启？"
+    },
+    {
+      "name": "mine_appear_enable_title",
+      "value": "开启沉浸光感"
+    },
+    {
+      "name": "mine_appear_enabled",
+      "value": "已开启"
+    },
+    {
+      "name": "mine_appear_immersive",
+      "value": "沉浸光感"
+    },
+    {
+      "name": "mine_appear_restart_now",
+      "value": "立即重启"
+    },
+    {
+      "name": "mine_appear_save_failed",
+      "value": "保存失败，设置未生效"
+    },
+    {
+      "name": "mine_appinfo_auto_generated",
+      "value": " (自动生成)"
+    },
+    {
+      "name": "mine_appinfo_build_info",
+      "value": "构建信息"
+    },
+    {
+      "name": "mine_appinfo_copy_failed",
+      "value": "复制失败"
+    },
+    {
+      "name": "mine_appinfo_local_build",
+      "value": "本地构建，无云端构建记录"
+    },
+    {
+      "name": "mine_appinfo_not_fetched",
+      "value": "未获取"
+    },
+    {
+      "name": "mine_appinfo_open_build_failed",
+      "value": "无法打开构建记录页面"
+    },
+    {
+      "name": "mine_appinfo_push_token",
+      "value": "推送 Token"
+    },
+    {
+      "name": "mine_appinfo_section_title",
+      "value": "信息"
+    },
+    {
+      "name": "mine_appinfo_tap_to_copy",
+      "value": "点击复制"
+    },
+    {
+      "name": "mine_appinfo_token_copied",
+      "value": "已复制推送 Token"
+    },
+    {
+      "name": "mine_appinfo_token_masked",
+      "value": "%s (%d 位)"
+    },
+    {
+      "name": "mine_appinfo_token_masked_tail",
+      "value": "••••••••%s (%d 位)"
+    },
+    {
+      "name": "mine_appinfo_token_not_ready",
+      "value": "推送 Token 尚未获取"
+    },
+    {
+      "name": "mine_donate_agree_prefix",
+      "value": "我已阅读并同意"
+    },
+    {
+      "name": "mine_donate_agreement_1",
+      "value": "一、服务说明：本协议适用于「及时通知」应用内提供的「持续支持」自动续期订阅商品。订阅为自愿行为，不订阅不影响应用基础功能的使用。"
+    },
+    {
+      "name": "mine_donate_agreement_2",
+      "value": "二、订阅周期与价格：订阅周期为 1 年，价格以应用内订阅页面及华为收银台展示为准。订阅成功后，华为将通过您选择的付款方式扣款。"
+    },
+    {
+      "name": "mine_donate_agreement_3",
+      "value": "三、自动续费：订阅到期前 24 小时内，华为将通过您绑定的付款方式自动扣取下一周期费用并延长服务期，具体扣款时间以华为应用内支付系统为准。"
+    },
+    {
+      "name": "mine_donate_agreement_4",
+      "value": "四、取消方式：您可随时取消自动续费，路径为「设置 → 华为账号 → 付款与账单 → 订阅 → 及时通知 → 取消订阅」。取消后不再自动续费，已支付的当前周期费用不予退还，权益持续至当前周期结束。"
+    },
+    {
+      "name": "mine_donate_agreement_5",
+      "value": "五、价格调整：若订阅价格发生调整，华为将在续费前通过应用内或消息方式告知；您不同意调整价格的，可在续费前取消订阅。"
+    },
+    {
+      "name": "mine_donate_agreement_6",
+      "value": "六、退款说明：订阅权益为即时交付的虚拟商品，原则上不支持退款。如因系统异常重复扣款或未获得相应权益，可通过应用内「反馈问题」联系我们，或通过华为应用内支付渠道申请售后。"
+    },
+    {
+      "name": "mine_donate_agreement_7",
+      "value": "七、权益范围：「持续支持」属于对作者的自愿捐赠性支持，不承诺提供额外的付费功能或内容，订阅期内也不影响应用已有功能的免费使用。"
+    },
+    {
+      "name": "mine_donate_agreement_8",
+      "value": "八、协议变更与联系：本协议内容可能随服务调整而更新，更新后将在应用内公布。如有疑问，可通过应用内「反馈问题」与我们联系。"
+    },
+    {
+      "name": "mine_donate_agreement_link",
+      "value": "《自动续费服务协议》"
+    },
+    {
+      "name": "mine_donate_agreement_title",
+      "value": "自动续费服务协议"
+    },
+    {
+      "name": "mine_donate_cancel_note",
+      "value": "取消后不再自动续费，当前订阅周期内权益仍然有效。"
+    },
+    {
+      "name": "mine_donate_cancel_path",
+      "value": "设置 → 华为账号 → 付款与账单 → 订阅 → 及时通知 → 取消订阅"
+    },
+    {
+      "name": "mine_donate_cancel_title",
+      "value": "如何取消自动续费"
+    },
+    {
+      "name": "mine_donate_confirm_one_time",
+      "value": "确认捐赠 ￥6.00"
+    },
+    {
+      "name": "mine_donate_confirm_subscription",
+      "value": "确认订阅 ￥6.00 / 年"
+    },
+    {
+      "name": "mine_donate_ctx_failed",
+      "value": "上下文获取失败"
+    },
+    {
+      "name": "mine_donate_cycle",
+      "value": "订阅周期"
+    },
+    {
+      "name": "mine_donate_cycle_value",
+      "value": "1 年，到期前 24 小时自动续费"
+    },
+    {
+      "name": "mine_donate_failed",
+      "value": "捐赠失败，请稍后重试"
+    },
+    {
+      "name": "mine_donate_hint",
+      "value": "不捐赠不影响使用"
+    },
+    {
+      "name": "mine_donate_login_required",
+      "value": "请先登录华为账号"
+    },
+    {
+      "name": "mine_donate_one_time",
+      "value": "一次性捐赠"
+    },
+    {
+      "name": "mine_donate_one_time_confirm_note",
+      "value": "我了解该捐赠为一次性消耗型虚拟商品，付款后不可退款"
+    },
+    {
+      "name": "mine_donate_one_time_desc",
+      "value": "自愿捐赠，不影响应用免费功能使用。"
+    },
+    {
+      "name": "mine_donate_one_time_footnote",
+      "value": "捐赠由华为应用内支付提供"
+    },
+    {
+      "name": "mine_donate_paying",
+      "value": "正在拉起支付…"
+    },
+    {
+      "name": "mine_donate_payment_amount",
+      "value": "付款金额"
+    },
+    {
+      "name": "mine_donate_payment_amount_value",
+      "value": "￥6.00 / 年"
+    },
+    {
+      "name": "mine_donate_price_year",
+      "value": "￥6/年"
+    },
+    {
+      "name": "mine_donate_region_unsupported",
+      "value": "当前地区不支持捐赠"
+    },
+    {
+      "name": "mine_donate_service_content",
+      "value": "服务内容"
+    },
+    {
+      "name": "mine_donate_service_content_value",
+      "value": "支持作者持续维护应用"
+    },
+    {
+      "name": "mine_donate_subscription_desc",
+      "value": "自愿订阅，不影响应用免费功能使用。"
+    },
+    {
+      "name": "mine_donate_subscription_footnote",
+      "value": "订阅由华为应用内支付提供，可在华为账号中随时管理"
+    },
+    {
+      "name": "mine_donate_subscription_title",
+      "value": "持续支持"
+    },
+    {
+      "name": "mine_donate_thanks",
+      "value": "感谢你的支持！"
+    },
+    {
+      "name": "mine_donate_title",
+      "value": "捐赠"
+    },
+    {
+      "name": "mine_footer_open_icp_failed",
+      "value": "无法打开备案网站"
+    },
+    {
+      "name": "mine_footer_version",
+      "value": "版本 %s (%d)"
+    },
+    {
+      "name": "mine_footer_version_copied",
+      "value": "已复制版本：%s"
+    },
+    {
+      "name": "mine_notifyset_accept",
+      "value": "接受推送"
+    },
+    {
+      "name": "mine_notifyset_ctx_failed",
+      "value": "上下文获取失败"
+    },
+    {
+      "name": "mine_notifyset_disabled",
+      "value": "已关闭"
+    },
+    {
+      "name": "mine_notifyset_enable_title",
+      "value": "开启应用订阅通知"
+    },
+    {
+      "name": "mine_notifyset_enabled",
+      "value": "已开启"
+    },
+    {
+      "name": "mine_notifyset_export_desc",
+      "value": "导出本地保存的全部未过期通知"
+    },
+    {
+      "name": "mine_notifyset_export_failed",
+      "value": "导出失败"
+    },
+    {
+      "name": "mine_notifyset_export_title",
+      "value": "导出通知"
+    },
+    {
+      "name": "mine_notifyset_exported",
+      "value": "已导出 %d 条通知"
+    },
+    {
+      "name": "mine_notifyset_exporting",
+      "value": "正在导出…"
+    },
+    {
+      "name": "mine_notifyset_keep",
+      "value": "保持推送"
+    },
+    {
+      "name": "mine_notifyset_open_personal_failed",
+      "value": "无法打开个性化设置"
+    },
+    {
+      "name": "mine_notifyset_personalization",
+      "value": "个性化设置"
+    },
+    {
+      "name": "mine_notifyset_personalization_desc",
+      "value": "调整外观与通知偏好"
+    },
+    {
+      "name": "mine_notifyset_reject",
+      "value": "残忍拒绝"
+    },
+    {
+      "name": "mine_notifyset_stop",
+      "value": "取消推送"
+    },
+    {
+      "name": "mine_notifyset_sub_off",
+      "value": "关闭订阅"
+    },
+    {
+      "name": "mine_notifyset_sub_off_msg",
+      "value": "是否要取消此订阅的通知栏推送？"
+    },
+    {
+      "name": "mine_notifyset_sub_on",
+      "value": "开启订阅"
+    },
+    {
+      "name": "mine_notifyset_sub_on_msg",
+      "value": "是否要接收此订阅的通知栏推送？"
+    },
+    {
+      "name": "mineview_context_failed",
+      "value": "上下文获取失败"
+    },
+    {
+      "name": "mineview_open_settings_failed",
+      "value": "无法打开通知设置"
+    },
+    {
+      "name": "mineview_permission_disabled",
+      "value": "系统通知权限未开启"
+    },
+    {
+      "name": "mineview_permission_disabled_desc",
+      "value": "现在收到通知不会提醒，点击去开启“允许通知”"
+    },
+    {
+      "name": "mineview_permission_enabled",
+      "value": "系统通知权限已开启"
+    },
+    {
+      "name": "mineview_permission_enabled_desc",
+      "value": "现在可以正常接收推送通知，点击可调整提醒方式"
+    },
+    {
+      "name": "mineview_permission_error",
+      "value": "通知权限状态获取失败"
+    },
+    {
+      "name": "mineview_permission_error_desc",
+      "value": "点击卡片查看通知设置"
+    },
+    {
+      "name": "mineview_permission_loading",
+      "value": "正在获取通知权限状态"
+    },
+    {
+      "name": "mineview_permission_loading_desc",
+      "value": "请稍候…"
+    },
+    {
+      "name": "mineview_title",
+      "value": "我的"
+    },
+    {
+      "name": "nexport_failed",
+      "value": "导出失败"
+    },
+    {
+      "name": "nexport_none",
+      "value": "暂无可导出的通知"
+    },
+    {
+      "name": "nexport_read_failed",
+      "value": "读取本地通知失败"
+    },
+    {
+      "name": "nexport_txt_file_type",
+      "value": "文档|.txt"
+    },
+    {
+      "name": "nfetch_clear_failed",
+      "value": "清空失败：%s"
+    },
+    {
+      "name": "nfetch_clear_http_error",
+      "value": "清空失败（HTTP %d）"
+    },
+    {
+      "name": "nfetch_connect_failed",
+      "value": "连接失败"
+    },
+    {
+      "name": "nfetch_delete_failed",
+      "value": "删除失败：%s"
+    },
+    {
+      "name": "nfetch_delete_http_error",
+      "value": "删除失败（HTTP %d）"
+    },
+    {
+      "name": "nfetch_device_missing",
+      "value": "设备不存在"
+    },
+    {
+      "name": "nfetch_device_not_registered",
+      "value": "设备未注册"
+    },
+    {
+      "name": "nfetch_dns_failed",
+      "value": "域名解析失败"
+    },
+    {
+      "name": "nfetch_empty_response",
+      "value": "响应为空"
+    },
+    {
+      "name": "nfetch_http_error",
+      "value": "请求失败（HTTP %d）"
+    },
+    {
+      "name": "nfetch_invalid_message_id",
+      "value": "通知 ID 无效"
+    },
+    {
+      "name": "nfetch_key_not_found",
+      "value": "设备 Key 不存在"
+    },
+    {
+      "name": "nfetch_key_unregistered",
+      "value": "设备 Key 未注册"
+    },
+    {
+      "name": "nfetch_push_failed",
+      "value": "推送失败：%s"
+    },
+    {
+      "name": "nfetch_push_http_error",
+      "value": "推送失败（HTTP %d）"
+    },
+    {
+      "name": "nfetch_push_not_ready",
+      "value": "推送标识未就绪"
+    },
+    {
+      "name": "nfetch_register_failed",
+      "value": "设备注册失败"
+    },
+    {
+      "name": "nfetch_secure_failed",
+      "value": "安全连接失败"
+    },
+    {
+      "name": "nfetch_timeout",
+      "value": "连接超时"
+    },
+    {
+      "name": "nfetch_token_error",
+      "value": "客户端 Token 错误"
+    },
+    {
+      "name": "nfetch_token_invalid",
+      "value": "客户端 Token 无效"
+    },
+    {
+      "name": "nfetch_token_invalid_hint",
+      "value": "客户端 Token 无效或已过期，请到服务器设置中重新配置"
+    },
+    {
+      "name": "nfetch_token_pending",
+      "value": "客户端 Token 待配置"
+    },
+    {
+      "name": "nfetch_token_unset",
+      "value": "未配置客户端 Token"
+    },
+    {
+      "name": "nfetch_token_unset_hint",
+      "value": "未配置客户端 Token，请到服务器设置中配置"
+    },
+    {
+      "name": "nmsg_decryption_failed_body",
+      "value": "解密失败，请检查算法、模式、Padding 和 Key"
+    },
+    {
+      "name": "nmsg_encryption_title",
+      "value": "加密通知"
+    },
+    {
+      "name": "nmsg_missing_key_body",
+      "value": "此服务器尚未配置加密密钥"
+    },
+    {
+      "name": "notify_cannot_locate",
+      "value": "无法定位这条通知"
+    },
+    {
+      "name": "notify_cannot_open_link",
+      "value": "无法打开链接"
+    },
+    {
+      "name": "notify_cannot_open_notice",
+      "value": "无法打开这条通知"
+    },
+    {
+      "name": "notify_cannot_switch_source",
+      "value": "无法切换到通知来源服务"
+    },
+    {
+      "name": "notify_clear_all_message",
+      "value": "将删除所有服务器的通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。"
+    },
+    {
+      "name": "notify_clear_all_title",
+      "value": "清空全部通知"
+    },
+    {
+      "name": "notify_clear_current_message",
+      "value": "将删除当前服务器的全部通知，包括未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。"
+    },
+    {
+      "name": "notify_clear_failed",
+      "value": "清除失败"
+    },
+    {
+      "name": "notify_context_failed",
+      "value": "上下文获取失败"
+    },
+    {
+      "name": "notify_copied_addr_key",
+      "value": "已复制地址和 Key"
+    },
+    {
+      "name": "notify_copy_failed",
+      "value": "复制失败"
+    },
+    {
+      "name": "notify_copy_label_all",
+      "value": "全文"
+    },
+    {
+      "name": "notify_decryption_cleared",
+      "value": "解密设置已清除"
+    },
+    {
+      "name": "notify_decryption_saved",
+      "value": "解密设置已保存"
+    },
+    {
+      "name": "notify_delete_all_button",
+      "value": "全部删除"
+    },
+    {
+      "name": "notify_delete_body",
+      "value": "删除后无法恢复。"
+    },
+    {
+      "name": "notify_delete_decryption_failed_title",
+      "value": "删除解密失败的通知"
+    },
+    {
+      "name": "notify_delete_failed",
+      "value": "删除失败"
+    },
+    {
+      "name": "notify_delete_failed_body",
+      "value": "删除后无法恢复；如果删除失败，此通知会保留以便重试。"
+    },
+    {
+      "name": "notify_delete_failed_retry",
+      "value": "删除失败，请稍后重试"
+    },
+    {
+      "name": "notify_delete_group_message",
+      "value": "将删除该分组的全部 %d 条通知，包括尚未加载的历史通知。删除后无法恢复；删除失败的通知会保留以便重试。"
+    },
+    {
+      "name": "notify_delete_group_title",
+      "value": "删除整个分组"
+    },
+    {
+      "name": "notify_delete_one_title",
+      "value": "删除通知"
+    },
+    {
+      "name": "notify_delete_selected_message",
+      "value": "将删除选中的 %d 条通知。删除后无法恢复；删除失败的通知会保留以便重试。"
+    },
+    {
+      "name": "notify_delete_selected_title",
+      "value": "删除选中通知"
+    },
+    {
+      "name": "notify_delete_server_message",
+      "value": "确定删除「%s」吗？"
+    },
+    {
+      "name": "notify_delete_server_title",
+      "value": "删除服务器"
+    },
+    {
+      "name": "notify_delete_title_quote",
+      "value": "\n\n「%s」"
+    },
+    {
+      "name": "notify_deleted",
+      "value": "已删除"
+    },
+    {
+      "name": "notify_deleted_count",
+      "value": "已删除 %d 条"
+    },
+    {
+      "name": "notify_deleted_partial",
+      "value": "已删除 %d 条，%d 条删除失败，已保留待重试"
+    },
+    {
+      "name": "notify_deleting_count",
+      "value": "正在删除 %d 条通知…"
+    },
+    {
+      "name": "notify_detail_title",
+      "value": "通知详情"
+    },
+    {
+      "name": "notify_device_unregistered",
+      "value": "设备未注册，无法导出"
+    },
+    {
+      "name": "notify_dialog_open_failed",
+      "value": "弹窗无法打开"
+    },
+    {
+      "name": "notify_expired_or_deleted",
+      "value": "通知已过期或已删除"
+    },
+    {
+      "name": "notify_expired_or_unavailable",
+      "value": "通知已过期、未归档或来源服务不可用"
+    },
+    {
+      "name": "notify_export_failed",
+      "value": "导出失败"
+    },
+    {
+      "name": "notify_exported_count",
+      "value": "已导出 %d 条通知"
+    },
+    {
+      "name": "notify_init_failed",
+      "value": "通知初始化失败，请重试"
+    },
+    {
+      "name": "notify_keep_one_server",
+      "value": "至少保留一个服务器"
+    },
+    {
+      "name": "notify_key_missing",
+      "value": "未获取到 Key"
+    },
+    {
+      "name": "notify_key_reset",
+      "value": "已重置 Key"
+    },
+    {
+      "name": "notify_key_restored",
+      "value": "已还原 Key"
+    },
+    {
+      "name": "notify_label_copied",
+      "value": "%s已复制"
+    },
+    {
+      "name": "notify_link_copied",
+      "value": "链接已复制"
+    },
+    {
+      "name": "notify_load_failed",
+      "value": "加载失败"
+    },
+    {
+      "name": "notify_load_failed_retry",
+      "value": "加载失败，请重试"
+    },
+    {
+      "name": "notify_multi_select",
+      "value": "多选"
+    },
+    {
+      "name": "notify_no_selectable",
+      "value": "暂无可多选的通知"
+    },
+    {
+      "name": "notify_not_archived",
+      "value": "通知未归档或已过期，无法打开详情"
+    },
+    {
+      "name": "notify_nothing_to_delete",
+      "value": "暂无可删除的通知"
+    },
+    {
+      "name": "notify_operation_failed",
+      "value": "操作失败"
+    },
+    {
+      "name": "notify_rename_failed",
+      "value": "重命名失败"
+    },
+    {
+      "name": "notify_renamed",
+      "value": "已重命名"
+    },
+    {
+      "name": "notify_save_failed",
+      "value": "保存失败"
+    },
+    {
+      "name": "notify_search_empty",
+      "value": "没有找到相关通知"
+    },
+    {
+      "name": "notify_search_failed",
+      "value": "搜索失败，请重试"
+    },
+    {
+      "name": "notify_search_hint",
+      "value": "搜索通知"
+    },
+    {
+      "name": "notify_searching",
+      "value": "正在搜索…"
+    },
+    {
+      "name": "notify_select_delete_first",
+      "value": "请先选择要删除的通知"
+    },
+    {
+      "name": "notify_select_export_first",
+      "value": "请先选择要导出的通知"
+    },
+    {
+      "name": "notify_server_error_banner",
+      "value": "%s：%s；点击修改服务器配置"
+    },
+    {
+      "name": "notify_server_error_compact",
+      "value": "服务异常 · 点击修复"
+    },
+    {
+      "name": "notify_server_info_missing",
+      "value": "服务器信息缺失"
+    },
+    {
+      "name": "notify_title_all",
+      "value": "全部通知"
+    },
+    {
+      "name": "nsync_cursor_stuck",
+      "value": "服务器分页游标未推进，稍后可重试"
+    },
+    {
+      "name": "nsync_del_progress_save_failed",
+      "value": "删除同步进度保存失败；稍后会重试"
+    },
+    {
+      "name": "nsync_feedback_done",
+      "value": "本轮已处理 %d 条"
+    },
+    {
+      "name": "nsync_feedback_partial",
+      "value": "已处理 %d 条，部分待重试"
+    },
+    {
+      "name": "nsync_history_save_failed",
+      "value": "无法保存服务器历史身份"
+    },
+    {
+      "name": "nsync_instance_changed",
+      "value": "服务器历史实例在同步中变化"
+    },
+    {
+      "name": "nsync_local_save_failed",
+      "value": "本地保存失败；远端通知已保留，稍后可重试"
+    },
+    {
+      "name": "nsync_pending_encrypted",
+      "value": "有加密通知尚未解密或发布；请检查加密 Key 与通知权限，远端密文已保留"
+    },
+    {
+      "name": "nsync_progress",
+      "value": "正在同步 · 已处理 %d 条"
+    },
+    {
+      "name": "nsync_progress_save_failed",
+      "value": "同步进度保存失败；远端未完成清理的通知会重试"
+    },
+    {
+      "name": "nsync_remote_delete_failed",
+      "value": "通知已保存到本地，但部分远端副本清理失败；稍后会重试"
+    },
+    {
+      "name": "nsync_sync_exception",
+      "value": "同步异常；未完成的通知会在下次进入前台时重试"
+    },
+    {
+      "name": "ntf_action_visit",
+      "value": "访问"
+    },
+    {
+      "name": "ntf_all_notifications",
+      "value": "全部通知"
+    },
+    {
+      "name": "ntf_all_notifications_desc",
+      "value": "聚合展示所有服务器的通知"
+    },
+    {
+      "name": "ntf_connecting",
+      "value": "正在连接服务器…"
+    },
+    {
+      "name": "ntf_connecting_desc",
+      "value": "连接完成后自动显示通知"
+    },
+    {
+      "name": "ntf_copy_all",
+      "value": "复制全文"
+    },
+    {
+      "name": "ntf_copy_copy_param",
+      "value": "复制 Copy 参数内容"
+    },
+    {
+      "name": "ntf_copy_link",
+      "value": "复制链接"
+    },
+    {
+      "name": "ntf_count_notifications",
+      "value": "%d 条通知"
+    },
+    {
+      "name": "ntf_delete_count",
+      "value": "删除(%d)"
+    },
+    {
+      "name": "ntf_delete_group",
+      "value": "删除分组"
+    },
+    {
+      "name": "ntf_deselect_all",
+      "value": "取消全选"
+    },
+    {
+      "name": "ntf_encrypted",
+      "value": "加密"
+    },
+    {
+      "name": "ntf_expand_group",
+      "value": "展开分组"
+    },
+    {
+      "name": "ntf_expired",
+      "value": "已过期"
+    },
+    {
+      "name": "ntf_expires_at",
+      "value": "%s 过期"
+    },
+    {
+      "name": "ntf_expires_in_hours",
+      "value": "约 %d 小时后过期"
+    },
+    {
+      "name": "ntf_expires_in_minutes",
+      "value": "约 %d 分钟后过期"
+    },
+    {
+      "name": "ntf_expiring_soon",
+      "value": "即将过期"
+    },
+    {
+      "name": "ntf_export_count",
+      "value": "导出(%d)"
+    },
+    {
+      "name": "ntf_exporting",
+      "value": "导出中…"
+    },
+    {
+      "name": "ntf_group_default",
+      "value": "默认"
+    },
+    {
+      "name": "ntf_group_preview_title",
+      "value": "%s · %d 条通知"
+    },
+    {
+      "name": "ntf_guide_title",
+      "value": "使用指南"
+    },
+    {
+      "name": "ntf_label_content",
+      "value": "内容"
+    },
+    {
+      "name": "ntf_label_full_text",
+      "value": "全文"
+    },
+    {
+      "name": "ntf_label_subtitle",
+      "value": "副标题"
+    },
+    {
+      "name": "ntf_label_title",
+      "value": "标题"
+    },
+    {
+      "name": "ntf_longpress_to_copy",
+      "value": "长按正文可选择复制"
+    },
+    {
+      "name": "ntf_multi_select",
+      "value": "多选"
+    },
+    {
+      "name": "ntf_no_client_token",
+      "value": "未配置客户端 Token"
+    },
+    {
+      "name": "ntf_no_client_token_desc",
+      "value": "同步历史通知需要客户端 Token 认证，请检查当前服务的配置"
+    },
+    {
+      "name": "ntf_no_notifications",
+      "value": "暂无通知"
+    },
+    {
+      "name": "ntf_open_link",
+      "value": "访问链接"
+    },
+    {
+      "name": "ntf_pull_to_retry",
+      "value": "下拉重试"
+    },
+    {
+      "name": "ntf_recognized_code",
+      "value": "识别到验证码"
+    },
+    {
+      "name": "ntf_recognized_link",
+      "value": "识别到链接"
+    },
+    {
+      "name": "ntf_restore_protection",
+      "value": "恢复保护 · %ds"
+    },
+    {
+      "name": "ntf_save_failed_retry",
+      "value": "保存失败，请重试"
+    },
+    {
+      "name": "ntf_select_all",
+      "value": "全选"
+    },
+    {
+      "name": "ntf_select_group",
+      "value": "多选分组"
+    },
+    {
+      "name": "ntf_selected_progress",
+      "value": "已选 %d / %d"
+    },
+    {
+      "name": "ntf_switch_service_title",
+      "value": "切换通知服务"
+    },
+    {
+      "name": "ntf_tap_to_copy",
+      "value": "点按标题或内容，可分别复制"
+    },
+    {
+      "name": "ntf_temp_show_view_only",
+      "value": "临时显示仅供查看"
+    },
+    {
+      "name": "ntf_temporary_reveal",
+      "value": "临时显示"
+    },
+    {
+      "name": "ntf_temporary_reveal_hint",
+      "value": "显示当前通知 30 秒。"
+    },
+    {
+      "name": "ntf_view_detail",
+      "value": "查看详情"
+    },
+    {
+      "name": "ntf_view_guide",
+      "value": "查看使用指南"
+    },
+    {
+      "name": "ntf_welcome_hint",
+      "value": "点击上方按钮后将不再显示此提示\n后续可点击下方「服务」在文档中查看使用指南"
+    },
+    {
+      "name": "ntf_welcome_subtitle",
+      "value": "查看使用指南了解如何使用此应用"
+    },
+    {
+      "name": "ntf_welcome_title",
+      "value": "欢迎使用及时通知"
+    },
+    {
+      "name": "personal_click_url",
+      "value": "通知点击跳转链接"
+    },
+    {
+      "name": "personal_click_url_desc",
+      "value": "关闭后点击通知卡片仅打开通知详情"
+    },
+    {
+      "name": "personal_color_mode_dark",
+      "value": "深色模式"
+    },
+    {
+      "name": "personal_color_mode_light",
+      "value": "浅色模式"
+    },
+    {
+      "name": "personal_color_mode_system",
+      "value": "跟随系统"
+    },
+    {
+      "name": "personal_encrypted_resend",
+      "value": "加密通知重发"
+    },
+    {
+      "name": "personal_group_appearance",
+      "value": "外观"
+    },
+    {
+      "name": "personal_group_hmos",
+      "value": "鸿蒙特性"
+    },
+    {
+      "name": "personal_group_notification",
+      "value": "通知行为"
+    },
+    {
+      "name": "personal_resend_disable_message",
+      "value": "关闭后收到加密通知仅解密保存 不再重新发送解密通知（isArchive为0 的加密通知为避免信息丢失仍会重新通知）"
+    },
+    {
+      "name": "personal_resend_disable_title",
+      "value": "关闭加密通知重发"
+    },
+    {
+      "name": "personal_resend_enable_message",
+      "value": "开启后收到加密通知 打开 APP 将解密并重新发送一条解密后的通知"
+    },
+    {
+      "name": "personal_resend_enable_title",
+      "value": "开启加密通知重发"
+    },
+    {
+      "name": "personal_save_failed",
+      "value": "保存失败，设置未生效"
+    },
+    {
+      "name": "personal_theme_mode",
+      "value": "主题模式"
+    },
+    {
+      "name": "personal_title",
+      "value": "个性化设置"
+    },
+    {
+      "name": "samplecode_copy_key",
+      "value": "复制 Key"
+    },
+    {
+      "name": "samplecode_menu_copy_address",
+      "value": "复制地址"
+    },
+    {
+      "name": "samplecode_menu_copy_address_key",
+      "value": "复制地址和 Key"
+    },
+    {
+      "name": "samplecode_menu_no_server",
+      "value": "暂无服务器"
+    },
+    {
+      "name": "samplecode_send",
+      "value": "发送通知"
+    },
+    {
+      "name": "samplecode_sending",
+      "value": "发送中…"
+    },
+    {
+      "name": "samplecode_switch_service",
+      "value": "切换服务"
+    },
+    {
+      "name": "samplecode_title",
+      "value": "推送测试"
+    },
+    {
+      "name": "samplecode_toast_address_copied",
+      "value": "已复制地址"
+    },
+    {
+      "name": "samplecode_toast_address_key_copied",
+      "value": "已复制地址和 Key"
+    },
+    {
+      "name": "samplecode_toast_code_copied",
+      "value": "代码已复制"
+    },
+    {
+      "name": "samplecode_toast_copy_failed",
+      "value": "复制失败"
+    },
+    {
+      "name": "samplecode_toast_key_copied",
+      "value": "已复制 Key"
+    },
+    {
+      "name": "samplecode_toast_no_key",
+      "value": "未获取到设备 Key"
+    },
+    {
+      "name": "samplecode_toast_no_server",
+      "value": "暂无可用服务器"
+    },
+    {
+      "name": "samplecode_toast_send_failed",
+      "value": "发送失败，请稍后重试"
+    },
+    {
+      "name": "samplecode_toast_test_sent",
+      "value": "测试通知已发送，请查看通知栏"
+    },
+    {
+      "name": "server_docs",
+      "value": "文档"
+    },
+    {
+      "name": "server_faq",
+      "value": "常见问答"
+    },
+    {
+      "name": "server_push_fields",
+      "value": "推送参数"
+    },
+    {
+      "name": "server_title",
+      "value": "服务"
+    },
+    {
+      "name": "server_usage_guide",
+      "value": "使用指南"
+    },
+    {
+      "name": "sharepage_default_title",
+      "value": "开源代码"
+    },
+    {
+      "name": "srvact_action_client_token",
+      "value": "设置客户端 Token"
+    },
+    {
+      "name": "srvact_action_copy",
+      "value": "复制地址和 Key"
+    },
+    {
+      "name": "srvact_action_decryption",
+      "value": "解密设置"
+    },
+    {
+      "name": "srvact_action_delete",
+      "value": "删除服务器"
+    },
+    {
+      "name": "srvact_action_rename",
+      "value": "设置服务器名称"
+    },
+    {
+      "name": "srvact_action_reset_key",
+      "value": "重置或还原 Key"
+    },
+    {
+      "name": "srvact_key_confirm_reset",
+      "value": "确认重置"
+    },
+    {
+      "name": "srvact_key_confirm_reset_message",
+      "value": "留空将为此服务器生成新的 Key。请确认已备份当前 Key。"
+    },
+    {
+      "name": "srvact_key_confirm_reset_title",
+      "value": "确认重置 Key"
+    },
+    {
+      "name": "srvact_key_current",
+      "value": "当前 Key：%s"
+    },
+    {
+      "name": "srvact_key_help",
+      "value": "输入框留空 = 重置（生成新 Key）；填入 Key = 还原"
+    },
+    {
+      "name": "srvact_key_placeholder",
+      "value": "可选：输入要还原的 device_key"
+    },
+    {
+      "name": "srvact_key_reset",
+      "value": "重置"
+    },
+    {
+      "name": "srvact_key_restore",
+      "value": "还原"
+    },
+    {
+      "name": "srvact_key_unregistered",
+      "value": "（未注册）"
+    },
+    {
+      "name": "srvact_menu_title",
+      "value": "服务器操作"
+    },
+    {
+      "name": "srvact_rename_hint",
+      "value": "服务器名称仅用于界面展示，不设置/留空将显示服务器的域名（%s）"
+    },
+    {
+      "name": "srvact_rename_placeholder",
+      "value": "输入新名称（留空则清除名称）"
+    },
+    {
+      "name": "srvact_rename_title",
+      "value": "设置服务器名称"
+    },
+    {
+      "name": "srvadd_add",
+      "value": "添加"
+    },
+    {
+      "name": "srvadd_adding",
+      "value": "添加中..."
+    },
+    {
+      "name": "srvadd_hint_name",
+      "value": "输入服务器名称"
+    },
+    {
+      "name": "srvadd_hint_token",
+      "value": "留空使用内置默认 Token"
+    },
+    {
+      "name": "srvadd_hint_url",
+      "value": "http://host:port 或域名"
+    },
+    {
+      "name": "srvadd_label_name",
+      "value": "名称（可选）"
+    },
+    {
+      "name": "srvadd_label_token",
+      "value": "客户端 Token（可选）"
+    },
+    {
+      "name": "srvadd_label_url",
+      "value": "服务器地址"
+    },
+    {
+      "name": "srvadd_title",
+      "value": "添加服务器"
+    },
+    {
+      "name": "srvadd_toast_add_failed",
+      "value": "添加失败"
+    },
+    {
+      "name": "srvadd_toast_added",
+      "value": "已添加并切换"
+    },
+    {
+      "name": "srvadd_toast_input_url",
+      "value": "请输入服务器地址"
+    },
+    {
+      "name": "srvlist_action_client_token",
+      "value": "客户端 Token"
+    },
+    {
+      "name": "srvlist_action_copy_addr_key",
+      "value": "复制地址和 Key"
+    },
+    {
+      "name": "srvlist_action_decryption",
+      "value": "解密设置"
+    },
+    {
+      "name": "srvlist_action_delete",
+      "value": "删除服务器"
+    },
+    {
+      "name": "srvlist_action_rename",
+      "value": "重命名"
+    },
+    {
+      "name": "srvlist_action_reset_key",
+      "value": "重置 / 还原 Key"
+    },
+    {
+      "name": "srvlist_badge_key_unregistered",
+      "value": "设备 Key 未注册"
+    },
+    {
+      "name": "srvlist_delete_message",
+      "value": "确定删除该服务器吗？"
+    },
+    {
+      "name": "srvlist_deploy_docs",
+      "value": "部署文档"
+    },
+    {
+      "name": "srvlist_detail_title",
+      "value": "服务器详情"
+    },
+    {
+      "name": "srvlist_title",
+      "value": "服务器列表"
+    },
+    {
+      "name": "srvlist_toast_action_failed",
+      "value": "操作失败"
+    },
+    {
+      "name": "srvlist_toast_clear_failed",
+      "value": "清除失败"
+    },
+    {
+      "name": "srvlist_toast_copied",
+      "value": "已复制地址和 Key"
+    },
+    {
+      "name": "srvlist_toast_copy_failed",
+      "value": "复制失败"
+    },
+    {
+      "name": "srvlist_toast_decrypt_cleared",
+      "value": "解密设置已清除"
+    },
+    {
+      "name": "srvlist_toast_decrypt_saved",
+      "value": "解密设置已保存"
+    },
+    {
+      "name": "srvlist_toast_delete_failed",
+      "value": "删除失败"
+    },
+    {
+      "name": "srvlist_toast_deleted",
+      "value": "已删除"
+    },
+    {
+      "name": "srvlist_toast_dialog_failed",
+      "value": "弹窗无法打开"
+    },
+    {
+      "name": "srvlist_toast_keep_one",
+      "value": "至少保留一个服务器"
+    },
+    {
+      "name": "srvlist_toast_key_reset",
+      "value": "已重置 Key"
+    },
+    {
+      "name": "srvlist_toast_key_restored",
+      "value": "已还原 Key"
+    },
+    {
+      "name": "srvlist_toast_no_key",
+      "value": "未获取到 Key"
+    },
+    {
+      "name": "srvlist_toast_rename_failed",
+      "value": "重命名失败"
+    },
+    {
+      "name": "srvlist_toast_renamed",
+      "value": "已重命名"
+    },
+    {
+      "name": "srvlist_toast_save_failed",
+      "value": "保存失败"
+    },
+    {
+      "name": "srvlist_toast_server_missing",
+      "value": "服务器信息缺失"
+    },
+    {
+      "name": "srvstore_default_server_name",
+      "value": "默认服务"
+    },
+    {
+      "name": "srvstore_host_invalid",
+      "value": "请输入合法的域名或 IP 地址"
+    },
+    {
+      "name": "srvstore_ping_bad_format",
+      "value": "服务器返回格式无效"
+    },
+    {
+      "name": "srvstore_ping_bad_message",
+      "value": "服务器响应异常（message=%s）"
+    },
+    {
+      "name": "srvstore_ping_biz_error",
+      "value": "服务器返回错误（code=%d）"
+    },
+    {
+      "name": "srvstore_ping_http_error",
+      "value": "服务器无响应（HTTP %d）"
+    },
+    {
+      "name": "srvstore_ping_unreachable",
+      "value": "无法连接到服务器，请检查网络或服务器地址"
+    },
+    {
+      "name": "srvstore_port_invalid",
+      "value": "端口号无效"
+    },
+    {
+      "name": "srvstore_scheme_unsupported",
+      "value": "仅支持 http 或 https 协议"
+    },
+    {
+      "name": "srvstore_url_required",
+      "value": "请输入服务器地址"
+    },
+    {
+      "name": "theme_restart_failed",
+      "value": "重启失败，请手动重启应用"
+    },
+    {
+      "name": "theme_switch_failed",
+      "value": "主题切换失败"
     }
   ]
 }
