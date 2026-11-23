@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { LengthMetrics, UIContext } from '@kit.ArkUI';
+import { display, LengthMetrics, mediaquery, UIContext } from '@kit.ArkUI';
 import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { common, Want } from '@kit.AbilityKit';
 import { ServerEntry } from '../model/ServerEntry';
@@ -85,6 +85,14 @@ import {
 
 const TAG: string = 'NotifyView';
 
+// 一多：窗口宽度 ≥750vp（双栏/三栏形态）时，通知详情以右侧面板内嵌呈现；
+// 窄屏（<750vp）保持半模态 Sheet 形态。
+// 折叠屏展开态宽度可能 <750vp，命中 FOLD_STATUS_EXPANDED 时同样进入内嵌双栏，
+// 且两栏等宽（详情面板占 50%），避免固定宽面板把列表挤得过窄。
+const DETAIL_INLINE_MEDIA_QUERY: string = '(min-width: 750vp)';
+// 内嵌详情面板固定宽度（vp），折叠屏展开态除外（等宽 50%）
+const DETAIL_INLINE_PANEL_WIDTH: number = 480;
+
 // 失败服务器及其错误信息（用于点击 banner 精准弹修复弹窗）
 interface ServerErrorInfo {
   server: ServerEntry;
@@ -167,9 +175,21 @@ export struct NotifyView {
   @State serverErrorBannerHeight: number = 0;
   @State refreshing: boolean = false;
   @State hasClientToken: boolean = false;
-  // 点击查看的消息详情（底部半模态面板）
+  // 点击查看的消息详情（窄屏为底部半模态面板，≥750vp 双栏/三栏形态为右侧内嵌面板）
   @State showDetail: boolean = false;
   @State selectedMessage: NotifyMessage | null = null;
+  // 一多：窗口 ≥750vp 时详情内嵌右侧面板，不再弹出半模态 Sheet
+  @State detailInlineMode: boolean = false;
+  // 窗口宽度媒体查询命中（≥750vp）
+  @State detailInlineWidthMatched: boolean = false;
+  // 折叠屏展开态（FOLD_STATUS_EXPANDED）：即使宽度 <750vp 也进入内嵌双栏
+  @State foldExpanded: boolean = false;
+  private detailInlineListener: mediaquery.MediaQueryListener | undefined = undefined;
+  // 折叠状态回调需持有引用，销毁时才能精确注销
+  private foldStatusCallback: (event: display.FoldStatus) => void = (event: display.FoldStatus): void => {
+    this.foldExpanded = event === display.FoldStatus.FOLD_STATUS_EXPANDED;
+    this.updateDetailInlineMode();
+  };
   @StorageLink(KEY_NOTIFY_EDITING) @Watch('onIsEditingChanged') isEditing: boolean = false;
   @State @Watch('onSelectedIdsChanged') selectedIds: string[] = [];
   // 每个 group_key 当前选中的缓存消息数，供 group 头部"已选 X / Y"显示真实选中数量
@@ -330,6 +350,17 @@ export struct NotifyView {
   private fixRenameController: CustomDialogController | null = null;
 
   aboutToAppear() {
+    // 一多：≥750vp（双栏/三栏形态）时详情切换为右侧内嵌面板，窄屏保持半模态 Sheet
+    this.detailInlineListener = this.getUIContext().getMediaQuery().matchMediaSync(DETAIL_INLINE_MEDIA_QUERY);
+    this.detailInlineWidthMatched = this.detailInlineListener.matches;
+    this.detailInlineListener.on('change', (result: mediaquery.MediaQueryResult) => {
+      this.detailInlineWidthMatched = result.matches;
+      this.updateDetailInlineMode();
+    });
+    // 折叠屏展开态（部分机型展开宽度 <750vp）同样进入内嵌双栏
+    this.foldExpanded = display.getFoldStatus() === display.FoldStatus.FOLD_STATUS_EXPANDED;
+    display.on('foldStatusChange', this.foldStatusCallback);
+    this.updateDetailInlineMode();
     this.holdingHandViewMounted = true;
     this.publishSearchBackState();
     this.updateHoldingHandSubscription();
@@ -380,6 +411,8 @@ export struct NotifyView {
   }
 
   aboutToDisappear() {
+    this.detailInlineListener?.off('change');
+    display.off('foldStatusChange', this.foldStatusCallback);
     this.holdingHandViewMounted = false;
     this.cancelContextSelection();
     if (this.searchBackTimer >= 0) {
@@ -414,6 +447,14 @@ export struct NotifyView {
       ServerManager.getInstance().removeChangeListener(this.onChange);
     }
     this.loadSeq++;
+  }
+
+  /**
+   * 统一计算内嵌详情模式：窗口宽度命中 ≥750vp 或折叠屏处于展开态即进入。
+   * 折叠屏展开宽度可能 <750vp（如 Pura X 阔折叠），单独依赖宽度断点会漏掉这类设备。
+   */
+  private updateDetailInlineMode(): void {
+    this.detailInlineMode = this.detailInlineWidthMatched || this.foldExpanded;
   }
 
   @Builder
@@ -1433,6 +1474,28 @@ export struct NotifyView {
   }
 
   build() {
+    // 一多双栏/三栏形态：详情内嵌为右侧固定宽面板，左边主内容靠左占剩余宽度；
+    // 窄屏（<750vp）无此分支，走 mainLayout 原生形态（详情由 bindSheet 弹出）
+    if (this.detailInlineMode && this.showDetail && this.selectedMessage !== null) {
+      Row() {
+        Column() {
+          this.mainLayout();
+        }
+        .layoutWeight(1)
+        .height('100%')
+
+        this.inlineDetailPanel();
+      }
+      .width('100%')
+      .height('100%')
+    } else {
+      this.mainLayout();
+    }
+  }
+
+  /** 主布局（原 build 主体）：沉浸/降级两种形态，窄屏时半模态详情挂载于此。 */
+  @Builder
+  mainLayout() {
     if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       Stack({ alignContent: Alignment.TopStart }) {
         HdsNavigation() {
@@ -1482,10 +1545,13 @@ export struct NotifyView {
         })
         .hideBackButton(true)
         .titleMode(HdsNavigationTitleMode.MINI)
+        // 强制单栏 Stack：HdsNavigation 默认 NavigationMode.Auto，容器 ≥600vp 时自动切 Split
+        // （navBar 收缩为默认 240vp + 系统分隔线 + 空白内容区），平板/宽屏主内容会被挤成窄条
+        .mode(NavigationMode.Stack)
         .bindToScrollable([this.searchActive && !this.searchTransitioning ? this.searchScroller : this.scroller])
         .width('100%')
         .height('100%')
-        .bindSheet(this.showDetail, this.detailBuilder(), {
+        .bindSheet(this.showDetail && !this.detailInlineMode, this.detailBuilder(), {
           height: SheetSize.LARGE,
           preferType: SheetType.BOTTOM,
           // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
@@ -1501,7 +1567,11 @@ export struct NotifyView {
           systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
           onWillDismiss: (action: DismissSheetAction) => this.handleDetailDismiss(action),
           onDisappear: () => {
-            this.showDetail = false;
+            // 内嵌面板形态下 Sheet 因断点切换被编程式关闭时不清选中，
+            // 让详情无缝过渡为右侧内嵌面板继续展示
+            if (!this.detailInlineMode) {
+              this.showDetail = false;
+            }
           }
         })
         .backgroundColor($r('app.color.color_bg_page'));
@@ -1587,7 +1657,7 @@ export struct NotifyView {
           this.searchViewportWidth = width;
         }
       })
-      .bindSheet(this.showDetail, this.detailBuilder(), {
+      .bindSheet(this.showDetail && !this.detailInlineMode, this.detailBuilder(), {
         height: SheetSize.LARGE,
         preferType: SheetType.BOTTOM,
         // 标题与关闭按钮由 Sheet 内 HdsNavigation 的 MODAL 标题栏承载，以支持内容上滚时的动态模糊。
@@ -1603,7 +1673,11 @@ export struct NotifyView {
         systemMaterial: getEnabledSystemMaterial('sheet', this.immersiveLightEnabled),
         onWillDismiss: (action: DismissSheetAction) => this.handleDetailDismiss(action),
         onDisappear: () => {
-          this.showDetail = false;
+          // 内嵌面板形态下 Sheet 因断点切换被编程式关闭时不清选中，
+          // 让详情无缝过渡为右侧内嵌面板继续展示
+          if (!this.detailInlineMode) {
+            this.showDetail = false;
+          }
         }
       })
       .backgroundColor($r('app.color.color_bg_page'));
@@ -1746,6 +1820,47 @@ export struct NotifyView {
   // ====== 各弹窗打开方法（复用组件，指定目标服务器） ======
 
   /**
+   * 一多双栏/三栏形态的内嵌详情面板：固定宽贴右侧，左边主内容靠左占剩余宽度。
+   * 标题栏避让状态栏并承载标题与关闭按钮，正文与 Sheet 形态共用 detailContent。
+   */
+  @Builder
+  inlineDetailPanel() {
+    Column() {
+      // 面板标题栏：避让状态栏，标题 + 关闭按钮
+      Row() {
+        Text('通知详情')
+          .fontSize(20)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.color_text_primary'))
+          .layoutWeight(1);
+        SymbolGlyph($r('sys.symbol.xmark'))
+          .fontSize(18)
+          .fontColor([$r('app.color.color_text_secondary')])
+          .padding(10)
+          .onClick(() => {
+            this.detailSelectionController.clearSelection();
+            this.showDetail = false;
+          });
+      }
+      .width('100%')
+      .height(this.statusBarHeight + 56)
+      .padding({ left: 20, right: 8 })
+      .alignItems(VerticalAlign.Center)
+
+      // 详情正文：与 Sheet 形态共用同一内容构建
+      Column() {
+        this.detailContent();
+      }
+      .width('100%')
+      .layoutWeight(1)
+    }
+    .width(this.foldExpanded ? '50%' : DETAIL_INLINE_PANEL_WIDTH)
+    .height('100%')
+    .backgroundColor($r('app.color.color_bg_page'))
+    .border({ width: { left: 1 }, color: { left: $r('app.color.color_border_subtle') } });
+  }
+
+  /**
    * 详情 Sheet 内容：HdsNavigation 使用 MODAL（半模态）标题栏承载标题与关闭按钮，
    * bindToScrollable 绑定内部 List 后，内容上滚穿入标题栏区域即呈现动态模糊。
    * 沉浸分支：渐变模糊 + 自适应系统材质；降级分支：通用模糊背板。
@@ -1787,6 +1902,8 @@ export struct NotifyView {
       })
       .hideBackButton(true)
       .titleMode(HdsNavigationTitleMode.MODAL)
+      // 强制单栏 Stack，防止 600~750vp 宽的 Sheet 内 Auto 模式切 Split
+      .mode(NavigationMode.Stack)
       .bindToScrollable([this.detailScroller])
       .width('100%')
       .height('100%');
@@ -1821,6 +1938,8 @@ export struct NotifyView {
       })
       .hideBackButton(true)
       .titleMode(HdsNavigationTitleMode.MODAL)
+      // 强制单栏 Stack，防止 600~750vp 宽的 Sheet 内 Auto 模式切 Split
+      .mode(NavigationMode.Stack)
       .bindToScrollable([this.detailScroller])
       .width('100%')
       .height('100%');

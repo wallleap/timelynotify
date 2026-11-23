@@ -7,6 +7,7 @@ import {
   shouldUseSystemMaterialPath
 } from '../utils/ImmersiveUtil';
 import { hdsMaterial, HdsTabs, HdsTabsController } from '@kit.UIDesignKit';
+import { mediaquery } from '@kit.ArkUI';
 import {
   KEY_HOME_TAB_INDEX,
   KEY_INDEX_PAGE_VISIBLE,
@@ -40,6 +41,12 @@ struct Index {
   // 包含搜索入场和退场，防止动画期间再次返回直接退出应用。
   @StorageProp(KEY_NOTIFY_SEARCH_BACK_ACTIVE) notifySearchBackActive: boolean = false;
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgress: string = '';
+  // ─── 一多适配三形态：窗口断点经 mediaquery 监听实时刷新 ───
+  // <750vp 单栏：底部 Tabs，详情为半模态 Sheet；
+  // 750~1440vp 双栏：底部 Tabs，详情由 NotifyView 内嵌右侧固定宽面板；
+  // ≥1440vp 三栏：左侧侧边导航栏，内容占剩余宽度（详情面板仍在 NotifyView 内最右）
+  @State isWideScreen: boolean = false;
+  private wideScreenListener: mediaquery.MediaQueryListener | undefined = undefined;
   private hdsController: HdsTabsController = new HdsTabsController();
   private hdsSelectedIndex: number = 0;
   // 独立路由覆盖主页时不启用防窥；Sheet/弹窗不离开主页，继续跟随当前 Tab。
@@ -110,16 +117,93 @@ struct Index {
     .tabBar(this.tabBuilder(this.tabs[2], 2))
   }
 
+  // ─── 宽屏侧边导航项：图标 + 标题纵排（与底部 Tab 栏样式一致），停靠在窄栏底部便于触达 ───
+  @Builder
+  sideNavItem(item: TabItem, index: number) {
+    Column({ space: 4 }) {
+      Stack({ alignContent: Alignment.TopEnd }) {
+        Image(this.currentIndex === index ? item.iconActive : item.icon)
+          .width(24)
+          .height(24)
+          .fillColor(
+            this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'))
+          .draggable(false);
+        if (index === 0 && this.syncProgress.length > 0) {
+          LoadingProgress()
+            .width(9)
+            .height(9)
+            .color($r('app.color.color_brand'));
+        }
+      }
+      .width(24)
+      .height(24);
+      Text(item.title)
+        .fontSize(12)
+        .fontColor(
+          this.currentIndex === index ? $r('app.color.color_brand') : $r('app.color.color_text_hint'));
+    }
+    .width('100%')
+    .height(56)
+    .justifyContent(FlexAlign.Center)
+    .borderRadius(20)
+    .backgroundColor(this.currentIndex === index ? $r('app.color.color_bg_selected_glass') : Color.Transparent)
+    .onClick(() => {
+      this.selectSideTab(index);
+    })
+  }
+
+  // ─── 宽屏分栏布局：窄侧边栏（导航项沉底，方便手够到）+ 右侧内容区 ───
+  @Builder
+  wideScreenLayout() {
+    Row() {
+      Column({ space: 8 }) {
+        this.sideNavItem(this.tabs[0], 0);
+        this.sideNavItem(this.tabs[1], 1);
+        this.sideNavItem(this.tabs[2], 2);
+      }
+      .width(96)
+      .height('100%')
+      .padding({ left: 12, right: 12, bottom: 16 + this.navBarHeight })
+      .justifyContent(FlexAlign.End)
+      .backgroundColor($r('app.color.color_bg_navigation'))
+
+      // 内容区：复用窄屏三个视图，占满剩余宽度
+      //（通知 Tab 的详情面板由 NotifyView 内部再分栏，贴最右侧）
+      Column() {
+        if (this.currentIndex === 0) {
+          NotifyView()
+        } else if (this.currentIndex === 1) {
+          ServerView()
+        } else {
+          MineView()
+        }
+      }
+      .layoutWeight(1)
+      .height('100%')
+    }
+    .width('100%')
+    .height('100%')
+  }
+
   aboutToAppear(): void {
     AntiPeepService.start();
     this.barSelectedIndex = this.currentIndex;
     NotifySyncService.getInstance().setTabIndex(this.currentIndex);
+    // 一多：≥1440vp（对齐官方 xl 断点）进入三栏形态：左侧侧边导航 + 内容占剩余宽度；
+    // 750~1440vp 双栏形态沿用底部 Tabs，详情面板由 NotifyView 内部呈现。
+    // 使用 UIContext.getMediaQuery()，顶层 mediaquery.matchMediaSync 已弃用
+    this.wideScreenListener = this.getUIContext().getMediaQuery().matchMediaSync('(min-width: 1440vp)');
+    this.isWideScreen = this.wideScreenListener.matches;
+    this.wideScreenListener.on('change', (result: mediaquery.MediaQueryResult) => {
+      this.isWideScreen = result.matches;
+    });
   }
 
   /** 根页面销毁时释放应用生命周期，独立路由显隐通过页面范围暂停防窥。 */
   aboutToDisappear(): void {
     this.pageVisible = false;
     AppStorage.setOrCreate(KEY_NOTIFY_SEARCH_BACK_ACTIVE, false);
+    this.wideScreenListener?.off('change');
     AntiPeepService.stop();
   }
 
@@ -154,6 +238,15 @@ struct Index {
     AntiPeepService.setPageActive(this.pageVisible && (index === 0 || index === 1));
   }
 
+  /** 宽屏侧边导航切换 Tab：先同步 hdsSelectedIndex，避免 @Watch 回调对未挂载的 HdsTabs 控制器调用 changeIndex。 */
+  private selectSideTab(index: number): void {
+    if (index === this.currentIndex) {
+      return;
+    }
+    this.hdsSelectedIndex = index;
+    this.currentIndex = index;
+  }
+
   // 系统返回拦截：通知页先退出搜索或多选，搜索动画期间继续消费返回；
   // 返回 true 表示事件已消费，false 走默认返回行为（退出应用）
   onBackPress(): boolean {
@@ -171,7 +264,10 @@ struct Index {
   }
 
   build() {
-    if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
+    if (this.isWideScreen) {
+      // ─── 宽屏（≥600vp）：侧边导航 + 内容区分栏 ───
+      this.wideScreenLayout();
+    } else if (shouldUseSystemMaterialPath(this.immersiveLightEnabled)) {
       // ─── API 26+: HdsTabs 悬浮胶囊 + systemMaterialEffect 沉浸光感 ───
       Column() {
         HdsTabs({ controller: this.hdsController }) {
