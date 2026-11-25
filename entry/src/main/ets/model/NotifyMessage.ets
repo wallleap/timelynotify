@@ -305,6 +305,19 @@ export class NotifyMessage extends Object {
     return Array.from(new Set<string>(variants));
   }
 
+  /** 缓存读取时按当前语言重写解密失败占位项的标题与正文；非占位项不做任何修改。 */
+  rematerializePlaceholderText(): void {
+    if (!this.isDecryptionFailed()) {
+      return;
+    }
+    this.title = NotifyMessage.localizedEncryptionTitle();
+    // 区分“未配置密钥”与“解密失败”两种占位正文，按对应文案的当前语言变体重写
+    const missingKeyVariants: string[] = [NotifyMessage.MISSING_KEY_BODY, NotifyMessage.localizedMissingKeyBody()];
+    this.body = missingKeyVariants.includes(this.body)
+      ? NotifyMessage.localizedMissingKeyBody()
+      : NotifyMessage.localizedDecryptionFailedBody();
+  }
+
   // 从 Bark 参数读取归档与 ttl；primary 优先，兼容服务端小写键与加密内容驼峰键。
   private applyRetentionValues(primary: Record<string, Object> | null,
     fallback: Record<string, Object> | null): void {

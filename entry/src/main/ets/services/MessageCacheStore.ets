@@ -182,6 +182,8 @@ function rowToMessage(rs: relationalStore.ResultSet): NotifyMessage {
     // arkts-limited-throw：仅允许 throw Error 实例
     throw err instanceof Error ? err : new Error(msg);
   }
+  // 占位文案以落库时语言持久化；读取时按当前语言重物化，避免切换语言后列表残留旧语言
+  m.rematerializePlaceholderText();
   return m;
 }
 
