@@ -2,7 +2,7 @@ import { i18n } from '@kit.LocalizationKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { PreferencesUtil } from '../utils/PreferencesUtil';
 import { AppContextStore } from '../common/AppContextStore';
-import { DOMAIN } from '../common/Constant';
+import { DOMAIN, KEY_LANGUAGE_REFRESH_SIGNAL } from '../common/Constant';
 
 const TAG: string = 'LanguageService';
 
@@ -47,8 +47,14 @@ export class LanguageService {
       // 'default' 的官方刷新时机是下次启动；补一步系统语言应用实现即时切换
       LanguageService.applySystemLanguageForRefresh();
     }
-    return PreferencesUtil.putString(AppContextStore.getInstance().getContext(),
+    const saved: boolean = await PreferencesUtil.putString(AppContextStore.getInstance().getContext(),
       LanguageService.KEY_APP_LANGUAGE, language);
+    if (saved) {
+      // 自增语言切换信号，主页整树重建：$r 引用与已物化字符串统一按新语言重新解析
+      const signal: number = AppStorage.get<number>(KEY_LANGUAGE_REFRESH_SIGNAL) ?? 0;
+      AppStorage.setOrCreate(KEY_LANGUAGE_REFRESH_SIGNAL, signal + 1);
+    }
+    return saved;
   }
 
   /** 调用系统接口设置应用偏好语言；入参非法或系统不支持时返回 false。 */

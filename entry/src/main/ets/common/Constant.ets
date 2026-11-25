@@ -26,3 +26,6 @@ export const KEY_NOTIFY_SYNC_REVISION: string = 'notifySyncRevision';
 
 /** AppStorage 键：应用市场检测到新版本时为 true，供「检测更新」入口显示提示点。 */
 export const KEY_APP_UPDATE_AVAILABLE: string = 'appUpdateAvailable';
+
+/** AppStorage 键：应用内语言切换信号（LanguageService 切换成功后自增，Index 监听并整树重建） */
+export const KEY_LANGUAGE_REFRESH_SIGNAL: string = 'languageRefreshSignal';

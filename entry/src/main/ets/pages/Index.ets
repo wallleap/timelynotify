@@ -11,6 +11,7 @@ import { mediaquery } from '@kit.ArkUI';
 import {
   KEY_HOME_TAB_INDEX,
   KEY_INDEX_PAGE_VISIBLE,
+  KEY_LANGUAGE_REFRESH_SIGNAL,
   KEY_NOTIFY_EDITING,
   KEY_NOTIFY_SEARCH_BACK_ACTIVE,
   KEY_NOTIFY_SEARCH_BACK_SIGNAL,
@@ -38,6 +39,10 @@ struct Index {
   @State barSelectedIndex: number = 0;
   // 通知页多选编辑态（NotifyView 经 @StorageLink 写入）：onBackPress 据此拦截系统返回
   @StorageLink(KEY_NOTIFY_EDITING) notifyIsEditing: boolean = false;
+  // 语言切换信号（LanguageService 切换成功后自增）：翻转重建纪元，强制主页整树重挂载
+  @StorageLink(KEY_LANGUAGE_REFRESH_SIGNAL) @Watch('onLanguageRefreshed') languageRefreshSignal: number = 0;
+  // 重建纪元：build 内 if/else 按奇偶互切，达成整树销毁重建；Tab 索引等状态经 AppStorage 保留
+  @State languageEpoch: number = 0;
   // 包含搜索入场和退场，防止动画期间再次返回直接退出应用。
   @StorageProp(KEY_NOTIFY_SEARCH_BACK_ACTIVE) notifySearchBackActive: boolean = false;
   @StorageProp(KEY_NOTIFY_SYNC_PROGRESS) syncProgress: string = '';
@@ -233,6 +238,11 @@ struct Index {
     }
   }
 
+  /** 应用内语言切换后整树重建：$r 引用与 NotifyView 等物化字符串统一按新语言重新计算。 */
+  private onLanguageRefreshed(): void {
+    this.languageEpoch++;
+  }
+
   /** 仅通知和服务 Tab 启用防窥；我的、设置及 SharePage 均排除。 */
   private updateAntiPeepScope(index: number): void {
     AntiPeepService.setPageActive(this.pageVisible && (index === 0 || index === 1));
@@ -264,6 +274,18 @@ struct Index {
   }
 
   build() {
+    // 语言切换后翻转 if/else 分支销毁重建整棵视图树，
+    // 保证底栏标签、页面文案及物化字符串全部切到新语言（无残留、无需重启应用）
+    if (this.languageEpoch % 2 === 0) {
+      this.mainContent();
+    } else {
+      this.mainContent();
+    }
+  }
+
+  /** 主内容三种形态：三栏侧边导航 / HdsTabs 悬浮胶囊 / 标准 Tabs 降级。 */
+  @Builder
+  private mainContent() {
     if (this.isWideScreen) {
       // ─── 宽屏（≥600vp）：侧边导航 + 内容区分栏 ───
       this.wideScreenLayout();
@@ -273,6 +295,13 @@ struct Index {
         HdsTabs({ controller: this.hdsController }) {
           this.tabsContent();
         }
+        // 语言切换整树重建后恢复用户所在 Tab（HdsTabs 不接受 index 初始值，重建默认回第一项）
+        .onAppear(() => {
+          if (this.hdsSelectedIndex !== this.currentIndex) {
+            this.hdsSelectedIndex = this.currentIndex;
+            this.hdsController.changeIndex(this.currentIndex);
+          }
+        })
         .barOverlap(true)
         .barPosition(BarPosition.End)
         .barFloatingStyle({

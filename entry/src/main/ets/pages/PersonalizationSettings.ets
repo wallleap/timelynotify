@@ -22,7 +22,6 @@ import { HoldingHandService } from '../services/HoldingHandService';
 import { AntiPeepSettingsCard } from '../components/settings/AntiPeepSettingsCard';
 import { AntiPeepService, KEY_ANTI_PEEP_PREVIEW_VISIBLE } from '../services/AntiPeepService';
 import showToast from '../components/showToast';
-import { AppContextStore } from '../common/AppContextStore';
 import { hdsMaterial, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
 /**
@@ -120,10 +119,10 @@ struct PersonalizationSettings {
       }
 
       Column({ space: 12 }) {
-        SettingGroupTitle({ title: this.resString($r('app.string.personal_group_appearance')) });
+        SettingGroupTitle({ title: $r('app.string.personal_group_appearance') });
 
         SettingGroup() {
-          SettingCell({ title: this.resString($r('app.string.personal_theme_mode')) }) {
+          SettingCell({ title: $r('app.string.personal_theme_mode') }) {
             Select([
               { value: $r('app.string.personal_color_mode_system') },
               { value: $r('app.string.personal_color_mode_light') },
@@ -148,7 +147,7 @@ struct PersonalizationSettings {
           }
 
           // 应用内语言：跟随系统需重启生效，指定语言立即切换
-          SettingCell({ title: this.resString($r('app.string.lang_setting_title')) }) {
+          SettingCell({ title: $r('app.string.lang_setting_title') }) {
             Select([
               { value: $r('app.string.lang_follow_system') },
               { value: $r('app.string.lang_zh_hans') },
@@ -175,12 +174,12 @@ struct PersonalizationSettings {
       .width('100%');
 
       Column({ space: 12 }) {
-        SettingGroupTitle({ title: this.resString($r('app.string.personal_group_notification')) });
+        SettingGroupTitle({ title: $r('app.string.personal_group_notification') });
 
         SettingGroup() {
           SettingCell({
-            title: this.resString($r('app.string.personal_click_url')),
-            description: this.resString($r('app.string.personal_click_url_desc'))
+            title: $r('app.string.personal_click_url'),
+            description: $r('app.string.personal_click_url_desc')
           }) {
             Toggle({ type: ToggleType.Switch, isOn: this.notifyClickUrlEnabled })
               .selectedColor($r('app.color.color_brand'))
@@ -193,7 +192,7 @@ struct PersonalizationSettings {
 
         // 只影响后续新同步的加密通知是否补发，不修改消息的 isArchive 留存策略。
         SettingGroup() {
-          SettingCell({ title: this.resString($r('app.string.personal_encrypted_resend')) }) {
+          SettingCell({ title: $r('app.string.personal_encrypted_resend') }) {
             Toggle({ type: ToggleType.Switch, isOn: this.encryptedResendEnabled })
               .selectedColor($r('app.color.color_brand'))
               .enabled(this.encryptedResendLoaded && !this.encryptedResendSaving)
@@ -209,7 +208,7 @@ struct PersonalizationSettings {
       // 两项能力独立检测，任一可用时保留分组，避免防窥依赖握姿设备能力。
       if (this.holdingHandSupported || this.antiPeepSupported) {
         Column({ space: 12 }) {
-          SettingGroupTitle({ title: this.resString($r('app.string.personal_group_hmos')) });
+          SettingGroupTitle({ title: $r('app.string.personal_group_hmos') });
           if (this.holdingHandSupported) {
             HoldingHandSettingsCard();
           }
@@ -464,11 +463,5 @@ struct PersonalizationSettings {
   // 从独立设置页返回“我的”页，系统返回手势也复用同一行为。
   private goBack(): void {
     this.getUIContext().getRouter().back();
-  }
-
-  // 设置组件的字符串参数需要原始 string：资源经 resourceManager 还原为当前语言文案
-  private resString(res: Resource): string {
-    const context = AppContextStore.getInstance().getContext();
-    return context ? context.resourceManager.getStringSync(res.id) : '';
   }
 }
