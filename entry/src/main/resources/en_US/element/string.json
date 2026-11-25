@@ -521,10 +521,6 @@
       "value": "Language"
     },
     {
-      "name": "lang_switch_hint",
-      "value": "Takes effect after the app restarts"
-    },
-    {
       "name": "lang_zh_hans",
       "value": "简体中文"
     },

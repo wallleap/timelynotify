@@ -355,7 +355,7 @@ struct PersonalizationSettings {
     this.languageLoaded = true;
   }
 
-  /** 切换应用语言：指定语言立即生效；选回“跟随系统”需重启应用后生效。 */
+  /** 切换应用语言：三种选项均立即生效，无需重启。 */
   private async changeLanguage(index: number): Promise<void> {
     if (!this.languageLoaded || index < 0 || index >= this.languageKeys.length || index === this.languageIndex) {
       return;
@@ -363,9 +363,6 @@ struct PersonalizationSettings {
     const ok: boolean = await LanguageService.setLanguage(this.languageKeys[index]);
     if (ok) {
       this.languageIndex = index;
-      if (this.languageKeys[index] === LanguageService.LANG_FOLLOW_SYSTEM) {
-        showToast(this.getUIContext(), $r('app.string.lang_switch_hint'), 2500);
-      }
     } else {
       showToast(this.getUIContext(), $r('app.string.personal_save_failed'));
     }

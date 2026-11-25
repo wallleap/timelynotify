@@ -521,10 +521,6 @@
       "value": "语言"
     },
     {
-      "name": "lang_switch_hint",
-      "value": "切换语言后需重启应用生效"
-    },
-    {
       "name": "lang_zh_hans",
       "value": "简体中文"
     },
